@@ -40,8 +40,139 @@ export async function render(root) {
     el("option", { value: "sefaz-provedor" }, "SEFAZ (provedor)"),
     el("option", { value: "generated" }, "Gerados pelo sistema"),
   );
+
+  // ---- Filtros novos (item 9) ----
+  const f_emitCnpj = el("input", { class: "input", placeholder: "CNPJ do Emitente" });
+  const f_emitRazao = el("input", { class: "input", placeholder: "Razão Social do Emitente" });
+  const f_emitFantasia = el("input", { class: "input", placeholder: "Nome Fantasia do Emitente" });
+  const f_destNome = el("input", { class: "input", placeholder: "Destinatário / Tomador" });
+  const f_destDoc = el("input", { class: "input", placeholder: "Doc. Destinatário" });
+  const f_chave = el("input", { class: "input", placeholder: "Chave de Acesso" });
+  const f_tipoDoc = el("select", { class: "select" },
+    el("option", { value: "" }, "Todos os tipos"),
+    el("option", { value: "entrada" }, "Entrada"),
+    el("option", { value: "saida" }, "Saída"),
+  );
+  const f_finalidade = el("select", { class: "select" },
+    el("option", { value: "" }, "Todas as finalidades"),
+    el("option", { value: "normal" }, "Normal"),
+    el("option", { value: "complementar" }, "Complementar"),
+    el("option", { value: "ajuste" }, "Ajuste"),
+    el("option", { value: "devolucao" }, "Devolução"),
+  );
+  const f_cancelados = el("select", { class: "select" },
+    el("option", { value: "" }, "Cancelados: todos"),
+    el("option", { value: "1" }, "Somente cancelados"),
+    el("option", { value: "0" }, "Somente não cancelados"),
+  );
+  const f_dataCancFrom = el("input", { class: "input", type: "date", title: "Cancelados de" });
+  const f_dataCancTo = el("input", { class: "input", type: "date", title: "Cancelados até" });
+  const f_registrada = el("select", { class: "select" },
+    el("option", { value: "" }, "Registrada no ERP: todos"),
+    el("option", { value: "1" }, "Somente registradas"),
+    el("option", { value: "0" }, "Somente não registradas"),
+  );
+  const f_dataRegFrom = el("input", { class: "input", type: "date", title: "Registradas de" });
+  const f_dataRegTo = el("input", { class: "input", type: "date", title: "Registradas até" });
+  const f_registrosInvalidos = el("select", { class: "select" },
+    el("option", { value: "" }, "Registros inválidos: todos"),
+    el("option", { value: "1" }, "Somente inválidos"),
+  );
+  const f_invalidado = el("select", { class: "select" },
+    el("option", { value: "" }, "Invalidado: todos"),
+    el("option", { value: "1" }, "Somente invalidados"),
+  );
+  const f_assinaturaInvalida = el("select", { class: "select" },
+    el("option", { value: "" }, "Assinatura: todos"),
+    el("option", { value: "1" }, "Somente assinatura inválida"),
+  );
+  const f_schemaInvalido = el("select", { class: "select" },
+    el("option", { value: "" }, "Schema: todos"),
+    el("option", { value: "1" }, "Somente schema inválido"),
+  );
+  const f_terceiros = el("select", { class: "select" },
+    el("option", { value: "" }, "Terceiros: todos"),
+    el("option", { value: "1" }, "Somente terceiros"),
+    el("option", { value: "0" }, "Somente próprios"),
+  );
+  const f_cartaCorrecao = el("select", { class: "select" },
+    el("option", { value: "" }, "Carta de Correção: todos"),
+    el("option", { value: "1" }, "Somente com carta de correção"),
+  );
+  const f_ultimaManifestacao = el("select", { class: "select" },
+    el("option", { value: "" }, "Última Manifestação: todas"),
+    el("option", { value: "ciencia" }, "Ciência"),
+    el("option", { value: "confirmacao" }, "Confirmação"),
+    el("option", { value: "desconhecimento" }, "Desconhecimento"),
+    el("option", { value: "nao_realizada" }, "Não realizada"),
+  );
+  const f_dataManifFrom = el("input", { class: "input", type: "date", title: "Manifestação de" });
+  const f_dataManifTo = el("input", { class: "input", type: "date", title: "Manifestação até" });
+  const f_semManifestacao = el("select", { class: "select" },
+    el("option", { value: "" }, "Sem Manifestação: todos"),
+    el("option", { value: "1" }, "Somente sem manifestação"),
+  );
+  const f_dataValidFrom = el("input", { class: "input", type: "date", title: "Validação de" });
+  const f_dataValidTo = el("input", { class: "input", type: "date", title: "Validação até" });
+  const f_regraValidacao = el("input", { class: "input", placeholder: "Regra de Validação" });
+  const f_regraViolada = el("input", { class: "input", placeholder: "Regra Violada" });
+
+  const advancedFilters = el("div", { class: "row", style: "margin-top:10px; flex-wrap:wrap" },
+    el("div", { class: "field" }, el("label", {}, "CNPJ Emitente"), f_emitCnpj),
+    el("div", { class: "field" }, el("label", {}, "Razão Social Emitente"), f_emitRazao),
+    el("div", { class: "field" }, el("label", {}, "Nome Fantasia"), f_emitFantasia),
+    el("div", { class: "field" }, el("label", {}, "Destinatário/Tomador"), f_destNome),
+    el("div", { class: "field" }, el("label", {}, "Doc. Destinatário"), f_destDoc),
+    el("div", { class: "field" }, el("label", {}, "Chave de Acesso"), f_chave),
+    el("div", { class: "field" }, el("label", {}, "Tipo de Documento"), f_tipoDoc),
+    el("div", { class: "field" }, el("label", {}, "Finalidade Emissão"), f_finalidade),
+    el("div", { class: "field" }, el("label", {}, "Cancelados"), f_cancelados),
+    el("div", { class: "field" }, el("label", {}, "Data Cancelamento de"), f_dataCancFrom),
+    el("div", { class: "field" }, el("label", {}, "Data Cancelamento até"), f_dataCancTo),
+    el("div", { class: "field" }, el("label", {}, "Registrada no ERP"), f_registrada),
+    el("div", { class: "field" }, el("label", {}, "Data Reg. ERP de"), f_dataRegFrom),
+    el("div", { class: "field" }, el("label", {}, "Data Reg. ERP até"), f_dataRegTo),
+    el("div", { class: "field" }, el("label", {}, "Registros Inválidos"), f_registrosInvalidos),
+    el("div", { class: "field" }, el("label", {}, "Invalidado"), f_invalidado),
+    el("div", { class: "field" }, el("label", {}, "Assinatura Inválida"), f_assinaturaInvalida),
+    el("div", { class: "field" }, el("label", {}, "Schema Inválido"), f_schemaInvalido),
+    el("div", { class: "field" }, el("label", {}, "Documentos de Terceiros"), f_terceiros),
+    el("div", { class: "field" }, el("label", {}, "Carta de Correção"), f_cartaCorrecao),
+    el("div", { class: "field" }, el("label", {}, "Última Manifestação"), f_ultimaManifestacao),
+    el("div", { class: "field" }, el("label", {}, "Data Manifestação de"), f_dataManifFrom),
+    el("div", { class: "field" }, el("label", {}, "Data Manifestação até"), f_dataManifTo),
+    el("div", { class: "field" }, el("label", {}, "Sem Manifestação"), f_semManifestacao),
+    el("div", { class: "field" }, el("label", {}, "Validação Regra de"), f_dataValidFrom),
+    el("div", { class: "field" }, el("label", {}, "Validação Regra até"), f_dataValidTo),
+    el("div", { class: "field" }, el("label", {}, "Regra de Validação"), f_regraValidacao),
+    el("div", { class: "field" }, el("label", {}, "Regra Violada"), f_regraViolada),
+  );
+  advancedFilters.style.display = "none"; // começa oculto
+
+  const toggleAdvanced = el("button", {
+    class: "btn btn--sm",
+    type: "button",
+    onClick: () => {
+      const isOpen = advancedFilters.style.display !== "none";
+      advancedFilters.style.display = isOpen ? "none" : "flex";
+      toggleAdvanced.textContent = isOpen ? "▾ Filtros avançados" : "▴ Ocultar filtros avançados";
+    },
+  }, "▾ Filtros avançados");
+
   const applyBtn = el("button", { class: "btn btn--primary", onClick: load }, "Filtrar");
-  const clearBtn = el("button", { class: "btn", onClick: () => { f_kind.value = ""; f_status.value = ""; f_uf.value = ""; f_from.value = ""; f_to.value = ""; f_q.value = ""; f_source.value = ""; load(); } }, "Limpar");
+  const clearBtn = el("button", { class: "btn", onClick: () => {
+    const all = [
+      f_kind, f_status, f_uf, f_from, f_to, f_q, f_source,
+      f_emitCnpj, f_emitRazao, f_emitFantasia, f_destNome, f_destDoc, f_chave,
+      f_tipoDoc, f_finalidade, f_cancelados, f_dataCancFrom, f_dataCancTo,
+      f_registrada, f_dataRegFrom, f_dataRegTo, f_registrosInvalidos,
+      f_invalidado, f_assinaturaInvalida, f_schemaInvalido, f_terceiros,
+      f_cartaCorrecao, f_ultimaManifestacao, f_dataManifFrom, f_dataManifTo,
+      f_semManifestacao, f_dataValidFrom, f_dataValidTo, f_regraValidacao, f_regraViolada,
+    ];
+    all.forEach((i) => { i.value = ""; });
+    load();
+  } }, "Limpar");
 
   // Suporta deep-link tipo #/documents?source=sefaz-cert
   const hash = location.hash.split("?")[1];
@@ -60,8 +191,9 @@ export async function render(root) {
         el("div", { class: "field" }, el("label", {}, "Até"), f_to),
         el("div", { class: "field" }, el("label", {}, "Origem"), f_source),
         el("div", { class: "field" }, el("label", {}, "Buscar"), f_q),
-        el("div", { class: "row--inline" }, applyBtn, clearBtn),
+        el("div", { class: "row--inline" }, applyBtn, clearBtn, toggleAdvanced),
       ),
+      advancedFilters,
     ),
   );
   root.appendChild(filterCard);
@@ -79,6 +211,35 @@ export async function render(root) {
     if (f_to.value) params.set("dateTo", f_to.value);
     if (f_q.value) params.set("q", f_q.value);
     if (f_source.value) params.set("source", f_source.value);
+    // Filtros novos
+    if (f_emitCnpj.value) params.set("emitenteCnpj", f_emitCnpj.value);
+    if (f_emitRazao.value) params.set("emitenteRazaoSocial", f_emitRazao.value);
+    if (f_emitFantasia.value) params.set("emitenteNomeFantasia", f_emitFantasia.value);
+    if (f_destNome.value) params.set("destinatarioNome", f_destNome.value);
+    if (f_destDoc.value) params.set("destinatarioDoc", f_destDoc.value);
+    if (f_chave.value) params.set("chaveAcesso", f_chave.value);
+    if (f_tipoDoc.value) params.set("tipoDocumento", f_tipoDoc.value);
+    if (f_finalidade.value) params.set("finalidadeEmissao", f_finalidade.value);
+    if (f_cancelados.value) params.set("cancelados", f_cancelados.value);
+    if (f_dataCancFrom.value) params.set("dataCancelamentoFrom", f_dataCancFrom.value);
+    if (f_dataCancTo.value) params.set("dataCancelamentoTo", f_dataCancTo.value);
+    if (f_registrada.value) params.set("registrada", f_registrada.value);
+    if (f_dataRegFrom.value) params.set("dataRegistroFrom", f_dataRegFrom.value);
+    if (f_dataRegTo.value) params.set("dataRegistroTo", f_dataRegTo.value);
+    if (f_registrosInvalidos.value) params.set("registrosInvalidos", f_registrosInvalidos.value);
+    if (f_invalidado.value) params.set("invalidado", f_invalidado.value);
+    if (f_assinaturaInvalida.value) params.set("assinaturaInvalida", f_assinaturaInvalida.value);
+    if (f_schemaInvalido.value) params.set("schemaInvalido", f_schemaInvalido.value);
+    if (f_terceiros.value) params.set("terceiros", f_terceiros.value);
+    if (f_cartaCorrecao.value) params.set("cartaCorrecao", f_cartaCorrecao.value);
+    if (f_ultimaManifestacao.value) params.set("ultimaManifestacao", f_ultimaManifestacao.value);
+    if (f_dataManifFrom.value) params.set("dataUltimaManifestacaoFrom", f_dataManifFrom.value);
+    if (f_dataManifTo.value) params.set("dataUltimaManifestacaoTo", f_dataManifTo.value);
+    if (f_semManifestacao.value) params.set("semManifestacao", f_semManifestacao.value);
+    if (f_dataValidFrom.value) params.set("dataValidacaoRegraFrom", f_dataValidFrom.value);
+    if (f_dataValidTo.value) params.set("dataValidacaoRegraTo", f_dataValidTo.value);
+    if (f_regraValidacao.value) params.set("regraValidacao", f_regraValidacao.value);
+    if (f_regraViolada.value) params.set("regraViolada", f_regraViolada.value);
     try {
       const rows = await api("/api/docs?" + params.toString());
       cache = rows;
