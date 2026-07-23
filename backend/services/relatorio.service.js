@@ -215,20 +215,33 @@ export const CAMPOS_PERMITIDOS = Object.keys(COLUNAS_DISPONIVEIS);
 
 // ---- Conversão de query -> WHERE + params ----
 export function filtrosToWhere(query) {
-  const { kind, status, q, uf, dateFrom, dateTo, papel, meuCnpj } = query || {};
+  const {
+    kind, status, q, uf, dateFrom, dateTo, papel, meuCnpj, source,
+    // Filtros novos (item 9)
+    emitenteCnpj, emitenteRazaoSocial, emitenteNomeFantasia,
+    destinatarioNome, destinatarioDoc, chaveAcesso,
+    cancelados, dataCancelamentoFrom, dataCancelamentoTo,
+    registrada, dataRegistroFrom, dataRegistroTo,
+    registrosInvalidos, invalidado, assinaturaInvalida, schemaInvalido,
+    tipoDocumento, terceiros, cartaCorrecao,
+    ultimaManifestacao, dataUltimaManifestacaoFrom, dataUltimaManifestacaoTo, semManifestacao,
+    dataValidacaoRegraFrom, dataValidacaoRegraTo, regraValidacao, regraViolada,
+    finalidadeEmissao, tipoOperacao,
+  } = query || {};
   const where = [];
   const params = [];
   if (kind) { where.push("kind = ?"); params.push(String(kind).toUpperCase()); }
   if (status) { where.push("status = ?"); params.push(status); }
+  if (source) { where.push("source = ?"); params.push(String(source)); }
   if (uf) { where.push("(uf_emitente = ? OR uf_destino = ?)"); params.push(uf, uf); }
   if (dateFrom) { where.push("date(data_emissao) >= date(?)"); params.push(dateFrom); }
   if (dateTo) { where.push("date(data_emissao) <= date(?)"); params.push(dateTo); }
   if (q) {
     where.push(
-      "(remetente_nome LIKE ? OR destinatario_nome LIKE ? OR chave LIKE ? OR numero LIKE ? OR remetente_doc LIKE ? OR destinatario_doc LIKE ?)"
+      "(remetente_nome LIKE ? OR destinatario_nome LIKE ? OR chave LIKE ? OR numero LIKE ? OR remetente_doc LIKE ? OR destinatario_doc LIKE ? OR emitente_razao_social LIKE ? OR emitente_nome_fantasia LIKE ? OR emitente_cnpj LIKE ?)"
     );
     const like = `%${q}%`;
-    params.push(like, like, like, like, like, like);
+    params.push(like, like, like, like, like, like, like, like, like);
   }
   if (papel && meuCnpj) {
     const cnpjDigits = String(meuCnpj).replace(/\D/g, "");
@@ -240,6 +253,44 @@ export function filtrosToWhere(query) {
       params.push(`%${cnpjDigits}%`);
     }
   }
+  // Filtros novos
+  if (emitenteCnpj) {
+    const d = String(emitenteCnpj).replace(/\D/g, "");
+    where.push("REPLACE(REPLACE(REPLACE(REPLACE(emitente_cnpj,'.',''),'-',''),'/',''),' ','') LIKE ?");
+    params.push(`%${d}%`);
+  }
+  if (emitenteRazaoSocial) { where.push("emitente_razao_social LIKE ?"); params.push(`%${emitenteRazaoSocial}%`); }
+  if (emitenteNomeFantasia) { where.push("emitente_nome_fantasia LIKE ?"); params.push(`%${emitenteNomeFantasia}%`); }
+  if (destinatarioNome) { where.push("(destinatario_tomador_nome LIKE ? OR destinatario_nome LIKE ?)"); params.push(`%${destinatarioNome}%`, `%${destinatarioNome}%`); }
+  if (destinatarioDoc) {
+    const d = String(destinatarioDoc).replace(/\D/g, "");
+    where.push("(REPLACE(REPLACE(REPLACE(REPLACE(destinatario_tomador_doc,'.',''),'-',''),'/',''),' ','') LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(destinatario_doc,'.',''),'-',''),'/',''),' ','') LIKE ?)");
+    params.push(`%${d}%`, `%${d}%`);
+  }
+  if (chaveAcesso) { where.push("chave LIKE ?"); params.push(`%${chaveAcesso}%`); }
+  if (cancelados === "1" || cancelados === "true") { where.push("cancelado = 1"); }
+  if (dataCancelamentoFrom) { where.push("date(data_cancelamento) >= date(?)"); params.push(dataCancelamentoFrom); }
+  if (dataCancelamentoTo) { where.push("date(data_cancelamento) <= date(?)"); params.push(dataCancelamentoTo); }
+  if (registrada === "1" || registrada === "true") { where.push("registrada_erp = 1"); }
+  if (dataRegistroFrom) { where.push("date(data_registro_erp) >= date(?)"); params.push(dataRegistroFrom); }
+  if (dataRegistroTo) { where.push("date(data_registro_erp) <= date(?)"); params.push(dataRegistroTo); }
+  if (registrosInvalidos === "1" || registrosInvalidos === "true") { where.push("registro_invalido = 1"); }
+  if (invalidado === "1" || invalidado === "true") { where.push("invalidado = 1"); }
+  if (assinaturaInvalida === "1" || assinaturaInvalida === "true") { where.push("assinatura_invalida = 1"); }
+  if (schemaInvalido === "1" || schemaInvalido === "true") { where.push("schema_invalido = 1"); }
+  if (tipoDocumento) { where.push("tipo_documento = ?"); params.push(String(tipoDocumento)); }
+  if (terceiros === "1" || terceiros === "true") { where.push("documento_terceiros = 1"); }
+  if (cartaCorrecao === "1" || cartaCorrecao === "true") { where.push("carta_correcao = 1"); }
+  if (ultimaManifestacao) { where.push("ultima_manifestacao = ?"); params.push(String(ultimaManifestacao)); }
+  if (dataUltimaManifestacaoFrom) { where.push("date(data_ultima_manifestacao) >= date(?)"); params.push(dataUltimaManifestacaoFrom); }
+  if (dataUltimaManifestacaoTo) { where.push("date(data_ultima_manifestacao) <= date(?)"); params.push(dataUltimaManifestacaoTo); }
+  if (semManifestacao === "1" || semManifestacao === "true") { where.push("sem_manifestacao = 1"); }
+  if (dataValidacaoRegraFrom) { where.push("date(data_validacao_regra) >= date(?)"); params.push(dataValidacaoRegraFrom); }
+  if (dataValidacaoRegraTo) { where.push("date(data_validacao_regra) <= date(?)"); params.push(dataValidacaoRegraTo); }
+  if (regraValidacao) { where.push("regra_validacao LIKE ?"); params.push(`%${regraValidacao}%`); }
+  if (regraViolada) { where.push("regra_violada LIKE ?"); params.push(`%${regraViolada}%`); }
+  if (finalidadeEmissao) { where.push("finalidade_emissao = ?"); params.push(String(finalidadeEmissao)); }
+  if (tipoOperacao) { where.push("tipo_operacao = ?"); params.push(String(tipoOperacao)); }
   return { where, params };
 }
 

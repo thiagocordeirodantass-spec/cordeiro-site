@@ -202,6 +202,82 @@ export async function render(root) {
   const tableHost = el("div", { class: "card", style: "margin-top:16px" });
   root.appendChild(tableHost);
 
+  // ---- Botões de download em lote (item 8 da lista de requisitos) ----
+  // Acionam os endpoints /api/relatorio/lote e /api/relatorio/xlsx com os
+  // mesmos filtros aplicados na listagem.
+  const downloadsCard = el("div", { class: "card", style: "margin-top:16px" },
+    el("div", { class: "card__head" },
+      el("h2", {}, "Downloads em lote (filtros aplicados)"),
+    ),
+    el("div", { class: "card__body" },
+      el("div", { style: "display:flex; flex-wrap:wrap; gap:8px; align-items:center" },
+        el("button", { class: "btn", onClick: () => downloadLote("xml") }, "📄 Baixar XMLs (ZIP)"),
+        el("button", { class: "btn", onClick: () => downloadLote("pdf") }, "📑 Baixar PDFs (ZIP)"),
+        el("button", { class: "btn", onClick: () => downloadLote("xml_pdf") }, "📦 XMLs + PDFs (ZIP)"),
+        el("span", { style: "flex:1" }),
+        el("button", { class: "btn", onClick: () => downloadRelatorio("xlsx") }, "📊 Relatório XLSX"),
+        el("button", { class: "btn", onClick: () => downloadRelatorio("csv") }, "📋 Relatório CSV"),
+        el("button", { class: "btn", onClick: () => downloadRelatorio("pdf") }, "📕 Relatório PDF"),
+        el("small", { style: "color:var(--muted); margin-left:8px" }, "Respeita todos os filtros da tela"),
+      ),
+    ),
+  );
+  root.appendChild(downloadsCard);
+
+  // Coleta os mesmos params da load() para reuso
+  function currentQuery() {
+    const params = new URLSearchParams();
+    if (f_kind.value) params.set("kind", f_kind.value);
+    if (f_status.value) params.set("status", f_status.value);
+    if (f_uf.value) params.set("uf", f_uf.value);
+    if (f_from.value) params.set("dateFrom", f_from.value);
+    if (f_to.value) params.set("dateTo", f_to.value);
+    if (f_q.value) params.set("q", f_q.value);
+    if (f_source.value) params.set("source", f_source.value);
+    if (f_emitCnpj.value) params.set("emitenteCnpj", f_emitCnpj.value);
+    if (f_emitRazao.value) params.set("emitenteRazaoSocial", f_emitRazao.value);
+    if (f_emitFantasia.value) params.set("emitenteNomeFantasia", f_emitFantasia.value);
+    if (f_destNome.value) params.set("destinatarioNome", f_destNome.value);
+    if (f_destDoc.value) params.set("destinatarioDoc", f_destDoc.value);
+    if (f_chave.value) params.set("chaveAcesso", f_chave.value);
+    if (f_tipoDoc.value) params.set("tipoDocumento", f_tipoDoc.value);
+    if (f_finalidade.value) params.set("finalidadeEmissao", f_finalidade.value);
+    if (f_cancelados.value) params.set("cancelados", f_cancelados.value);
+    if (f_dataCancFrom.value) params.set("dataCancelamentoFrom", f_dataCancFrom.value);
+    if (f_dataCancTo.value) params.set("dataCancelamentoTo", f_dataCancTo.value);
+    if (f_registrada.value) params.set("registrada", f_registrada.value);
+    if (f_dataRegFrom.value) params.set("dataRegistroFrom", f_dataRegFrom.value);
+    if (f_dataRegTo.value) params.set("dataRegistroTo", f_dataRegTo.value);
+    if (f_registrosInvalidos.value) params.set("registrosInvalidos", f_registrosInvalidos.value);
+    if (f_invalidado.value) params.set("invalidado", f_invalidado.value);
+    if (f_assinaturaInvalida.value) params.set("assinaturaInvalida", f_assinaturaInvalida.value);
+    if (f_schemaInvalido.value) params.set("schemaInvalido", f_schemaInvalido.value);
+    if (f_terceiros.value) params.set("terceiros", f_terceiros.value);
+    if (f_cartaCorrecao.value) params.set("cartaCorrecao", f_cartaCorrecao.value);
+    if (f_ultimaManifestacao.value) params.set("ultimaManifestacao", f_ultimaManifestacao.value);
+    if (f_dataManifFrom.value) params.set("dataUltimaManifestacaoFrom", f_dataManifFrom.value);
+    if (f_dataManifTo.value) params.set("dataUltimaManifestacaoTo", f_dataManifTo.value);
+    if (f_semManifestacao.value) params.set("semManifestacao", f_semManifestacao.value);
+    if (f_dataValidFrom.value) params.set("dataValidacaoRegraFrom", f_dataValidFrom.value);
+    if (f_dataValidTo.value) params.set("dataValidacaoRegraTo", f_dataValidTo.value);
+    if (f_regraValidacao.value) params.set("regraValidacao", f_regraValidacao.value);
+    if (f_regraViolada.value) params.set("regraViolada", f_regraViolada.value);
+    return params;
+  }
+
+  function downloadLote(formato) {
+    const qs = currentQuery();
+    qs.set("formato", formato);
+    const u = `/api/relatorio/lote?${qs.toString()}`;
+    apiDownload(u, `documentos-${formato}.zip`);
+  }
+  function downloadRelatorio(formato) {
+    const qs = currentQuery();
+    const u = `/api/relatorio/${formato}?${qs.toString()}`;
+    const ext = formato;
+    apiDownload(u, `relatorio.${ext}`);
+  }
+
   async function load() {
     const params = new URLSearchParams();
     if (f_kind.value) params.set("kind", f_kind.value);
