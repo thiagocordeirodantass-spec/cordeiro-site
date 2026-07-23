@@ -1,5 +1,9 @@
 // =============================================================================
-//  pages/templates-list.js — gerenciar templates salvos
+//  pages/templates-list.js — gerenciar templates salvos (componente)
+//  -----------------------------------------------------------------------------
+//  Agora é importado por relatorios.js para a aba "Meus templates".
+//  Mantém compatibilidade: a função render(root) ainda funciona se
+//  chamado direto (deep-link antigo).
 // =============================================================================
 import { api, toast, el, fmtDate } from "../assets/app.js";
 
@@ -7,14 +11,24 @@ export async function render(root) {
   root.appendChild(el("div", { class: "topbar" }, el("div", { class: "crumbs" }, el("strong", {}, "Templates salvos"))));
   const host = el("div", { class: "card" }, el("div", { class: "card__body" }));
   root.appendChild(host);
+  await renderTemplatesTab(host);
+}
+
+export async function renderTemplatesTab(host) {
   await reload();
 
   async function reload() {
     let templates = [];
     try { templates = await api("/api/relatorio/templates"); } catch (e) { toast(e.message, "err"); return; }
-    if (!templates.length) { host.innerHTML = ""; host.appendChild(el("div", { class: "empty" }, "Nenhum template salvo ainda. Crie em \"Gerar relatórios\".")); return; }
+    if (!templates.length) {
+      host.innerHTML = "";
+      host.appendChild(el("div", { class: "empty", style: "padding:30px; text-align:center; color:var(--sisco-text-muted, #7a869a)" },
+        "Nenhum template salvo ainda. Crie em \"Gerar relatórios\"."
+      ));
+      return;
+    }
     host.innerHTML = "";
-    const t = el("table", { class: "table" },
+    const t = el("table", { class: "sisco-table" },
       el("thead", {}, el("tr", {},
         el("th", {}, "Nome"), el("th", {}, "Autor"), el("th", {}, "Campos"),
         el("th", {}, "Compartilhar"), el("th", {}, "Atualizado"),
@@ -22,7 +36,13 @@ export async function render(root) {
       )),
       el("tbody", {}, ...templates.map(row)),
     );
-    host.appendChild(t);
+    const wrap = el("div", { class: "sisco-table-wrap" },
+      el("div", { class: "sisco-table-head" },
+        el("h2", {}, `Meus templates salvos (${templates.length})`),
+      ),
+      t,
+    );
+    host.appendChild(wrap);
   }
 
   function row(t) {
@@ -30,12 +50,12 @@ export async function render(root) {
       el("td", {}, t.nome, t.descricao ? el("div", { class: "kv__label", style: "margin-top:2px" }, t.descricao) : null),
       el("td", {}, t.autor_nome || t.autor_username || "-"),
       el("td", {}, (t.campos || []).join(", ")),
-      el("td", {}, t.compartilhar ? "★ sim" : "não"),
+      el("td", {}, t.compartilhar ? el("span", { class: "sisco-badge sisco-badge--ok" }, "★ sim") : el("span", { class: "sisco-badge sisco-badge--gray" }, "não")),
       el("td", {}, fmtDate(t.updated_at)),
-      el("td", {},
-        el("button", { class: "btn btn--sm", onClick: () => useTemplate(t) }, "Usar"),
+      el("td", { class: "row-actions" },
+        el("button", { onClick: () => useTemplate(t) }, "▶ Usar"),
         " ",
-        el("button", { class: "btn btn--sm", onClick: () => removeT(t) }, "Excluir"),
+        el("button", { class: "btn--danger", onClick: () => removeT(t) }, "🗑"),
       ),
     );
   }

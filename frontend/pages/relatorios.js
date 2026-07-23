@@ -1,12 +1,17 @@
 // =============================================================================
-//  pages/relatorios.js — geração de relatórios (XLSX/CSV/PDF) + templates
+//  pages/relatorios.js — Central de relatórios com abas
 //  -----------------------------------------------------------------------------
-//  Templates pré-definidos por módulo (NFe, CTe, Gerais) + customizáveis.
+//  Abas:
+//    - Gerar         -> fluxo de filtros + escolha de colunas + download
+//    - Meus templates -> listar/editar/apagar templates salvos pelo usuário
+//    - Histórico     -> log de relatórios gerados (auditoria)
 // =============================================================================
-import { api, apiDownload, toast, el } from "../assets/app.js";
+import { api, apiDownload, toast, el, fmtDate } from "../assets/app.js";
+import { renderTemplatesTab } from "./templates-list.js";
+import { renderAuditTab } from "./audit-log.js";
 
-let TODOS_CAMPOS = []; // carregado do backend na primeira renderização
-let TEMPLATES_MODULOS = {}; // { NFE: [...], CTE: [...], GERAIS: [...] }
+let TODOS_CAMPOS = [];
+let TEMPLATES_MODULOS = {};
 
 export async function render(root) {
   if (!TODOS_CAMPOS.length) {
@@ -21,11 +26,57 @@ export async function render(root) {
 
   root.appendChild(el("div", { class: "topbar" },
     el("div", { class: "crumbs" },
-      el("strong", {}, "Gerar relatórios"),
-      el("span", { class: "mod-tag" }, "PERSONALIZADO"),
+      el("strong", {}, "Relatórios"),
     ),
   ));
 
+  // ---- Sistema de abas ----
+  const tabBar = el("div", { class: "tabs" });
+  const tabHosts = {};
+
+  function makeTab(key, label) {
+    const btn = el("button", {
+      class: "tab-btn",
+      "data-tab": key,
+      onClick: () => activateTab(key),
+    }, label);
+    tabBar.appendChild(btn);
+    tabHosts[key] = el("div", { class: "tab-pane", "data-tab": key });
+    tabHosts[key].style.display = "none";
+    return btn;
+  }
+
+  function activateTab(key) {
+    for (const b of tabBar.querySelectorAll(".tab-btn")) {
+      b.classList.toggle("is-active", b.dataset.tab === key);
+    }
+    for (const [k, host] of Object.entries(tabHosts)) {
+      host.style.display = k === key ? "" : "none";
+    }
+  }
+
+  makeTab("gerar", "📊 Gerar");
+  makeTab("templates", "💾 Meus templates");
+  makeTab("historico", "📜 Histórico");
+  root.appendChild(tabBar);
+  root.appendChild(tabHosts.gerar);
+  root.appendChild(tabHosts.templates);
+  root.appendChild(tabHosts.historico);
+
+  // ---- Renderiza o conteúdo de cada aba ----
+  await renderGerarTab(tabHosts.gerar);
+  await renderTemplatesTab(tabHosts.templates);
+  await renderAuditTab(tabHosts.historico);
+
+  // Ativa a aba padrão
+  activateTab("gerar");
+
+  // Se o hash veio com #/relatorios/templates ou #/relatorios/historico, ativa a aba certa
+  const m = (location.hash || "").match(/relatorios\/(templates|historico|gerar)/);
+  if (m) activateTab(m[1]);
+}
+
+async function renderGerarTab(root) {
   const grid = el("div", { style: "display:grid; grid-template-columns:1fr 2fr; gap:16px" });
   root.appendChild(grid);
 
@@ -42,13 +93,11 @@ export async function render(root) {
   const tplCardsHost = el("div", { style: "display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px" });
   function buildTplCards() {
     tplCardsHost.innerHTML = "";
-    const modulo = f_kind.value || "GERAIS";
     const tpls = [
       ...(TEMPLATES_MODULOS.NFE || []).map((t) => ({ ...t, mod: "NFE" })),
       ...(TEMPLATES_MODULOS.CTE || []).map((t) => ({ ...t, mod: "CTE" })),
       ...(TEMPLATES_MODULOS.GERAIS || []).map((t) => ({ ...t, mod: "GERAIS" })),
     ];
-    // Mostra todos, com badge do módulo
     for (const t of tpls) {
       const card = el("button", {
         class: "btn",
@@ -103,7 +152,7 @@ export async function render(root) {
     el("div", { class: "card__head" }, el("h2", {}, "🎯 Filtros")),
     el("div", { class: "card__body" },
       el("div", { class: "row" },
-        el("div", { class: "field" }, el("label", {}, "Tipo (define templates)"), f_kind),
+        el("div", { class: "field" }, el("label", {}, "Tipo"), f_kind),
         el("div", { class: "field" }, el("label", {}, "Status"), f_status),
         el("div", { class: "field" }, el("label", {}, "UF"), f_uf),
         el("div", { class: "field" }, el("label", {}, "De"), f_from),

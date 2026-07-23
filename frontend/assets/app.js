@@ -155,7 +155,6 @@ const PAGES = {
   "sefaz-monitor": { module: () => import("../pages/sefaz-monitor.js") },
   meudanfe: { module: () => import("../pages/meudanfe.js") },
   relatorios: { module: () => import("../pages/relatorios.js") },
-  templates: { module: () => import("../pages/templates-list.js") },
   audit: { module: () => import("../pages/audit-log.js") },
   profile: { module: () => import("../pages/profile.js") },
   feedback: { module: () => import("../pages/feedback.js") },
@@ -178,7 +177,6 @@ const NAV = [
   ]},
   { section: "Relatórios", items: [
     { key: "relatorios", label: "Gerar relatórios", icon: "relatorios" },
-    { key: "templates", label: "Templates salvos", icon: "templates" },
     { key: "audit", label: "Histórico / Auditoria", icon: "audit" },
   ]},
   { section: "Comunidade", items: [
