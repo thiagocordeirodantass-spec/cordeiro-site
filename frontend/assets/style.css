@@ -107,6 +107,50 @@ button { font: inherit; cursor: pointer; }
 .app { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 30px); }
 @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
 
+/* --- Botão hambúrguer (mobile) --- */
+.hamburger {
+  display: none;
+  position: fixed;
+  top: 38px;
+  left: 12px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: linear-gradient(180deg, #1c1917 0%, #292524 100%);
+  border: 1px solid #44403c;
+  border-radius: 8px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.hamburger__line {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #e7e5e0;
+  border-radius: 2px;
+}
+@media (max-width: 900px) {
+  .hamburger { display: flex; }
+}
+
+/* --- Backdrop do menu mobile --- */
+.side-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 40;
+}
+.side-backdrop--show { display: block; }
+@media (min-width: 901px) {
+  .side-backdrop { display: none !important; }
+}
+
 .side {
   background: linear-gradient(180deg, #1c1917 0%, #292524 100%);
   color: #e7e5e0;
@@ -116,8 +160,21 @@ button { font: inherit; cursor: pointer; }
   overflow-y: auto;
   display: flex; flex-direction: column;
   border-right: 1px solid #44403c;
+  transition: transform 0.25s ease;
 }
-@media (max-width: 900px) { .side { position: static; height: auto; } }
+@media (max-width: 900px) {
+  .side {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 50;
+    transform: translateX(-100%);
+    padding-top: 60px;
+  }
+  .side--open { transform: translateX(0); }
+}
 .side__brand {
   display: flex; align-items: center; gap: 10px;
   padding: 4px 6px 16px;

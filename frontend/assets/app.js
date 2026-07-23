@@ -229,6 +229,16 @@ async function mountPage(page) {
   });
 }
 
+function setSidebarOpen(open) {
+  const appEl = document.querySelector(".app");
+  const side = document.querySelector(".side");
+  const backdrop = document.querySelector(".side-backdrop");
+  if (!appEl || !side) return;
+  appEl.classList.toggle("app--side-open", !!open);
+  side.classList.toggle("side--open", !!open);
+  if (backdrop) backdrop.classList.toggle("side-backdrop--show", !!open);
+}
+
 function renderShell(page) {
   root.innerHTML = "";
   const u = state.user;
@@ -238,12 +248,21 @@ function renderShell(page) {
   // --- Banner "em desenvolvimento" no topo ---
   root.appendChild(devBanner());
 
+  // --- Botão hambúrguer (visível só no mobile via CSS) ---
+  const hamburger = el("button", {
+    class: "hamburger",
+    type: "button",
+    title: "Abrir menu",
+    "aria-label": "Abrir menu",
+    onClick: () => setSidebarOpen(!document.querySelector(".side")?.classList.contains("side--open")),
+  }, el("span", { class: "hamburger__line" }), el("span", { class: "hamburger__line" }), el("span", { class: "hamburger__line" }));
+
   // --- Sidebar ---
   const sideSections = [];
   for (const sec of NAV) {
     if (sec.admin && !isAdmin) continue;
     const items = sec.items.filter((it) => !it.oper || isOper).map((it) => {
-      const a = el("a", { href: `#/${it.key}`, "data-page": it.key, onClick: (e) => { e.preventDefault(); navigate(it.key); } });
+      const a = el("a", { href: `#/${it.key}`, "data-page": it.key, onClick: (e) => { e.preventDefault(); navigate(it.key); setSidebarOpen(false); } });
       a.innerHTML = ICONS[it.icon] || "";
       const lbl = el("span", { class: "label" }, it.label);
       a.appendChild(lbl);
@@ -279,7 +298,14 @@ function renderShell(page) {
 
   const main = el("main", { class: "main", id: "page-root" }, el("div", { class: "splash" }, "Carregando…"));
 
-  const app = el("div", { class: "app" }, side, main);
+  const backdrop = el("div", {
+    class: "side-backdrop",
+    onClick: () => setSidebarOpen(false),
+  });
+
+  const app = el("div", { class: "app" }, side, main, backdrop);
+  // Garante que o botão hambúrguer fique acessível mesmo com a sidebar fechada
+  root.appendChild(hamburger);
   root.appendChild(app);
 }
 
