@@ -477,6 +477,105 @@ export function getIdByChave(chave) {
   return row?.id || null;
 }
 
+// ---- Deriva campos enriquecidos a partir do XML destrinchado ----
+// Usado no saveDocument para popular as colunas dedicadas a filtros.
+function deriveEnrichedFields(kind, fullData, summary) {
+  const isNfe = kind === "NFE";
+  const isCte = kind === "CTE";
+
+  // CNPJ/CPF do emitente (prioriza CNPJ, cai pra CPF se for pessoa física emitindo NF-e)
+  const emitDoc = isNfe ? (fullData.emitCNPJ || fullData.emitCPF || null) : (fullData.emitCNPJ || null);
+
+  // Em CT-e o emitente é a transportadora, o "emitente" do filtro do usuário
+  // geralmente se refere ao remetente (quem emite o documento fiscal do transporte)
+  // Para NF-e, é a própria tag <emit>
+  const emitRazaoSocial = isNfe
+    ? fullData.emitNome || null
+    : (fullData.remNome || fullData.emitNome || null);
+  const emitFantasia = isNfe ? (fullData.emitFantasia || null) : null;
+
+  // Destinatário / Tomador
+  // Em NF-e é <dest>; em CT-e é <dest>, mas o "tomador" pode ser diferente.
+  const destDoc = isNfe
+    ? (fullData.destCNPJ || fullData.destCPF || null)
+    : (fullData.destCNPJ || fullData.destCPF || null);
+  const destNome = isNfe ? (fullData.destNome || null) : (fullData.destNome || null);
+
+  // Cancelado: status === "cancelado" ou existe evento de cancelamento
+  const cancelado = summary?.status === "cancelado" ? 1 : 0;
+  const dataCancelamento = cancelado ? (summary?.dataEmissao || null) : null; // simplificado: usa emissão; refina com eventos depois
+
+  // Registrada no ERP: hoje não temos ERP, então inferimos false até integração
+  const registradaErp = 0;
+  const dataRegistroErp = null;
+
+  // Validações: assumimos OK por padrão (sem assinatura/validacao real implementada)
+  const registroInvalido = 0;
+  const invalidado = 0;
+  const assinaturaInvalida = 0;
+  const schemaInvalido = 0;
+
+  // Tipo de Documento: "0"=entrada, "1"=saída (tpNF) — para CT-e é sempre saída
+  const tipoDocumento = isNfe
+    ? (fullData.tpNF === "0" ? "entrada" : fullData.tpNF === "1" ? "saida" : null)
+    : "saida";
+
+  // Documento de Terceiros: true se CNPJ do emitente !== CNPJ do destinatário da empresa
+  // (sem empresa configurada, deixa false)
+  const documentoTerceiros = 0;
+
+  // Carta de correção: detectada por evento (não temos leitor de eventos aqui)
+  const cartaCorrecao = 0;
+
+  // Eventos resumidos (placeholder: futuramente ler procEventos)
+  const eventos = null;
+  const ultimaManifestacao = null;
+  const dataUltimaManifestacao = null;
+  const semManifestacao = 1;
+
+  // Regras de validação (placeholders)
+  const dataValidacaoRegra = null;
+  const regraValidacao = null;
+  const regraViolada = null;
+
+  // Finalidade de emissão: finNFe (1=normal, 2=complementar, 3=ajuste, 4=devolução)
+  const finNfeMap = { "1": "normal", "2": "complementar", "3": "ajuste", "4": "devolucao" };
+  const finalidadeEmissao = isNfe
+    ? (finNfeMap[fullData.finNFe] || fullData.finNFe || null)
+    : "normal";
+
+  // Tipo de operação: tpNF (0=entrada, 1=saída) — idem ao tipoDocumento
+  const tipoOperacao = tipoDocumento;
+
+  return {
+    emitente_cnpj: emitDoc,
+    emitente_razao_social: emitRazaoSocial,
+    emitente_nome_fantasia: emitFantasia,
+    destinatario_tomador_doc: destDoc,
+    destinatario_tomador_nome: destNome,
+    cancelado,
+    data_cancelamento: dataCancelamento,
+    registrada_erp: registradaErp,
+    data_registro_erp: dataRegistroErp,
+    registro_invalido: registroInvalido,
+    invalidado,
+    assinatura_invalida: assinaturaInvalida,
+    schema_invalido: schemaInvalido,
+    tipo_documento: tipoDocumento,
+    documento_terceiros: documentoTerceiros,
+    carta_correcao: cartaCorrecao,
+    eventos,
+    ultima_manifestacao: ultimaManifestacao,
+    data_ultima_manifestacao: dataUltimaManifestacao,
+    sem_manifestacao: semManifestacao,
+    data_validacao_regra: dataValidacaoRegra,
+    regra_validacao: regraValidacao,
+    regra_violada: regraViolada,
+    finalidade_emissao: finalidadeEmissao,
+    tipo_operacao: tipoOperacao,
+  };
+}
+
 export function saveDocument({ xmlText, kind, source = "upload", fileName = null }) {
   const parsed = parseXml(xmlText);
   if (!parsed) return { ok: false, error: "XML invalido" };
@@ -509,13 +608,31 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       uf_emitente, uf_destino,
       remetente_nome, remetente_doc, destinatario_nome, destinatario_doc,
       valor_total, status, protocolo,
-      xml_path, xml_size, source, updated_at, xml_data
+      xml_path, xml_size, source, updated_at, xml_data,
+      emitente_cnpj, emitente_razao_social, emitente_nome_fantasia,
+      destinatario_tomador_doc, destinatario_tomador_nome,
+      cancelado, data_cancelamento,
+      registrada_erp, data_registro_erp,
+      registro_invalido, invalidado, assinatura_invalida, schema_invalido,
+      tipo_documento, documento_terceiros, carta_correcao,
+      eventos, ultima_manifestacao, data_ultima_manifestacao, sem_manifestacao,
+      data_validacao_regra, regra_validacao, regra_violada,
+      finalidade_emissao, tipo_operacao
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
       ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?,
-      ?, ?, ?, datetime('now'), ?
+      ?, ?, ?, datetime('now'), ?,
+      ?, ?, ?,
+      ?, ?,
+      ?, ?,
+      ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?,
+      ?, ?
     )
     ON CONFLICT(chave) DO UPDATE SET
       numero = excluded.numero,
@@ -534,8 +651,36 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       xml_size = excluded.xml_size,
       source = excluded.source,
       updated_at = datetime('now'),
-      xml_data = excluded.xml_data
+      xml_data = excluded.xml_data,
+      emitente_cnpj = excluded.emitente_cnpj,
+      emitente_razao_social = excluded.emitente_razao_social,
+      emitente_nome_fantasia = excluded.emitente_nome_fantasia,
+      destinatario_tomador_doc = excluded.destinatario_tomador_doc,
+      destinatario_tomador_nome = excluded.destinatario_tomador_nome,
+      cancelado = excluded.cancelado,
+      data_cancelamento = excluded.data_cancelamento,
+      registrada_erp = excluded.registrada_erp,
+      data_registro_erp = excluded.data_registro_erp,
+      registro_invalido = excluded.registro_invalido,
+      invalidado = excluded.invalidado,
+      assinatura_invalida = excluded.assinatura_invalida,
+      schema_invalido = excluded.schema_invalido,
+      tipo_documento = excluded.tipo_documento,
+      documento_terceiros = excluded.documento_terceiros,
+      carta_correcao = excluded.carta_correcao,
+      eventos = excluded.eventos,
+      ultima_manifestacao = excluded.ultima_manifestacao,
+      data_ultima_manifestacao = excluded.data_ultima_manifestacao,
+      sem_manifestacao = excluded.sem_manifestacao,
+      data_validacao_regra = excluded.data_validacao_regra,
+      regra_validacao = excluded.regra_validacao,
+      regra_violada = excluded.regra_violada,
+      finalidade_emissao = excluded.finalidade_emissao,
+      tipo_operacao = excluded.tipo_operacao
   `);
+
+  // Deriva campos enriquecidos a partir do fullData (XML destrinchado)
+  const enriched = deriveEnrichedFields(detectedKind, fullData, summary);
 
   const info = stmt.run(
     detectedKind,
@@ -557,6 +702,31 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
     Buffer.byteLength(xmlText, "utf-8"),
     source,
     JSON.stringify(fullData),
+    enriched.emitente_cnpj,
+    enriched.emitente_razao_social,
+    enriched.emitente_nome_fantasia,
+    enriched.destinatario_tomador_doc,
+    enriched.destinatario_tomador_nome,
+    enriched.cancelado,
+    enriched.data_cancelamento,
+    enriched.registrada_erp,
+    enriched.data_registro_erp,
+    enriched.registro_invalido,
+    enriched.invalidado,
+    enriched.assinatura_invalida,
+    enriched.schema_invalido,
+    enriched.tipo_documento,
+    enriched.documento_terceiros,
+    enriched.carta_correcao,
+    enriched.eventos,
+    enriched.ultima_manifestacao,
+    enriched.data_ultima_manifestacao,
+    enriched.sem_manifestacao,
+    enriched.data_validacao_regra,
+    enriched.regra_validacao,
+    enriched.regra_violada,
+    enriched.finalidade_emissao,
+    enriched.tipo_operacao,
   );
 
   return {
