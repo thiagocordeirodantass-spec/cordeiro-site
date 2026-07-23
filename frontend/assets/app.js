@@ -167,9 +167,9 @@ const NAV = [
   { section: "Principal", items: [
     { key: "dashboard", label: "Início", icon: "dashboard" },
     { key: "documents", label: "Documentos", icon: "documents" },
-    { key: "import", label: "Importar XML", icon: "import", oper: true },
   ]},
   { section: "Integrações", items: [
+    { key: "import", label: "Importar XML", icon: "import", oper: true },
     { key: "portal-nacional", label: "Portal Nacional", icon: "portal" },
     { key: "sefaz-download", label: "Baixar do SEFAZ", icon: "sefaz", oper: true },
     { key: "meudanfe", label: "MeuDANFe API", icon: "meudanfe" },
