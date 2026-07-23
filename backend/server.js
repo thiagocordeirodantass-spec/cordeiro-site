@@ -48,11 +48,12 @@ import("./db/index.js").then(({ db }) => {
 
 const app = createApp();
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log("");
   console.log("=================================================================");
   console.log(`  CT-e / NF-e Consulta - Backend rodando`);
   console.log(`  http://localhost:${PORT}`);
+  console.log(`  http://192.168.1.2:${PORT}`);
   console.log("=================================================================");
   console.log("  Endpoints principais (autenticacao por cookie de sessao):");
   console.log("    POST /api/auth/login      { username, password }");
