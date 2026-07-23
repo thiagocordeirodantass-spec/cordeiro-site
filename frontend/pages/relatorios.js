@@ -74,6 +74,27 @@ export async function render(root) {
   // Se o hash veio com #/relatorios/templates ou #/relatorios/historico, ativa a aba certa
   const m = (location.hash || "").match(/relatorios\/(templates|historico|gerar)/);
   if (m) activateTab(m[1]);
+
+  // ---- Aplica template pendente (vindo de "Usar" em Meus templates) ----
+  const pending = sessionStorage.getItem("cordeiro:applyTemplate");
+  if (pending) {
+    sessionStorage.removeItem("cordeiro:applyTemplate");
+    try {
+      const t = JSON.parse(pending);
+      applyTemplate(t);
+      activateTab("gerar");
+      toast(`✓ Template "${t.nome || "selecionado"}" aplicado`);
+    } catch (e) { /* template malformado, ignora */ }
+  }
+}
+
+function applyTemplate(t) {
+  // t.campos: array de chaves para marcar
+  // t.filtros: objeto com kind, status, uf, dateFrom, dateTo, q
+  // t.nome, t.descricao, t.id
+  // Acessa via window porque renderGerarTab fechou sobre os elementos.
+  // Solução: disparamos um custom event que o renderGerarTab escuta.
+  window.dispatchEvent(new CustomEvent("cordeiro:applyTemplate", { detail: t }));
 }
 
 async function renderGerarTab(root) {
@@ -181,6 +202,26 @@ async function renderGerarTab(root) {
   grid.appendChild(right);
 
   buildTplCards();
+
+  // Listener para aplicar template vindo de "Meus templates > Usar"
+  window.addEventListener("cordeiro:applyTemplate", (ev) => {
+    const t = ev.detail || {};
+    // Filtros
+    if (t.filtros) {
+      if (t.filtros.kind != null) f_kind.value = t.filtros.kind;
+      if (t.filtros.status != null) f_status.value = t.filtros.status;
+      if (t.filtros.uf != null) f_uf.value = t.filtros.uf;
+      if (t.filtros.dateFrom != null) f_from.value = t.filtros.dateFrom;
+      if (t.filtros.dateTo != null) f_to.value = t.filtros.dateTo;
+      if (t.filtros.q != null) f_q.value = t.filtros.q;
+      buildTplCards();
+    }
+    // Campos: desmarca todos, marca os do template
+    for (const [, c] of Object.entries(campoChecks)) c.checked = false;
+    for (const k of (t.campos || [])) {
+      if (campoChecks[k]) campoChecks[k].checked = true;
+    }
+  });
 
   function params() {
     const p = new URLSearchParams();

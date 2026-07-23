@@ -60,6 +60,9 @@ export async function renderTemplatesTab(host) {
     );
   }
   function useTemplate(t) {
+    // Salva o template escolhido num "slot" global para o relatorios.js ler
+    // ao montar, e navega para a aba "Gerar".
+    sessionStorage.setItem("cordeiro:applyTemplate", JSON.stringify(t));
     location.hash = "#/relatorios";
   }
   async function removeT(t) {

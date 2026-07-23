@@ -434,7 +434,7 @@ function row(r) {
       el("button", { onClick: () => downloadPdf(r) }, "PDF"),
       " ",
       el("button", { onClick: () => downloadXml(r) }, "XML"),
-      r.chave ? " " + el("button", { onClick: () => consultarMeuDANFe(r) }, "🔍 MeuDANFe") : "",
+      r.chave ? " " + el("button", { onClick: () => consultarSefaz(r) }, "🔍 SEFAZ") : "",
       " ",
       podeExcluir() ? el("button", { class: "btn--danger", onClick: () => excluirDocumento(r) }, "🗑") : null,
     ),
@@ -459,10 +459,62 @@ async function excluirDocumento(r) {
 }
 
 function consultarMeuDANFe(r) {
+  // Mantida por compat: redireciona para a nova consultarSefaz()
+  return consultarSefaz(r);
+}
+
+async function consultarSefaz(r) {
   if (!r.chave) { toast("Documento sem chave de acesso", "err"); return; }
-  const url = `https://meudanfe.com.br/?chave=${encodeURIComponent(r.chave)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
-  toast("Abrindo MeuDANFe em nova aba…");
+  // Detecta o tipo pelo kind (NFE/CTE)
+  const tipo = (r.kind || "").toUpperCase();
+  const endpoint = tipo === "CTE"
+    ? `/api/consulta/cte/${r.chave}`
+    : `/api/consulta/nfe/${r.chave}`;
+
+  toast("Consultando SEFAZ...");
+  let res;
+  try { res = await api(endpoint); }
+  catch (e) { toast("Erro: " + e.message, "err"); return; }
+
+  if (!res.ok) {
+    showModal({
+      title: `Consulta SEFAZ — ${r.chave}`,
+      body: el("div", { class: "alert alert--danger" },
+        el("span", { class: "alert__icon" }, "✖"),
+        el("span", {}, res.error || "Falha na consulta"),
+      ),
+      footer: [el("button", { class: "btn", onClick: () => document.querySelector(".modal-backdrop")?.click() }, "Fechar")],
+    });
+    return;
+  }
+
+  // Mostra resultado + link público do portal (DV validado server-side)
+  const body = el("div", {},
+    el("div", { class: "alert alert--ok" },
+      el("span", { class: "alert__icon" }, "✓"),
+      el("span", {}, "Dígito verificador da chave válido"),
+    ),
+    res.nota ? el("div", { class: "alert alert--info", style: "margin-top:8px" },
+      el("span", { class: "alert__icon" }, "ℹ"),
+      el("span", {}, res.nota),
+    ) : null,
+    el("div", { style: "margin-top:12px; display:flex; flex-direction:column; gap:8px" },
+      el("button", {
+        class: "sisco-btn sisco-btn--primary",
+        onClick: () => window.open(res.consultaPublicaUrl, "_blank", "noopener,noreferrer"),
+      }, "🔗 Abrir consulta pública no Portal da NF-e"),
+      res.manifestacaoUrl ? el("button", {
+        class: "sisco-btn",
+        onClick: () => window.open(res.manifestacaoUrl, "_blank", "noopener,noreferrer"),
+      }, "✍️ Manifestação do destinatário") : null,
+    ),
+  );
+  showModal({
+    title: `Consulta SEFAZ — ${r.kind === "NFE" ? "NF-e" : "CT-e"} ${cleanNum(r.numero) || ""}`,
+    body,
+    wide: true,
+    footer: [el("button", { class: "btn", onClick: () => document.querySelector(".modal-backdrop")?.click() }, "Fechar")],
+  });
 }
 
 function origemLabel(s) {
@@ -508,7 +560,7 @@ async function showDetail(r) {
     wide: true,
     footer: [
       el("button", { class: "btn", onClick: () => downloadXml(detail) }, "Baixar XML"),
-      detail.chave ? el("button", { class: "btn", onClick: () => consultarMeuDANFe(detail) }, "🔍 Consultar no MeuDANFe") : null,
+      detail.chave ? el("button", { class: "btn", onClick: () => consultarSefaz(detail) }, "🔍 Consultar na SEFAZ") : null,
       el("button", { class: "btn btn--primary", onClick: () => downloadPdf(detail) }, "Baixar PDF"),
     ].filter(Boolean),
   });
