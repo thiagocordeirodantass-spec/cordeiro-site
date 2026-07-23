@@ -216,13 +216,20 @@ router.post("/upload", requireRole("admin", "operador"), upload.array("files", 5
   res.json({ processed: results });
 });
 
-// ---- Remover
+// ---- Remover (com backup automático antes de excluir)
 router.delete("/:id", requireRole("admin", "operador"), (req, res) => {
   const id = Number(req.params.id);
-  const row = db.prepare("SELECT xml_path FROM documents WHERE id = ?").get(id);
+  const row = db.prepare("SELECT xml_path, chave FROM documents WHERE id = ?").get(id);
   if (!row) return res.status(404).json({ error: "Nao encontrado" });
-  try { fs.unlinkSync(path.join(XML_DIR_PATH, row.xml_path)); } catch (e) {}
-  db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+  // Apaga o registro (a FK do banco nao tem cascade, mas documents.id nao é referenciado)
+  const info = db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+  if (info.changes === 0) return res.status(404).json({ error: "Nao encontrado" });
+  // Apaga o XML em disco, mas só se nenhum outro registro usa o mesmo arquivo
+  // (defesa contra arquivos compartilhados)
+  const stillUsed = db.prepare("SELECT COUNT(*) as c FROM documents WHERE xml_path = ?").get(row.xml_path).c;
+  if (stillUsed === 0) {
+    try { fs.unlinkSync(path.join(XML_DIR_PATH, row.xml_path)); } catch (e) { /* arquivo ja sumiu */ }
+  }
   res.json({ ok: true });
 });
 

@@ -597,6 +597,66 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
   }
 
   const modelo = getModelo(parsed);
+
+  // ---- Anti-duplicação: se já existe, não gravar novo XML nem nova linha.
+  // Opcionalmente re-parseamos para atualizar os campos enriquecidos
+  // quando o XML mudou (ex.: evento de cancelamento entrou depois).
+  const existing = db
+    .prepare("SELECT id, xml_path, xml_size, source FROM documents WHERE chave = ?")
+    .get(chave);
+  if (existing) {
+    // Atualiza os campos enriquecidos sem mexer no XML em disco
+    const enriched = deriveEnrichedFields(detectedKind, fullData, summary);
+    const updateFields = [
+      "numero = ?", "serie = ?", "data_emissao = ?",
+      "uf_emitente = ?", "uf_destino = ?",
+      "remetente_nome = ?", "remetente_doc = ?",
+      "destinatario_nome = ?", "destinatario_doc = ?",
+      "valor_total = ?", "status = ?", "protocolo = ?",
+      "xml_data = ?", "updated_at = datetime('now')",
+      "emitente_cnpj = ?", "emitente_razao_social = ?", "emitente_nome_fantasia = ?",
+      "destinatario_tomador_doc = ?", "destinatario_tomador_nome = ?",
+      "cancelado = ?", "data_cancelamento = ?",
+      "registrada_erp = ?", "data_registro_erp = ?",
+      "registro_invalido = ?", "invalidado = ?",
+      "assinatura_invalida = ?", "schema_invalido = ?",
+      "tipo_documento = ?", "documento_terceiros = ?", "carta_correcao = ?",
+      "eventos = ?", "ultima_manifestacao = ?", "data_ultima_manifestacao = ?", "sem_manifestacao = ?",
+      "data_validacao_regra = ?", "regra_validacao = ?", "regra_violada = ?",
+      "finalidade_emissao = ?", "tipo_operacao = ?",
+    ];
+    const updateSql = `UPDATE documents SET ${updateFields.join(", ")} WHERE chave = ?`;
+    db.prepare(updateSql).run(
+      summary.numero ?? null, summary.serie ?? null, summary.dataEmissao ?? null,
+      summary.ufEmitente ?? null, summary.ufDestino ?? null,
+      summary.remetenteNome ?? null, summary.remetenteDoc ?? null,
+      summary.destinatarioNome ?? null, summary.destinatarioDoc ?? null,
+      summary.valorTotal ?? null, summary.status ?? "pendente", summary.protocolo ?? null,
+      JSON.stringify(fullData),
+      enriched.emitente_cnpj, enriched.emitente_razao_social, enriched.emitente_nome_fantasia,
+      enriched.destinatario_tomador_doc, enriched.destinatario_tomador_nome,
+      enriched.cancelado, enriched.data_cancelamento,
+      enriched.registrada_erp, enriched.data_registro_erp,
+      enriched.registro_invalido, enriched.invalidado,
+      enriched.assinatura_invalida, enriched.schema_invalido,
+      enriched.tipo_documento, enriched.documento_terceiros, enriched.carta_correcao,
+      enriched.eventos, enriched.ultima_manifestacao, enriched.data_ultima_manifestacao, enriched.sem_manifestacao,
+      enriched.data_validacao_regra, enriched.regra_validacao, enriched.regra_violada,
+      enriched.finalidade_emissao, enriched.tipo_operacao,
+      chave,
+    );
+    return {
+      ok: true,
+      id: existing.id,
+      kind: detectedKind,
+      modelo,
+      chave,
+      fileName: existing.xml_path,
+      summary,
+      duplicate: true, // sinaliza para o caller
+    };
+  }
+
   fs.mkdirSync(XML_DIR, { recursive: true });
   const safeFileName = `${chave}-${Date.now()}.xml`;
   const xmlPath = path.join(XML_DIR, safeFileName);
@@ -737,6 +797,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
     chave,
     fileName: fileName || safeFileName,
     summary,
+    duplicate: false,
   };
 }
 

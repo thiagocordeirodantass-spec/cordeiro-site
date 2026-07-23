@@ -20,9 +20,14 @@ export async function render(root) {
     try {
       const r = await api("/api/docs/import", { method: "POST", body: { xml, source: "paste" } });
       if (r.ok) {
-        pasteStatus.textContent = `OK — ${r.kind} número ${r.summary?.numero || "-"} (chave ${r.chave})`;
-        toast("Documento importado!");
-        pasteArea.value = "";
+        if (r.duplicate) {
+          pasteStatus.textContent = `Já importado — ${r.kind} chave ${r.chave} (atualizado)`;
+          toast("Documento já existia, dados atualizados", "ok");
+        } else {
+          pasteStatus.textContent = `OK — ${r.kind} número ${r.summary?.numero || "-"} (chave ${r.chave})`;
+          toast("Documento importado!");
+          pasteArea.value = "";
+        }
       } else { pasteStatus.textContent = r.error || "Falha ao importar."; }
     } catch (e) { pasteStatus.textContent = e.message; }
     pasteBtn.disabled = false;
@@ -33,6 +38,7 @@ export async function render(root) {
   const fileInput = el("input", { class: "input", type: "file", multiple: "true", accept: ".xml" });
   const uploadBtn = el("button", { class: "btn btn--primary" }, "Enviar arquivos");
   const uploadStatus = el("div", { class: "kv__value", style: "margin-top:10px" });
+  const dupList = el("div", { class: "kv__value", style: "margin-top:6px; font-size:11.5px; color:var(--muted)" });
   uploadBtn.onclick = async () => {
     const files = fileInput.files;
     if (!files.length) { uploadStatus.textContent = "Selecione ao menos 1 arquivo."; return; }
@@ -41,15 +47,22 @@ export async function render(root) {
     for (const f of files) fd.append("files", f);
     try {
       const r = await api("/api/docs/upload", { method: "POST", body: fd });
-      const ok = r.processed.filter((x) => x.ok).length;
-      const fail = r.processed.length - ok;
+      const items = r.processed || [];
+      const ok = items.filter((x) => x.ok).length;
+      const fail = items.length - ok;
+      const dups = items.filter((x) => x.ok && x.duplicate);
       uploadStatus.textContent = `${ok} importados, ${fail} com erro.`;
-      toast(`${ok} documentos importados`);
+      if (dups.length) {
+        dupList.textContent = `${dups.length} já estavam no banco (não foram duplicados): ${dups.map((d) => d.fileName).slice(0, 5).join(", ")}${dups.length > 5 ? "…" : ""}`;
+      } else {
+        dupList.textContent = "";
+      }
+      toast(`${ok} documentos processados`);
       fileInput.value = "";
     } catch (e) { uploadStatus.textContent = e.message; }
     uploadBtn.disabled = false;
   };
-  grid.appendChild(card("Enviar arquivos .xml", el("div", {}, fileInput, el("div", { style: "margin-top:10px" }, uploadBtn), uploadStatus)));
+  grid.appendChild(card("Enviar arquivos .xml", el("div", {}, fileInput, el("div", { style: "margin-top:10px" }, uploadBtn), uploadStatus, dupList)));
 
   // ---- Card 3: Gerar XML de exemplo ----
   const num = el("input", { class: "input", type: "number", value: "1", placeholder: "Número" });
