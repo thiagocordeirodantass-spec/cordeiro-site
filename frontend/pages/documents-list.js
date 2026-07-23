@@ -199,8 +199,16 @@ export async function render(root) {
   root.appendChild(filterCard);
 
   // tabela
-  const tableHost = el("div", { class: "card", style: "margin-top:16px" });
+  const tableHost = el("div", { class: "sisco-table-wrap" });
   root.appendChild(tableHost);
+
+  // ---- KPIs (atualizados a cada load) ----
+  const kpiCount = el("div", { class: "sisco-kpi" });
+  const kpiAutorizadas = el("div", { class: "sisco-kpi" });
+  const kpiPendentes = el("div", { class: "sisco-kpi" });
+  const kpiValor = el("div", { class: "sisco-kpi" });
+  // KPIs vão ANTES da tabela
+  root.insertBefore(el("div", { class: "sisco-kpis" }, kpiCount, kpiAutorizadas, kpiPendentes, kpiValor), tableHost);
 
   // ---- Botões de download em lote (item 8 da lista de requisitos) ----
   // Acionam os endpoints /api/relatorio/lote e /api/relatorio/xlsx com os
@@ -319,52 +327,116 @@ export async function render(root) {
     try {
       const rows = await api("/api/docs?" + params.toString());
       cache = rows;
+      paintKpis(rows);
       renderTable(tableHost, rows);
     } catch (e) { toast(e.message, "err"); }
   }
   await load();
 }
 
+function paintKpis(rows) {
+  const count = rows.length;
+  const aut = rows.filter((r) => r.status === "autorizado").length;
+  const pen = rows.filter((r) => !r.status || r.status === "pendente" || r.status === "rejeitado" || r.status === "denegado").length;
+  const valor = rows
+    .filter((r) => r.status === "autorizado")
+    .reduce((s, r) => s + (Number(r.valor_total) || 0), 0);
+
+  kpiCount.innerHTML = "";
+  kpiCount.appendChild(el("div", { class: "sisco-kpi__label" }, "Total de Documentos"));
+  kpiCount.appendChild(el("div", { class: "sisco-kpi__value" }, String(count)));
+  kpiCount.appendChild(el("div", { class: "sisco-kpi__hint" }, "filtro atual"));
+
+  kpiAutorizadas.innerHTML = "";
+  kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__label" }, "Autorizadas"));
+  kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--green" }, String(aut)));
+  kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__hint" }, aut > 0 ? `${Math.round((aut/count)*100)}% do total` : "—");
+
+  kpiPendentes.innerHTML = "";
+  kpiPendentes.appendChild(el("div", { class: "sisco-kpi__label" }, "Pendentes / Rejeitadas"));
+  kpiPendentes.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--yellow" }, String(pen)));
+  kpiPendentes.appendChild(el("div", { class: "sisco-kpi__hint" }, "requer ação");
+
+  kpiValor.innerHTML = "";
+  kpiValor.appendChild(el("div", { class: "sisco-kpi__label" }, "Valor Total (Autorizadas)"));
+  kpiValor.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--blue" }, fmtMoney(valor)));
+  kpiValor.appendChild(el("div", { class: "sisco-kpi__hint" }, "soma do filtro");
+}
+
 function renderTable(host, rows) {
   host.innerHTML = "";
+  // ---- Cabeçalho com ações + totais ----
+  const totalValor = rows.reduce((s, r) => s + (Number(r.valor_total) || 0), 0);
+  const aut = rows.filter((r) => r.status === "autorizado").length;
+  const canc = rows.filter((r) => r.status === "cancelado").length;
+
+  host.appendChild(el("div", { class: "sisco-table-head" },
+    el("h2", {}, `Documentos Fiscais${rows.length ? ` (${rows.length})` : ""}`),
+  ));
+
   if (!rows.length) {
-    host.appendChild(el("div", { class: "card__body empty" }, "Nenhum documento encontrado com os filtros atuais."));
+    host.appendChild(el("div", { style: "padding:30px; text-align:center; color:var(--sisco-text-muted)" },
+      "Nenhum documento encontrado com os filtros atuais."));
     return;
   }
-  const t = el("table", { class: "table" },
+
+  const t = el("table", { class: "sisco-table" },
     el("thead", {}, el("tr", {},
-      el("th", {}, "Tipo"), el("th", {}, "Número"), el("th", {}, "Série"),
-      el("th", {}, "Chave"), el("th", {}, "Emissão"),
-      el("th", {}, "UF"), el("th", {}, "Remetente"), el("th", {}, "Destinatário"),
-      el("th", { class: "num" }, "Valor"), el("th", {}, "Status"),
-      el("th", {}, "Origem"),
+      el("th", {}, "Tipo"),
+      el("th", {}, "Nº / Série"),
+      el("th", {}, "Chave de Acesso"),
+      el("th", {}, "Emissão"),
+      el("th", {}, "UF"),
+      el("th", {}, "Emitente / Razão Social"),
+      el("th", {}, "Destinatário"),
+      el("th", { class: "num" }, "Valor"),
+      el("th", {}, "Status"),
       el("th", {}, "Ações"),
     )),
     el("tbody", {}, ...rows.map((r) => row(r))),
   );
   host.appendChild(t);
+
+  // ---- Footer com totais ----
+  host.appendChild(el("div", { class: "sisco-table-footer" },
+    el("div", { class: "totals" },
+      el("div", {}, "Total: ", el("strong", {}, String(rows.length))),
+      el("div", {}, "Autorizadas: ", el("strong", { style: "color:var(--sisco-green)" }, String(aut))),
+      el("div", {}, "Canceladas: ", el("strong", { style: "color:var(--sisco-red)" }, String(canc))),
+      el("div", {}, "Valor total: ", el("strong", { style: "color:var(--sisco-navy)" }, fmtMoney(totalValor))),
+    ),
+    el("div", {}, "Atualizado: ", new Date().toLocaleTimeString("pt-BR")),
+  ));
 }
 
 function row(r) {
   const tr = el("tr", { "data-doc-id": r.id },
-    el("td", {}, r.kind === "NFE" ? "NF-e" : r.kind === "CTE" ? "CT-e" : r.kind || "-"),
-    el("td", {}, cleanNum(r.numero)),
-    el("td", {}, cleanNum(r.serie)),
-    el("td", { class: "mono", style: "font-size:11.5px" }, (r.chave || "").replace(/^(\d{4}).*?(\d{4})$/, "$1…$2") || "-"),
-    el("td", {}, fmtDate(r.data_emissao)),
-    el("td", {}, `${r.uf_emitente || "-"}/${r.uf_destino || "-"}`),
-    el("td", {}, r.remetente_nome || "-"),
-    el("td", {}, r.destinatario_nome || "-"),
-    el("td", { class: "num" }, fmtMoney(r.valor_total)),
-    el("td", { html: statusBadge(r.status) }),
-    el("td", { class: "kv__label" }, origemLabel(r.source)),
     el("td", {},
-      el("button", { class: "btn btn--sm", onClick: () => showDetail(r) }, "Detalhes"),
+      el("span", { class: "sisco-badge " + siscoBadgeKind(r.kind) }, r.kind === "NFE" ? "NF-e" : r.kind === "CTE" ? "CT-e" : r.kind || "-"),
+    ),
+    el("td", {},
+      el("div", { style: "font-weight:600" }, cleanNum(r.numero) || "—"),
+      el("div", { style: "font-size:11px; color:var(--sisco-text-muted)" }, "Série " + (cleanNum(r.serie) || "—")),
+    ),
+    el("td", { class: "chave" }, (r.chave || "—").replace(/^(\d{4}).*?(\d{4})$/, "$1…$2")),
+    el("td", {}, fmtDate(r.data_emissao)),
+    el("td", {}, `${r.uf_emitente || "—"}/${r.uf_destino || "—"}`),
+    el("td", {},
+      el("div", {}, r.emitente_razao_social || r.remetente_nome || "—"),
+      r.emitente_cnpj ? el("div", { style: "font-size:11px; color:var(--sisco-text-muted); font-family:ui-monospace,monospace" }, r.emitente_cnpj) : null,
+    ),
+    el("td", {}, r.destinatario_nome || r.destinatario_tomador_nome || "—"),
+    el("td", { class: "num" }, fmtMoney(r.valor_total)),
+    el("td", { html: siscoStatusBadge(r.status) }),
+    el("td", { class: "row-actions" },
+      el("button", { onClick: () => showDetail(r) }, "Detalhes"),
       " ",
-      el("button", { class: "btn btn--sm", onClick: () => downloadPdf(r) }, "PDF"),
-      r.chave ? " " + el("button", { class: "btn btn--sm", onClick: () => consultarMeuDANFe(r) }, "🔍 MeuDANFe") : "",
+      el("button", { onClick: () => downloadPdf(r) }, "PDF"),
       " ",
-      podeExcluir() ? el("button", { class: "btn btn--sm btn--danger", onClick: () => excluirDocumento(r) }, "🗑 Excluir") : null,
+      el("button", { onClick: () => downloadXml(r) }, "XML"),
+      r.chave ? " " + el("button", { onClick: () => consultarMeuDANFe(r) }, "🔍 MeuDANFe") : "",
+      " ",
+      podeExcluir() ? el("button", { class: "btn--danger", onClick: () => excluirDocumento(r) }, "🗑") : null,
     ),
   );
   return tr;
@@ -448,3 +520,20 @@ function kv(label, value) {
 
 function downloadPdf(r) { apiDownload(`/api/docs/${r.id}/pdf`, `${r.kind}-${cleanNum(r.numero) || r.chave || r.id}.pdf`); }
 function downloadXml(r) { apiDownload(`/api/docs/${r.id}/xml`, `${r.chave || r.id}.xml`); }
+
+// ---- Badges no estilo SiscoFiscal ----
+function siscoBadgeKind(kind) {
+  if (kind === "NFE") return "sisco-badge--info";
+  if (kind === "CTE") return "sisco-badge--gray";
+  return "sisco-badge--gray";
+}
+function siscoStatusBadge(status) {
+  const map = {
+    "autorizado": '<span class="sisco-badge sisco-badge--ok">Autorizada</span>',
+    "cancelado": '<span class="sisco-badge sisco-badge--cancel">Cancelada</span>',
+    "denegado": '<span class="sisco-badge sisco-badge--cancel">Denegada</span>',
+    "rejeitado": '<span class="sisco-badge sisco-badge--cancel">Rejeitada</span>',
+    "pendente": '<span class="sisco-badge sisco-badge--pending">Pendente</span>',
+  };
+  return map[status] || '<span class="sisco-badge sisco-badge--gray">—</span>';
+}

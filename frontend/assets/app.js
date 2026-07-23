@@ -152,6 +152,7 @@ const PAGES = {
   import: { module: () => import("../pages/import.js") },
   "portal-nacional": { module: () => import("../pages/portal-nacional.js") },
   "sefaz-download": { module: () => import("../pages/sefaz-download.js") },
+  "sefaz-monitor": { module: () => import("../pages/sefaz-monitor.js") },
   meudanfe: { module: () => import("../pages/meudanfe.js") },
   relatorios: { module: () => import("../pages/relatorios.js") },
   templates: { module: () => import("../pages/templates-list.js") },
@@ -172,6 +173,7 @@ const NAV = [
     { key: "import", label: "Importar XML", icon: "import", oper: true },
     { key: "portal-nacional", label: "Portal Nacional", icon: "portal" },
     { key: "sefaz-download", label: "Baixar do SEFAZ", icon: "sefaz", oper: true },
+    { key: "sefaz-monitor", label: "Monitor SEFAZ", icon: "sefaz" },
     { key: "meudanfe", label: "MeuDANFe API", icon: "meudanfe" },
   ]},
   { section: "Relatórios", items: [

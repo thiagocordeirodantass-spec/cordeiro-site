@@ -223,6 +223,187 @@ button { font: inherit; cursor: pointer; }
 .side__user .logout-btn:hover { background: var(--error); border-color: var(--error); color: #fff; }
 
 /* =============================================================================
+   SISCOFISCAL-LIKE DESIGN SYSTEM
+   -----------------------------------------------------------------------------
+   Componentes espelhando o layout do SiscoFiscal ERP:
+   - Header azul-marinho
+   - Sidebar cinza com seções colapsáveis
+   - KPI cards no topo
+   - Tabela larga com header cinza-azulado e totais no rodapé
+   ============================================================================= */
+
+/* Paleta complementar (mantém a paleta Cordeiro acima intacta) */
+:root {
+  --sisco-navy: #1e3a5f;
+  --sisco-navy-2: #2c4f7d;
+  --sisco-navy-dark: #14283f;
+  --sisco-bg: #f4f6f9;
+  --sisco-sidebar: #ececec;
+  --sisco-border: #d8dde3;
+  --sisco-text: #2c3e50;
+  --sisco-text-muted: #7a869a;
+  --sisco-green: #28a745;
+  --sisco-green-bg: #d4edda;
+  --sisco-red: #dc3545;
+  --sisco-red-bg: #f8d7da;
+  --sisco-yellow: #ffc107;
+  --sisco-yellow-bg: #fff3cd;
+  --sisco-blue: #17a2b8;
+  --sisco-blue-bg: #d1ecf1;
+  --sisco-purple: #6f42c1;
+  --sisco-table-head: #e8eef5;
+}
+
+/* ---- Topbar com breadcrumb + busca global ---- */
+.sisco-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #fff; border: 1px solid var(--sisco-border); border-radius: 8px;
+  padding: 8px 16px; margin-bottom: 18px; box-shadow: var(--shadow);
+  gap: 12px; flex-wrap: wrap;
+}
+.sisco-crumbs { color: var(--sisco-text-muted); font-size: 13px; }
+.sisco-crumbs a { color: var(--sisco-navy); }
+.sisco-crumbs strong { color: var(--sisco-text); font-weight: 600; }
+
+/* ---- KPI cards (4 colunas) ---- */
+.sisco-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+@media (max-width: 1100px) { .sisco-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .sisco-kpis { grid-template-columns: 1fr; } }
+.sisco-kpi {
+  background: #fff; border: 1px solid var(--sisco-border); border-radius: 8px;
+  padding: 14px 18px; box-shadow: var(--shadow); position: relative;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.sisco-kpi__label {
+  color: var(--sisco-text-muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; font-weight: 600;
+}
+.sisco-kpi__value { font-size: 26px; font-weight: 700; line-height: 1.1; color: var(--sisco-text); }
+.sisco-kpi__value--green { color: var(--sisco-green); }
+.sisco-kpi__value--red { color: var(--sisco-red); }
+.sisco-kpi__value--yellow { color: #d39e00; }
+.sisco-kpi__value--blue { color: var(--sisco-navy); }
+.sisco-kpi__hint { color: var(--sisco-text-muted); font-size: 11.5px; margin-top: 2px; }
+
+/* ---- Tabela larga SiscoFiscal ---- */
+.sisco-table-wrap {
+  background: #fff; border: 1px solid var(--sisco-border); border-radius: 8px;
+  overflow: hidden; box-shadow: var(--shadow); margin-bottom: 18px;
+}
+.sisco-table-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: linear-gradient(180deg, #f4f7fb 0%, #e8eef5 100%);
+  border-bottom: 1px solid var(--sisco-border);
+}
+.sisco-table-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--sisco-text); }
+.sisco-table-head .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.sisco-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.sisco-table th {
+  background: var(--sisco-table-head); color: var(--sisco-text);
+  font-weight: 600; text-align: left; padding: 10px 12px;
+  border-bottom: 2px solid var(--sisco-border);
+  text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.sisco-table td {
+  padding: 9px 12px; border-bottom: 1px solid #eef1f5;
+  color: var(--sisco-text); vertical-align: middle;
+}
+.sisco-table tbody tr:hover { background: #f7faff; }
+.sisco-table tbody tr.selected { background: #e8f0fe; }
+.sisco-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sisco-table .chave { font-family: ui-monospace, monospace; font-size: 11px; color: var(--sisco-text-muted); }
+.sisco-table .row-actions { white-space: nowrap; text-align: right; }
+.sisco-table .row-actions button {
+  background: transparent; border: 1px solid var(--sisco-border); border-radius: 4px;
+  padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--sisco-text);
+  transition: all 0.15s;
+}
+.sisco-table .row-actions button:hover { background: var(--sisco-navy); color: #fff; border-color: var(--sisco-navy); }
+.sisco-table .row-actions .btn--danger:hover { background: var(--sisco-red); border-color: var(--sisco-red); }
+
+.sisco-table-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: #fafbfd; border-top: 1px solid var(--sisco-border);
+  font-size: 12px; color: var(--sisco-text-muted);
+}
+.sisco-table-footer .totals { display: flex; gap: 22px; flex-wrap: wrap; }
+.sisco-table-footer .totals strong { color: var(--sisco-text); font-weight: 600; }
+
+/* ---- Status badges (SiscoFiscal) ---- */
+.sisco-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.sisco-badge--ok { background: var(--sisco-green-bg); color: #155724; }
+.sisco-badge--cancel { background: var(--sisco-red-bg); color: #721c24; }
+.sisco-badge--pending { background: var(--sisco-yellow-bg); color: #856404; }
+.sisco-badge--info { background: var(--sisco-blue-bg); color: #0c5460; }
+.sisco-badge--gray { background: #e9ecef; color: #495057; }
+
+/* ---- Botão SiscoFiscal ---- */
+.sisco-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #fff; color: var(--sisco-text); border: 1px solid var(--sisco-border);
+  padding: 6px 12px; border-radius: 5px; font-size: 12.5px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+}
+.sisco-btn:hover { background: #f4f6f9; border-color: var(--sisco-navy); color: var(--sisco-navy); }
+.sisco-btn--primary { background: var(--sisco-navy); color: #fff; border-color: var(--sisco-navy); }
+.sisco-btn--primary:hover { background: var(--sisco-navy-2); color: #fff; border-color: var(--sisco-navy-2); }
+.sisco-btn--danger { color: var(--sisco-red); border-color: #f1b5bc; }
+.sisco-btn--danger:hover { background: var(--sisco-red); color: #fff; border-color: var(--sisco-red); }
+.sisco-btn--sm { padding: 4px 8px; font-size: 11.5px; }
+
+/* ---- Grid de status por UF (Monitor SEFAZ) ---- */
+.uf-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .uf-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 700px) { .uf-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 460px) { .uf-grid { grid-template-columns: 1fr; } }
+.uf-card {
+  background: #fff; border: 1px solid var(--sisco-border); border-radius: 8px;
+  padding: 12px 14px; position: relative; transition: all 0.18s;
+}
+.uf-card:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+.uf-card--ok { border-left: 4px solid var(--sisco-green); }
+.uf-card--off { border-left: 4px solid var(--sisco-red); }
+.uf-card--warn { border-left: 4px solid var(--sisco-yellow); }
+.uf-card--checking { border-left: 4px solid var(--sisco-text-muted); }
+.uf-card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.uf-card__uf { font-size: 18px; font-weight: 700; color: var(--sisco-text); }
+.uf-card__wifi { font-size: 16px; }
+.uf-card__status { font-weight: 600; font-size: 12.5px; }
+.uf-card__status--ok { color: var(--sisco-green); }
+.uf-card__status--off { color: var(--sisco-red); }
+.uf-card__status--warn { color: #d39e00; }
+.uf-card__latency { font-size: 11.5px; color: var(--sisco-text-muted); margin-top: 2px; }
+.uf-card__env { font-size: 10.5px; color: var(--sisco-text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+
+/* ---- Log de consultas (Monitor SEFAZ) ---- */
+.sefaz-log { background: #fff; border: 1px solid var(--sisco-border); border-radius: 8px; overflow: hidden; }
+.sefaz-log__head { background: linear-gradient(180deg, #f4f7fb 0%, #e8eef5 100%); padding: 12px 16px; font-weight: 600; color: var(--sisco-text); border-bottom: 1px solid var(--sisco-border); display: flex; justify-content: space-between; align-items: center; }
+.sefaz-log table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: ui-monospace, monospace; }
+.sefaz-log th { background: #fafbfd; color: var(--sisco-text-muted); font-weight: 600; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--sisco-border); text-transform: uppercase; font-size: 10.5px; }
+.sefaz-log td { padding: 7px 12px; border-bottom: 1px solid #eef1f5; }
+.sefaz-log .code-ok { color: var(--sisco-green); font-weight: 600; }
+.sefaz-log .code-fail { color: var(--sisco-red); font-weight: 600; }
+
+/* ---- Painel de Alertas (estilo SiscoFiscal) ---- */
+.alert-list { display: flex; flex-direction: column; gap: 6px; }
+.alert {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 5px; font-size: 12.5px;
+  border-left: 4px solid; background: #fff;
+}
+.alert--warning { background: var(--sisco-yellow-bg); border-color: var(--sisco-yellow); color: #856404; }
+.alert--danger { background: var(--sisco-red-bg); border-color: var(--sisco-red); color: #721c24; }
+.alert--info { background: var(--sisco-blue-bg); border-color: var(--sisco-blue); color: #0c5460; }
+.alert--ok { background: var(--sisco-green-bg); border-color: var(--sisco-green); color: #155724; }
+.alert__icon { font-size: 16px; }
+
+/* =============================================================================
    MAIN
    ============================================================================= */
 .main { padding: 24px 32px 60px; max-width: 1280px; animation: fadeIn 0.4s ease; }

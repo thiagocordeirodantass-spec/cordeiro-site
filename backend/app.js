@@ -15,6 +15,7 @@ import consultaRoutes from "./routes/consulta.routes.js";
 import pdfRoutes from "./routes/pdf.routes.js";
 import generateRoutes from "./routes/generate.routes.js";
 import sefazRoutes from "./routes/sefaz.routes.js";
+import sefazMonitorRoutes from "./routes/sefaz-monitor.routes.js";
 import meudanfeRoutes from "./routes/meudanfe.routes.js";
 import relatoriosRoutes from "./routes/relatorios.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
@@ -58,6 +59,7 @@ export function createApp() {
   app.use("/api/pdf", pdfRoutes);
   app.use("/api/generate", generateRoutes);
   app.use("/api/sefaz", sefazRoutes);
+  app.use("/api/sefaz-monitor", sefazMonitorRoutes);
   app.use("/api/meudanfe", meudanfeRoutes);
   app.use("/api/relatorio", relatoriosRoutes);
   app.use("/api/dashboard", dashboardRoutes);
