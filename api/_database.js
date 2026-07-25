@@ -106,6 +106,11 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS documents_empresa_idx ON documents(empresa_id);
       CREATE INDEX IF NOT EXISTS documents_emissao_idx ON documents(data_emissao);
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS xml_data TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS source TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_name TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS remetente_nome TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS destinatario_nome TEXT;
       CREATE TABLE IF NOT EXISTS feedback (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

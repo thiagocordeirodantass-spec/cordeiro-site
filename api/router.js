@@ -91,6 +91,25 @@ export default async function handler(request, response) {
         );
         return response.json(result.rows[0]);
       }
+      const certidaoId = Number(route[1]);
+      if (Number.isInteger(certidaoId) && request.method === "PUT") {
+        const d = request.body || {};
+        const result = await pool.query(
+          `UPDATE certidoes SET tipo=COALESCE($2,tipo),status=COALESCE($3,status),
+            numero_certidao=COALESCE($4,numero_certidao),
+            data_emissao=COALESCE($5,data_emissao),data_validade=COALESCE($6,data_validade),
+            observacoes=COALESCE($7,observacoes) WHERE id=$1 RETURNING *`,
+          [certidaoId,d.tipo||null,d.status||null,d.numeroCertidao||d.numero_certidao||null,
+           d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null],
+        );
+        return response.json(result.rows[0]);
+      }
+      if (Number.isInteger(certidaoId) && request.method === "DELETE") {
+        await pool.query("DELETE FROM certidoes WHERE id=$1", [certidaoId]);
+        return response.json({ ok: true });
+      }
+      if (Number.isInteger(certidaoId) && route[2] === "pdf")
+        return response.status(501).json({ error: "Armazenamento de PDF será conectado ao Vercel Blob." });
       if (route[1] === "recognize")
         return response.status(422).json({ error: "Envie os dados da certidão manualmente neste ambiente." });
     }
@@ -320,6 +339,15 @@ export default async function handler(request, response) {
       }
       const result = await pool.query("SELECT * FROM documents WHERE id=$1", [Number(route[1])]);
       if (!result.rowCount) return response.status(404).json({ error: "Documento não encontrado" });
+      if (route[2] === "xml") {
+        if (!result.rows[0].xml_data)
+          return response.status(404).json({ error: "XML não armazenado" });
+        response.setHeader("Content-Type", "application/xml; charset=utf-8");
+        response.setHeader("Content-Disposition", `attachment; filename="${result.rows[0].chave || result.rows[0].id}.xml"`);
+        return response.send(result.rows[0].xml_data);
+      }
+      if (route[2] === "pdf")
+        return response.status(501).json({ error: "PDF auxiliar ainda não disponível para este documento." });
       return response.json(result.rows[0]);
     }
 
@@ -331,8 +359,20 @@ export default async function handler(request, response) {
     if (route[0] === "sefaz-monitor")
       return response.json({ online: 0, offline: 0, ufs: [], checkedAt: new Date().toISOString() });
 
-    if (route[0] === "relatorio")
-      return response.status(501).json({ error: "Relatório sem dados disponíveis para exportação." });
+    if (route[0] === "relatorio") {
+      const result = await pool.query(
+        "SELECT kind,chave,numero,data_emissao,valor_total,status,remetente_nome,destinatario_nome FROM documents ORDER BY data_emissao DESC NULLS LAST",
+      );
+      if (route[1] === "csv") {
+        const columns = ["kind","chave","numero","data_emissao","valor_total","status","remetente_nome","destinatario_nome"];
+        const escape = (value) => `"${String(value ?? "").replaceAll('"','""')}"`;
+        const csv = [columns.join(";"), ...result.rows.map((row) => columns.map((key) => escape(row[key])).join(";"))].join("\r\n");
+        response.setHeader("Content-Type", "text/csv; charset=utf-8");
+        response.setHeader("Content-Disposition", "attachment; filename=relatorio-fiscal.csv");
+        return response.send(`\uFEFF${csv}`);
+      }
+      return response.json({ items: result.rows, total: result.rowCount });
+    }
 
     return response.status(404).json({ error: "Endpoint ainda não migrado" });
   } catch (error) {
