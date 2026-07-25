@@ -390,17 +390,34 @@ export default async function handler(request, response) {
       const { consultarPeriodoComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
-      const result = await consultarPeriodoComCertificado({
+      await pool.query(`INSERT INTO sefaz_sync_state(empresa_id) VALUES($1)
+        ON CONFLICT(empresa_id) DO NOTHING`,[user.empresa_ativa_id]);
+      const claim=await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+INTERVAL '5 minutes',
+        last_status='processando',updated_at=NOW() WHERE empresa_id=$1
+        AND (locked_until IS NULL OR locked_until<=NOW()) RETURNING ult_nsu`,[user.empresa_ativa_id]);
+      if(!claim.rowCount){
+        const state=await pool.query("SELECT ult_nsu,locked_until,last_status FROM sefaz_sync_state WHERE empresa_id=$1",[user.empresa_ativa_id]);
+        return response.status(429).json({error:"Sincronização SEFAZ em espera. O sistema retomará automaticamente sem reiniciar o NSU.",
+          state:state.rows[0]});
+      }
+      let result;
+      try{result = await consultarPeriodoComCertificado({
         pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
         passphrase: process.env.SEFAZ_PFX_PASSWORD,
         uf: process.env.SEFAZ_UF || "MG",
         ambiente: "producao",
         cnpjOuCpf: process.env.SEFAZ_CNPJ,
-        ultNSUInicial: request.body?.ultNSUInicial || "0",
+        ultNSUInicial: claim.rows[0].ult_nsu || "0",
         dateFrom: request.body?.dateFrom,
         dateTo: request.body?.dateTo,
         maxIteracoes: 5,
-      });
+      });}catch(error){
+        const blocked=/cStat 656|Consumo Indevido/i.test(error.message||"");
+        await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+($2::int*INTERVAL '1 minute'),
+          last_status=$3,last_error=$4,updated_at=NOW() WHERE empresa_id=$1`,
+          [user.empresa_ativa_id,blocked?60:5,blocked?"bloqueado_656":"erro",String(error.message||error).slice(0,1000)]);
+        throw error;
+      }
       let saved=0;
       for(const doc of result.docs){
         if(doc.xml.includes("<resNFe")||doc.xml.includes("<resEvento")) continue;
@@ -425,6 +442,11 @@ export default async function handler(request, response) {
       response.setHeader("X-Sefaz-Total", String(result.docs.length));
       response.setHeader("X-Sefaz-Salvos", String(saved));
       response.setHeader("X-Sefaz-UltNSU", String(result.ultNSU || ""));
+      await pool.query(`UPDATE sefaz_sync_state SET ult_nsu=$2,max_nsu=$3,
+        locked_until=CASE WHEN $4 THEN NOW()+INTERVAL '1 hour' ELSE NOW() END,
+        last_status=$5,last_error=NULL,updated_at=NOW() WHERE empresa_id=$1`,
+        [user.empresa_ativa_id,String(result.ultNSU||"0"),String(result.maxNSU||"0"),
+          Boolean(result.atingiuFim),result.atingiuFim?"aguardando_novos_documentos":"parcial"]);
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       return response.status(200).send(
         JSON.stringify({
