@@ -67,23 +67,27 @@ export default async function handler(request, response) {
       if (route[1] === "stats" && request.method === "GET") {
         const result = await pool.query(
           `SELECT COUNT(*)::int total,
-            COUNT(*) FILTER(WHERE valida_ate >= CURRENT_DATE)::int validas,
-            COUNT(*) FILTER(WHERE valida_ate < CURRENT_DATE)::int vencidas
+            COUNT(*) FILTER(WHERE status='negativa')::int negativas,
+            COUNT(*) FILTER(WHERE status='positiva')::int positivas,
+            COUNT(*) FILTER(WHERE status='positiva_com_efeitos_de_negativa')::int com_efeitos,
+            COUNT(*) FILTER(WHERE data_validade < CURRENT_DATE)::int vencidas,
+            COUNT(*) FILTER(WHERE data_validade BETWEEN CURRENT_DATE AND CURRENT_DATE+30)::int vencendo
            FROM certidoes`,
         );
         return response.json(result.rows[0]);
       }
       if (route.length === 1 && request.method === "GET") {
-        const result = await pool.query("SELECT * FROM certidoes ORDER BY valida_ate DESC NULLS LAST");
-        return response.json({ certidoes: result.rows });
+        const result = await pool.query("SELECT * FROM certidoes ORDER BY data_validade ASC NULLS LAST");
+        return response.json(result.rows);
       }
       if (route.length === 1 && request.method === "POST") {
         const d = request.body || {};
         const result = await pool.query(
-          `INSERT INTO certidoes(user_id,tipo,orgao,numero,cnpj,razao_social,situacao,emitida_em,valida_ate,observacoes)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-          [user.id,d.tipo||null,d.orgao||null,d.numero||null,d.cnpj||null,
-           d.razao_social||null,d.situacao||null,d.emitida_em||null,d.valida_ate||null,d.observacoes||null],
+          `INSERT INTO certidoes(user_id,tipo,status,numero_certidao,empresa_nome,data_emissao,data_validade,observacoes)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+          [user.id,d.tipo||null,d.status||"negativa",
+           d.numeroCertidao||d.numero_certidao||null,d.empresaNome||d.empresa_nome||"Empresa ativa",
+           d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null],
         );
         return response.json(result.rows[0]);
       }

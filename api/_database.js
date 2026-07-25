@@ -138,6 +138,11 @@ export function ensureSchema() {
         razao_social TEXT, situacao TEXT, emitida_em DATE, valida_ate DATE,
         observacoes TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'negativa';
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS data_emissao DATE;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS data_validade DATE;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS numero_certidao TEXT;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS empresa_nome TEXT;
     `);
   }
   return schemaReady;

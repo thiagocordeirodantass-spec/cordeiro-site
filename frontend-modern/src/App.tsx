@@ -1188,10 +1188,10 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       />
       <div className="cnd-stats">
         {[
-          ["Certidões", stats.total || 0, ShieldCheck, "mint"],
-          ["Vencendo em 30 dias", stats.vencendo || 0, Bell, "amber"],
-          ["Vencidas", stats.vencidas || 0, X, "red"],
-          ["Positivas", stats.positivas || 0, Activity, "violet"],
+          ["Total de CNDs", stats.total || 0, FileText, "blue"],
+          ["Negativas", stats.negativas || 0, ShieldCheck, "mint"],
+          ["Com efeitos de negativa", stats.com_efeitos || 0, Bell, "amber"],
+          ["Positivas", stats.positivas || 0, Activity, "red"],
         ].map(([label, value, Icon, tone]: any) => (
           <article key={label}>
             <i className={tone}>
