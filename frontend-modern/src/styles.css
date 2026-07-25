@@ -2233,6 +2233,11 @@ input {
 .secure-note{display:flex;align-items:center;gap:9px;padding:13px;border-radius:11px;background:#e3f6ef;color:#12674f;font-size:10px}
 .module-email-list{display:grid;gap:7px;margin-top:20px;padding:15px;border:1px solid var(--line);border-radius:11px}
 .module-email-list span,.module-email-list small{font-size:10px;color:var(--muted)}
+.module-replication{display:grid;gap:12px;padding:16px;margin:8px 0 18px;border:1px solid var(--line);border-radius:13px;background:var(--surface2)}
+.module-replication header{display:grid;gap:3px}.module-replication header small{font-size:9px;color:var(--muted)}
+.module-replication>div{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:150px;overflow:auto}
+.module-replication label{display:flex;gap:7px;align-items:center;font-size:10px}
+.danger{color:#b83f38!important;border-color:#e8b6b2!important}
 .user-permissions{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);
   display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .user-permissions header{grid-column:1/-1;display:grid;gap:3px;margin-bottom:5px}.user-permissions header small{font-size:9px;color:var(--muted)}

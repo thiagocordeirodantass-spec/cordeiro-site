@@ -2,7 +2,8 @@ import { ensureSchema,pool } from "../../_database.js";
 
 function sessionId(req){return decodeURIComponent(String(req.headers.cookie||"").match(/(?:^|;\s*)sid=([^;]+)/)?.[1]||"");}
 const defaults={
-  cnd:{prazo_alerta:10,alerta_vencimento:true,alerta_vencidas:true,alerta_positivas:true,remetente:""},
+  cnd:{prazo_alerta:10,alerta_modo:"dias",alerta_dia_semana:1,alerta_dia_mes:1,
+    alerta_vencimento:true,alerta_vencidas:true,alerta_positivas:true,remetente:"",dominio_remetente:""},
   sefaz:{consulta_automatica:true,importar_automaticamente:true,uf:"MG",ult_nsu:"0",somente_consulta:true},
   documentos:{deduplicar:true,importar_xml:true,guardar_xml:true},
   alertas:{email_ativo:true,frequencia:"diaria",hora:"08:00"},
@@ -33,6 +34,18 @@ export default async function handler(req,res){
         configuracao=EXCLUDED.configuracao,ativo=EXCLUDED.ativo,updated_at=NOW()`,
         [id,modulo,JSON.stringify(config),req.body?.ativo!==false]);
       return res.json({ok:true,modulo,configuracao:config});
+    }
+    if(req.method==="POST"){
+      if(auth.rows[0].role!=="admin")return res.status(403).json({error:"Apenas administradores podem replicar módulos"});
+      const modulo=String(req.body?.modulo||""),destinos=(req.body?.destinos||[]).map(Number).filter(Boolean);
+      if(!Object.hasOwn(defaults,modulo)||!destinos.length)return res.status(400).json({error:"Módulo e destinos são obrigatórios"});
+      const source=await pool.query("SELECT configuracao,ativo FROM empresa_module_config WHERE empresa_id=$1 AND modulo=$2",[id,modulo]);
+      const config=source.rows[0]?.configuracao||defaults[modulo],active=source.rows[0]?.ativo??true;
+      for(const target of destinos)await pool.query(`INSERT INTO empresa_module_config(empresa_id,modulo,configuracao,ativo)
+        SELECT id,$2,$3::jsonb,$4 FROM empresas WHERE id=$1
+        ON CONFLICT(empresa_id,modulo) DO UPDATE SET configuracao=EXCLUDED.configuracao,ativo=EXCLUDED.ativo,updated_at=NOW()`,
+        [target,modulo,JSON.stringify(config),active]);
+      return res.json({ok:true,replicados:destinos.length});
     }
     return res.status(405).json({error:"Método não permitido"});
   }catch(error){console.error(error);return res.status(500).json({error:"Erro ao configurar módulos"});}

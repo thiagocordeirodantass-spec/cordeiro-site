@@ -169,7 +169,8 @@ router.get("/", (req, res) => {
            tipo_documento, documento_terceiros, carta_correcao,
            ultima_manifestacao, data_ultima_manifestacao, sem_manifestacao,
            data_validacao_regra, regra_validacao, regra_violada,
-           finalidade_emissao, tipo_operacao, empresa_id
+           finalidade_emissao, tipo_operacao, empresa_id,
+           (SELECT COALESCE(u.nome,u.username) FROM users u WHERE u.id=documents.created_by) AS created_by_name
     FROM documents
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY datetime(data_emissao) DESC, id DESC
@@ -253,7 +254,7 @@ router.post("/import", requireRole("admin", "operador"), (req, res) => {
   if (empresaId != null && empresaId !== "" && req.isSuperAdmin) {
     eId = Number(empresaId);
   }
-  const result = saveDocument({ xmlText: xml, kind, source: source || "paste", fileName, empresaId: eId });
+  const result = saveDocument({ xmlText: xml, kind, source: source || "paste", fileName, empresaId: eId, userId: req.user?.id });
   if (!result.ok) return res.status(400).json(result);
   res.json(result);
 });
@@ -276,7 +277,7 @@ router.post("/upload", requireRole("admin", "operador"), upload.array("files", 1
         results.push({ fileName: f.originalname, ok: false, error: "Falha ao ler arquivo: " + e.message });
         continue;
       }
-      const r = saveDocument({ xmlText, source: "upload", fileName: f.originalname, empresaId: req.tenantId || null });
+      const r = saveDocument({ xmlText, source: "upload", fileName: f.originalname, empresaId: req.tenantId || null, userId: req.user?.id });
       results.push({ fileName: f.originalname, ...r });
       // Libera o XML do result para não acumular em memória na resposta
       delete r.xml;

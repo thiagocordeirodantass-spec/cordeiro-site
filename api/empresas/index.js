@@ -15,15 +15,17 @@ export default async function handler(request, response) {
         return response.status(400).json({ error: "Razão social obrigatória" });
       const result = await pool.query(
         `INSERT INTO empresas
-          (cnpj, nome, nome_fantasia, ie, regime_tributario, ambiente)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          (cnpj, nome, nome_fantasia, ie, im, regime_tributario, ambiente, empresa_matriz_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
         [
           String(data.cnpj || "").replace(/\D/g, "") || null,
           data.nome,
           data.nome_fantasia || null,
           data.ie || null,
+          data.im || null,
           data.regime_tributario || null,
           data.ambiente || "producao",
+          Number(data.empresa_matriz_id)||null,
         ],
       );
       const sid = String(request.headers.cookie || "").match(/(?:^|;\s*)sid=([^;]+)/)?.[1];

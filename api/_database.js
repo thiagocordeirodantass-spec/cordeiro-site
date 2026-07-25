@@ -210,6 +210,10 @@ export function ensureSchema() {
       ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS empresa_id BIGINT REFERENCES empresas(id) ON DELETE CASCADE;
       ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS pdf_data BYTEA;
       ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS pdf_name TEXT;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS alerta_modo TEXT DEFAULT 'dias';
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS alerta_dias INTEGER DEFAULT 10;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS alerta_dia_semana INTEGER;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS alerta_dia_mes INTEGER;
       CREATE TABLE IF NOT EXISTS cnd_config (
         id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
         prazo_alerta INTEGER NOT NULL DEFAULT 10,

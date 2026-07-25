@@ -41,7 +41,6 @@ import { api, Company, download, setCompany, User } from "./api";
 
 type Page =
   | "dashboard"
-  | "activity"
   | "documents"
   | "import"
   | "reports"
@@ -293,7 +292,7 @@ function Login({ done }: { done: (u: User) => void }) {
   );
 }
 const groups = [
-  ["Visão geral", [["dashboard", "Dashboard", LayoutDashboard],["activity","Atividades da equipe",Activity]]],
+  ["Visão geral", [["dashboard", "Dashboard", LayoutDashboard]]],
   [
     "Documentos",
     [
@@ -771,6 +770,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 <th>Emissão</th>
                 <th>Valor</th>
                 <th>Status</th>
+                <th>Incluído por</th>
                 <th>Ações</th>
               </tr>
             </thead>
@@ -800,6 +800,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
                   <td>
                     <span className="status">{d.status || "Autorizado"}</span>
                   </td>
+                  <td>{d.created_by_name || "Sistema / SEFAZ"}</td>
                   <td>
                     <div className="row-actions">
                       <button
@@ -1089,6 +1090,10 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     validadeDias: "",
     numeroCertidao: "",
     observacoes: "",
+    alertaModo:"dias",
+    alertaDias:10,
+    alertaDiaSemana:1,
+    alertaDiaMes:1,
   };
   const [items, setItems] = useState<any[]>([]),
     [stats, setStats] = useState<any>({}),
@@ -1169,22 +1174,17 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       toast((error as Error).message, true);
     }
   }
-  async function recognizePdf(file?: File) {
-    if (!file) return;
-    const body = new FormData();
-    body.set("pdf", file);
-    try {
-      const result = await api<any>("/api/certidoes/recognize", {
-        method: "POST",
-        body,
-      });
-      toast(result.message || "Certidão lida e gravada");
-      load();
-    } catch (error) {
-      toast((error as Error).message, true);
-    } finally {
-      if (smartInput.current) smartInput.current.value = "";
+  async function recognizePdf(files?: FileList | null) {
+    if (!files?.length) return;
+    let imported=0;
+    for(const file of Array.from(files)){
+      const body=new FormData(); body.set("pdf",file);
+      try{await api<any>("/api/certidoes/recognize",{method:"POST",body});imported++}
+      catch(error){toast(`${file.name}: ${(error as Error).message}`,true)}
     }
+    if(imported)toast(`${imported} certidão(ões) importada(s) e vinculada(s) pelo CNPJ`);
+    load();
+    if (smartInput.current) smartInput.current.value = "";
   }
   async function saveConfig() {
     try {
@@ -1239,8 +1239,9 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
               ref={smartInput}
               hidden
               type="file"
+              multiple
               accept="application/pdf"
-              onChange={(e) => recognizePdf(e.target.files?.[0])}
+              onChange={(e) => recognizePdf(e.target.files)}
             />
           </div>
         }
@@ -1518,6 +1519,32 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
                   }
                 />
               </label>
+              <label>
+                Frequência do alerta
+                <select value={form.alertaModo||form.alerta_modo||"dias"}
+                  onChange={e=>setForm({...form,alertaModo:e.target.value})}>
+                  <option value="dias">Dias antes do vencimento</option>
+                  <option value="semanal">Semanal, em dia fixo</option>
+                  <option value="mensal">Mensal, em dia fixo</option>
+                </select>
+              </label>
+              {(form.alertaModo||form.alerta_modo||"dias")==="dias"&&<label>
+                Antecedência em dias<input type="number" min="1" max="365"
+                  value={form.alertaDias??form.alerta_dias??10}
+                  onChange={e=>setForm({...form,alertaDias:Number(e.target.value)})}/>
+              </label>}
+              {(form.alertaModo||form.alerta_modo)==="semanal"&&<label>
+                Dia da semana<select value={form.alertaDiaSemana??form.alerta_dia_semana??1}
+                  onChange={e=>setForm({...form,alertaDiaSemana:Number(e.target.value)})}>
+                  {["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"].map((label,index)=>
+                    <option value={index} key={label}>{label}</option>)}
+                </select>
+              </label>}
+              {(form.alertaModo||form.alerta_modo)==="mensal"&&<label>
+                Dia do mês<input type="number" min="1" max="28"
+                  value={form.alertaDiaMes??form.alerta_dia_mes??1}
+                  onChange={e=>setForm({...form,alertaDiaMes:Number(e.target.value)})}/>
+              </label>}
             </div>
             <label>
               Observações
@@ -3221,6 +3248,8 @@ function Admin({
     [moduleCompany, setModuleCompany] = useState<any>(null),
     [moduleData, setModuleData] = useState<any>(null),
     [moduleTab, setModuleTab] = useState("cnd"),
+    [expandedCompanies,setExpandedCompanies]=useState<Record<number,boolean>>({}),
+    [replicateTargets,setReplicateTargets]=useState<number[]>([]),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3230,6 +3259,9 @@ function Admin({
   }, [kind, toast]);
   useEffect(() => {
     load();
+    if(kind!=="users")return;
+    const timer=window.setInterval(load,15000);
+    return()=>window.clearInterval(timer);
   }, [load]);
   useEffect(() => {
     if (kind === "users")
@@ -3277,15 +3309,30 @@ function Admin({
       toast(`Configuração de ${moduleTab.toUpperCase()} salva para ${moduleCompany.nome}`);
     }catch(error){toast((error as Error).message,true)}
   }
+  async function replicateModule(){
+    if(!replicateTargets.length)return toast("Selecione ao menos uma empresa ou filial",true);
+    try{
+      await api(`/api/empresas/${moduleCompany.id}/modulos`,{method:"POST",body:{
+        modulo:moduleTab,destinos:replicateTargets,
+      }});
+      toast(`Configuração replicada para ${replicateTargets.length} unidade(s)`);
+      setReplicateTargets([]);
+    }catch(error){toast((error as Error).message,true)}
+  }
+  async function deleteCompany(company:any){
+    if(!confirm(`Excluir definitivamente ${company.nome}?`))return;
+    try{await api(`/api/empresas/${company.id}`,{method:"DELETE"});toast("Unidade excluída");load()}
+    catch(error){toast((error as Error).message,true)}
+  }
   async function saveCompany(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api("/api/empresas", {
-        method: "POST",
+      await api(companyForm.id?`/api/empresas/${companyForm.id}`:"/api/empresas", {
+        method: companyForm.id?"PUT":"POST",
         body: companyForm,
       });
       setCompanyForm(null);
-      toast("Empresa cadastrada");
+      toast(companyForm.id?"Cadastro atualizado":"Empresa cadastrada");
       load();
     } catch (error) {
       toast((error as Error).message, true);
@@ -3467,17 +3514,26 @@ function Admin({
                     <button className="secondary" onClick={()=>openModules(company)}>
                       <Save /> Configurar módulos
                     </button>
+                    <button className="secondary" onClick={()=>setCompanyForm({...company})}>Editar</button>
+                    <button className="secondary" onClick={()=>setCompanyForm({
+                      cnpj:"",nome:"",nome_fantasia:"",ie:"",im:"",regime_tributario:company.regime_tributario||"simples",
+                      ambiente:company.ambiente||"producao",empresa_matriz_id:company.id,
+                    })}>+ Cadastrar filial</button>
+                    {branches.length>0&&<button className="secondary" onClick={()=>setExpandedCompanies({
+                      ...expandedCompanies,[company.id]:!expandedCompanies[company.id],
+                    })}>{expandedCompanies[company.id]?"Recolher filiais":`Expandir filiais (${branches.length})`}</button>}
                   </footer>
-                  {branches.length>0&&<section className="company-branches">
+                  {branches.length>0&&expandedCompanies[company.id]&&<section className="company-branches">
                     <header><b>Filiais</b><span>{branches.length} unidade(s)</span></header>
                     {branches.map(branch=>{
                       const branchInactive=branch.ativo===false||branch.ativo===0;
                       return <div className={branchInactive?"inactive":""} key={branch.id}>
                         <i><Building2/></i>
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
-                        <button className="secondary" disabled={branchInactive}
-                          onClick={()=>activateCompany(branch)}>{branchInactive?"Desativada":"Acessar filial"}</button>
                         <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
+                        <button className="secondary" onClick={()=>setCompanyForm({...branch})}>Editar</button>
+                        <button className="secondary" onClick={()=>toggleCompany(branch)}>{branchInactive?"Reativar":"Inativar"}</button>
+                        <button className="secondary danger" onClick={()=>deleteCompany(branch)}>Excluir</button>
                       </div>;
                     })}
                   </section>}
@@ -3507,7 +3563,7 @@ function Admin({
                         .toUpperCase()}
                     </i>
                     <span className={`status ${inactive ? "inactive" : ""}`}>
-                      {inactive ? "Inativo" : "Online"}
+                      {inactive ? "Inativo" : userItem.online ? "Online" : "Offline"}
                     </span>
                   </header>
                   <div className="user-identity">
@@ -3582,14 +3638,29 @@ function Admin({
           <div className="module-config">
             {moduleTab==="cnd"&&<>
               <h3>Certidões e regularidade fiscal</h3>
+              <label>Programação dos avisos<select value={moduleData.modulos.cnd.alerta_modo||"dias"}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,alerta_modo:e.target.value}}})}>
+                <option value="dias">Dias antes do vencimento</option><option value="semanal">Semanal, em dia fixo</option>
+                <option value="mensal">Mensal, em dia fixo</option></select></label>
               <label>Prazo para alerta de vencimento<input type="number" min="1" max="365"
                 value={moduleData.modulos.cnd.prazo_alerta}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,prazo_alerta:Number(e.target.value)}}})}/></label>
+              {moduleData.modulos.cnd.alerta_modo==="semanal"&&<label>Dia semanal<select
+                value={moduleData.modulos.cnd.alerta_dia_semana??1}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,alerta_dia_semana:Number(e.target.value)}}})}>
+                {["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"].map((x,i)=><option value={i} key={x}>{x}</option>)}
+              </select></label>}
+              {moduleData.modulos.cnd.alerta_modo==="mensal"&&<label>Dia mensal<input type="number" min="1" max="28"
+                value={moduleData.modulos.cnd.alerta_dia_mes??1}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,alerta_dia_mes:Number(e.target.value)}}})}/></label>}
               {[["alerta_vencimento","Alertar vencimento próximo"],["alerta_vencidas","Alertar certidões vencidas"],["alerta_positivas","Alertar certidões positivas"]].map(([key,label])=>
                 <label className="check" key={key}><input type="checkbox" checked={Boolean(moduleData.modulos.cnd[key])}
                   onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,[key]:e.target.checked}}})}/>{label}</label>)}
               <label>Remetente dos alertas<input type="email" value={moduleData.modulos.cnd.remetente||""}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,remetente:e.target.value}}})}/></label>
+              <label>Domínio autenticado do remetente<input value={moduleData.modulos.cnd.dominio_remetente||""}
+                placeholder="empresa.com.br" onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{
+                  ...moduleData.modulos.cnd,dominio_remetente:e.target.value}}})}/></label>
             </>}
             {moduleTab==="sefaz"&&<>
               <h3>Consulta SEFAZ</h3>
@@ -3620,6 +3691,16 @@ function Admin({
                 {moduleData.emails.length?moduleData.emails.map((item:any)=><span key={item.id}>{item.email}</span>):<small>Nenhum e-mail cadastrado para esta unidade.</small>}</div>
             </>}
           </div>
+          <section className="module-replication">
+            <header><b>Replicar configuração deste módulo</b><small>Marque as unidades que receberão uma cópia.</small></header>
+            <div>{items.filter(item=>item.id!==moduleCompany.id).map(item=><label key={item.id}>
+              <input type="checkbox" checked={replicateTargets.includes(Number(item.id))}
+                onChange={e=>setReplicateTargets(e.target.checked?[...replicateTargets,Number(item.id)]:
+                  replicateTargets.filter(id=>id!==Number(item.id)))}/>
+              {item.nome} {item.empresa_matriz_id?"· Filial":"· Matriz"}
+            </label>)}</div>
+            <button className="secondary" onClick={replicateModule}>Replicar para selecionadas</button>
+          </section>
           <footer><button className="secondary" onClick={()=>setModuleCompany(null)}>Fechar</button>
             <button className="primary" onClick={saveModule}><Save/> Salvar este módulo</button></footer>
         </section>
@@ -3630,7 +3711,7 @@ function Admin({
             <header>
               <div>
                 <span className="eyebrow">NOVO AMBIENTE</span>
-                <h2>Cadastrar empresa</h2>
+                <h2>{companyForm.id?"Editar cadastro":companyForm.empresa_matriz_id?"Cadastrar filial":"Cadastrar empresa"}</h2>
               </div>
               <button
                 type="button"
@@ -3697,6 +3778,11 @@ function Admin({
                 />
               </label>
               <label>
+                Inscrição municipal
+                <input value={companyForm.im||""}
+                  onChange={e=>setCompanyForm({...companyForm,im:e.target.value})}/>
+              </label>
+              <label>
                 Regime tributário
                 <select
                   value={companyForm.regime_tributario}
@@ -3738,7 +3824,7 @@ function Admin({
                 Cancelar
               </button>
               <button className="primary">
-                <Save /> Cadastrar empresa
+                <Save /> {companyForm.id?"Salvar alterações":companyForm.empresa_matriz_id?"Cadastrar filial":"Cadastrar empresa"}
               </button>
             </footer>
           </form>
@@ -3891,7 +3977,7 @@ export default function App() {
     [page, setPage] = useState<Page>("dashboard"),
     [current, setCurrent] = useState<Company | null>(null),
     [mobile, setMobileState] = useState(false),
-    [dark, setDark] = useState(false),
+    [dark, setDark] = useState(()=>localStorage.getItem("cordeiro.theme")==="dark"),
     [note, setNote] = useState<{ s: string; e: boolean } | null>(null),
     [notifications, setNotifications] =
       useState<AppNotification[]>(storedNotifications);
@@ -3936,6 +4022,7 @@ export default function App() {
   }, [enter]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
+    localStorage.setItem("cordeiro.theme",dark?"dark":"light");
   }, [dark]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
   if (checking)
@@ -4035,7 +4122,6 @@ export default function App() {
         </header>
         <main>
           {page === "dashboard" && <Dashboard />}
-          {page === "activity" && <TeamActivity />}
           {page === "documents" && <Documents toast={toast} />}{" "}
           {page === "import" && <Importer toast={toast} />}{" "}
           {page === "reports" && <Reports toast={toast} />}{" "}

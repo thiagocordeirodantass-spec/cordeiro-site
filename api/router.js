@@ -137,11 +137,14 @@ export default async function handler(request, response) {
       if (route.length === 1 && request.method === "POST") {
         const d = request.body || {};
         const result = await pool.query(
-          `INSERT INTO certidoes(user_id,empresa_id,tipo,status,numero_certidao,empresa_nome,data_emissao,data_validade,observacoes)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          `INSERT INTO certidoes(user_id,empresa_id,tipo,status,numero_certidao,empresa_nome,data_emissao,data_validade,
+            observacoes,alerta_modo,alerta_dias,alerta_dia_semana,alerta_dia_mes)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
           [user.id,Number(d.empresaId||request.headers["x-empresa-id"]||user.empresa_ativa_id)||null,d.tipo||null,d.status||"negativa",
            d.numeroCertidao||d.numero_certidao||null,d.empresaNome||d.empresa_nome||"Empresa ativa",
-           d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null],
+           d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null,
+           d.alertaModo||"dias",Number(d.alertaDias||10),d.alertaDiaSemana===""?null:Number(d.alertaDiaSemana),
+           d.alertaDiaMes===""?null:Number(d.alertaDiaMes)],
         );
         return response.json(result.rows[0]);
       }
@@ -152,9 +155,13 @@ export default async function handler(request, response) {
           `UPDATE certidoes SET tipo=COALESCE($2,tipo),status=COALESCE($3,status),
             numero_certidao=COALESCE($4,numero_certidao),
             data_emissao=COALESCE($5,data_emissao),data_validade=COALESCE($6,data_validade),
-            observacoes=COALESCE($7,observacoes) WHERE id=$1 RETURNING *`,
+            observacoes=COALESCE($7,observacoes),alerta_modo=COALESCE($8,alerta_modo),
+            alerta_dias=COALESCE($9,alerta_dias),alerta_dia_semana=COALESCE($10,alerta_dia_semana),
+            alerta_dia_mes=COALESCE($11,alerta_dia_mes) WHERE id=$1 RETURNING *`,
           [certidaoId,d.tipo||null,d.status||null,d.numeroCertidao||d.numero_certidao||null,
-           d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null],
+           d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null,
+           d.alertaModo||null,d.alertaDias?Number(d.alertaDias):null,
+           d.alertaDiaSemana===""?null:Number(d.alertaDiaSemana),d.alertaDiaMes===""?null:Number(d.alertaDiaMes)],
         );
         return response.json(result.rows[0]);
       }
@@ -174,6 +181,7 @@ export default async function handler(request, response) {
       if (route.length === 1 && request.method === "GET") {
         const result = await pool.query(
           `SELECT u.id,u.username,u.nome,u.email,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
+            EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()) online,
             eu.empresa_id,eu.permissoes FROM users u LEFT JOIN empresa_users eu ON eu.user_id=u.id
             ORDER BY u.nome,u.username`,
         );
@@ -356,10 +364,10 @@ export default async function handler(request, response) {
         const match=doc.xml.match(/<chNFe>([^<]+)<\/chNFe>/)||doc.xml.match(/<chCTe>([^<]+)<\/chCTe>/)||doc.xml.match(/Id="[A-Za-z]*(\d{44})"/);
         const chave=match?.[1]; if(!chave) continue;
         const kind=doc.xml.includes("<CTe")||doc.xml.includes("<cteProc")?"CTE":"NFE";
-        const inserted=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name)
-          SELECT $1,$2,$3,'importado',$4,'sefaz-mtls-auto',$5
+        const inserted=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
+          SELECT $1,$2,$3,'importado',$4,'sefaz-mtls-auto',$5,$6
           WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3 AND empresa_id IS NOT DISTINCT FROM $1)`,
-          [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`]);
+          [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`,user.id]);
         saved+=inserted.rowCount;
       }
       response.setHeader("X-Sefaz-Total", String(result.docs.length));
@@ -399,10 +407,10 @@ export default async function handler(request, response) {
         chave: route[2],
       });
       const kind=route[1].toUpperCase();
-      await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name)
-        SELECT $1,$2,$3,'importado',$4,'sefaz-consulta',$5
+      await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
+        SELECT $1,$2,$3,'importado',$4,'sefaz-consulta',$5,$6
         WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3 AND empresa_id IS NOT DISTINCT FROM $1)`,
-        [user.empresa_ativa_id,kind,route[2],xml,`${route[2]}.xml`]);
+        [user.empresa_ativa_id,kind,route[2],xml,`${route[2]}.xml`,user.id]);
       return response.json({
         ok: true,
         status: "Documento localizado na Distribuição DF-e",
@@ -415,9 +423,10 @@ export default async function handler(request, response) {
     if (route[0] === "docs" && request.method === "GET") {
       if (route.length === 1) {
         const result = await pool.query(
-          `SELECT * FROM documents
-            WHERE ($1::bigint IS NULL OR empresa_id=$1)
-            ORDER BY data_emissao DESC NULLS LAST,id DESC LIMIT 500`,
+          `SELECT d.*,COALESCE(u.nome,u.username) AS created_by_name FROM documents d
+            LEFT JOIN users u ON u.id=d.created_by
+            WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
+            ORDER BY d.data_emissao DESC NULLS LAST,d.id DESC LIMIT 500`,
           [user.empresa_ativa_id],
         );
         return response.json({ items: result.rows, total: result.rowCount });
@@ -449,7 +458,7 @@ export default async function handler(request, response) {
 
     if (route[0] === "relatorio") {
       const result = await pool.query(
-        `SELECT kind,chave,numero,data_emissao,valor_total,status,remetente_nome,destinatario_nome
+        `SELECT kind,chave,numero,data_emissao,valor_total,status,remetente_nome,destinatario_nome,xml_data
            FROM documents WHERE ($1::bigint IS NULL OR empresa_id=$1)
            ORDER BY data_emissao DESC NULLS LAST`,
         [user.empresa_ativa_id],
@@ -461,6 +470,25 @@ export default async function handler(request, response) {
         response.setHeader("Content-Type", "text/csv; charset=utf-8");
         response.setHeader("Content-Disposition", "attachment; filename=relatorio-fiscal.csv");
         return response.send(`\uFEFF${csv}`);
+      }
+      if(route[1]==="xlsx"){
+        const {gerarXlsx,headerRow,dataRow}=await import("../backend/xlsx-writer.js");
+        const rows=[headerRow(["Tipo","Chave","Número","Emissão","Valor","Status","Emitente","Destinatário"]),
+          ...result.rows.map(row=>dataRow([row.kind,row.chave,row.numero,row.data_emissao,row.valor_total,row.status,
+            row.remetente_nome,row.destinatario_nome],[4]))];
+        const buffer=gerarXlsx([{name:"Documentos",rows,freezeHeader:true,colWidths:[12,48,14,20,16,18,32,32]}]);
+        response.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition",'attachment; filename="relatorio-fiscal.xlsx"');
+        return response.send(buffer);
+      }
+      if(route[1]==="lote"){
+        const {ZipWriter}=await import("../backend/zip-writer.js"); const zip=new ZipWriter();
+        let total=0;
+        for(const row of result.rows)if(row.xml_data){zip.addFile(`${row.kind||"DOC"}/${row.chave||row.numero||total}.xml`,row.xml_data);total++}
+        if(!total)return response.status(404).json({error:"Nenhum XML armazenado para esta empresa"});
+        response.setHeader("Content-Type","application/zip");
+        response.setHeader("Content-Disposition",'attachment; filename="documentos-xml.zip"');
+        return response.send(zip.toBuffer());
       }
       return response.json({ items: result.rows, total: result.rowCount });
     }

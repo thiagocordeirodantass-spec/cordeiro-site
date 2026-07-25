@@ -29,7 +29,9 @@ function dosDateTime(d = new Date()) {
 // Sanitiza uma parte de caminho (pasta/arquivo) para uso dentro do ZIP
 function sanitizePathPart(s) {
   return String(s ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[\\:*?"<>|]/g, "-")
+    .replace(/[^\x20-\x7E]/g, "_")
     .replace(/\s+/g, " ")
     .trim() || "sem-nome";
 }
@@ -63,7 +65,7 @@ export class ZipWriter {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0x0800, 6);
     local.writeUInt16LE(0, 8);
     local.writeUInt16LE(dosTime, 10);
     local.writeUInt16LE(dosDate, 12);
@@ -86,7 +88,7 @@ export class ZipWriter {
       central.writeUInt32LE(0x02014b50, 0);
       central.writeUInt16LE(20, 4);
       central.writeUInt16LE(20, 6);
-      central.writeUInt16LE(0, 8);
+      central.writeUInt16LE(0x0800, 8);
       central.writeUInt16LE(0, 10);
       central.writeUInt16LE(e.dosTime, 12);
       central.writeUInt16LE(e.dosDate, 14);

@@ -124,15 +124,17 @@ export function criarEmpresa(adminUser, body) {
   }
   const ambiente = body.ambiente === "producao" ? "producao" : "homologacao";
   const info = db.prepare(`
-    INSERT INTO empresas (cnpj, nome, nome_fantasia, ie, regime_tributario, ambiente, ativo)
-    VALUES (?, ?, ?, ?, ?, ?, 1)
+    INSERT INTO empresas (cnpj, nome, nome_fantasia, ie, im, regime_tributario, ambiente, ativo, empresa_matriz_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
   `).run(
     cnpjDigits,
     String(body.nome).trim(),
     body.nome_fantasia ? String(body.nome_fantasia).trim() : null,
     body.ie ? String(body.ie).trim() : null,
+    body.im ? String(body.im).trim() : null,
     regime,
     ambiente,
+    Number(body.empresa_matriz_id)||null,
   );
   return getEmpresaById(Number(info.lastInsertRowid));
 }
@@ -146,6 +148,7 @@ export function atualizarEmpresa(user, id, body) {
   if (body.nome != null) { fields.push("nome = ?"); values.push(String(body.nome).trim()); }
   if (body.nome_fantasia != null) { fields.push("nome_fantasia = ?"); values.push(String(body.nome_fantasia).trim() || null); }
   if (body.ie != null) { fields.push("ie = ?"); values.push(String(body.ie).trim() || null); }
+  if (body.im != null) { fields.push("im = ?"); values.push(String(body.im).trim() || null); }
   if (body.regime_tributario != null) {
     const r = body.regime_tributario;
     if (r && !["simples", "presumido", "real", "mei"].includes(r)) {

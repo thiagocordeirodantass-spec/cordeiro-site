@@ -577,7 +577,7 @@ function deriveEnrichedFields(kind, fullData, summary) {
   };
 }
 
-export function saveDocument({ xmlText, kind, source = "upload", fileName = null, empresaId = null }) {
+export function saveDocument({ xmlText, kind, source = "upload", fileName = null, empresaId = null, userId = null }) {
   const parsed = parseXml(xmlText);
   if (!parsed) return { ok: false, error: "XML invalido" };
 
@@ -683,7 +683,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       eventos, ultima_manifestacao, data_ultima_manifestacao, sem_manifestacao,
       data_validacao_regra, regra_validacao, regra_violada,
       finalidade_emissao, tipo_operacao,
-      empresa_id
+      empresa_id, created_by
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
       ?, ?,
@@ -699,7 +699,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?,
-      ?
+      ?, ?
     )
     ON CONFLICT(chave) DO UPDATE SET
       numero = excluded.numero,
@@ -744,7 +744,8 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       regra_violada = excluded.regra_violada,
       finalidade_emissao = excluded.finalidade_emissao,
       tipo_operacao = excluded.tipo_operacao,
-      empresa_id = COALESCE(documents.empresa_id, excluded.empresa_id)
+      empresa_id = COALESCE(documents.empresa_id, excluded.empresa_id),
+      created_by = COALESCE(documents.created_by, excluded.created_by)
   `);
 
   // Deriva campos enriquecidos a partir do fullData (XML destrinchado)
@@ -796,6 +797,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
     enriched.finalidade_emissao,
     enriched.tipo_operacao,
     empresaId,
+    userId,
   );
 
   return {

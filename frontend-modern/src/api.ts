@@ -69,8 +69,18 @@ export async function download(path: string, filename: string) {
     credentials: "same-origin",
     headers: id ? { "X-Empresa-Id": String(id) } : {},
   });
-  if (!response.ok) throw new Error("Não foi possível gerar o arquivo");
-  const url = URL.createObjectURL(await response.blob());
+  if (!response.ok) {
+    let message="Não foi possível gerar o arquivo";
+    try{message=(await response.json()).error||message}catch{}
+    throw new Error(message);
+  }
+  const blob=await response.blob(),bytes=new Uint8Array(await blob.slice(0,4).arrayBuffer());
+  const isZip=bytes[0]===0x50&&bytes[1]===0x4b;
+  if((/\.(xlsx|zip)$/i.test(filename)&&!isZip)||
+    (/\.pdf$/i.test(filename)&&String.fromCharCode(...bytes)!=="%PDF")){
+    throw new Error("O servidor não retornou um arquivo válido. O download foi cancelado para evitar corrupção.");
+  }
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;

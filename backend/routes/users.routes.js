@@ -17,7 +17,8 @@ function sanitize(row) {
 }
 
 router.get("/", (req, res) => {
-  const rows = db.prepare(`SELECT u.*,eu.empresa_id,eu.permissoes FROM users u
+  const rows = db.prepare(`SELECT u.*,eu.empresa_id,eu.permissoes,
+    EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND datetime(s.expires_at)>datetime('now')) online FROM users u
     LEFT JOIN empresa_users eu ON eu.user_id=u.id ORDER BY u.username`).all();
   res.json(rows.map(row=>({...sanitize(row),permissoes:row.permissoes?JSON.parse(row.permissoes):{}})));
 });

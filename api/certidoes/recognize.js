@@ -4,6 +4,11 @@ import { ensureSchema, pool } from "../_database.js";
 
 export const config={api:{bodyParser:false}};
 function sid(req){return decodeURIComponent(String(req.headers.cookie||"").match(/(?:^|;\s*)sid=([^;]+)/)?.[1]||"");}
+function safeName(value){
+  return String(value||"certidao.pdf").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").replace(/[^\x20-\x7E]/g,"_")
+    .replace(/\s+/g,"_").slice(0,180);
+}
 export default async function handler(req,res){
   try{
     if(req.method!=="POST") return res.status(405).json({error:"Método não permitido"});
@@ -20,7 +25,7 @@ export default async function handler(req,res){
     if(!company.rowCount) return res.status(404).json({error:"Empresa não encontrada"});
     const saved=await pool.query(`INSERT INTO certidoes(user_id,empresa_id,empresa_nome,tipo,status,observacoes,pdf_data,pdf_name)
       VALUES($1,$2,$3,'federal','negativa','Importada do PDF; revise os dados reconhecidos.',$4,$5) RETURNING id`,
-      [session.rows[0].user_id,empresaId,company.rows[0].nome,bytes,file.originalFilename||"certidao.pdf"]);
+      [session.rows[0].user_id,empresaId,company.rows[0].nome,bytes,safeName(file.originalFilename)]);
     return res.json({ok:true,id:Number(saved.rows[0].id),missing:["tipo","status","data de emissão","data de validade"],
       message:"PDF importado. Abra a certidão para revisar tipo, status e datas."});
   }catch(error){console.error(error);return res.status(500).json({error:"Não foi possível importar o PDF"});}

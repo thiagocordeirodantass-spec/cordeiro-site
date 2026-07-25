@@ -47,7 +47,8 @@ router.put("/:id", (req, res) => {
 });
 
 const moduleDefaults = {
-  cnd:{prazo_alerta:10,alerta_vencimento:true,alerta_vencidas:true,alerta_positivas:true,remetente:""},
+  cnd:{prazo_alerta:10,alerta_modo:"dias",alerta_dia_semana:1,alerta_dia_mes:1,
+    alerta_vencimento:true,alerta_vencidas:true,alerta_positivas:true,remetente:"",dominio_remetente:""},
   sefaz:{consulta_automatica:true,importar_automaticamente:true,uf:"MG",ult_nsu:"0",somente_consulta:true},
   documentos:{deduplicar:true,importar_xml:true,guardar_xml:true},
   alertas:{email_ativo:true,frequencia:"diaria",hora:"08:00"},
@@ -71,6 +72,24 @@ router.put("/:id/modulos",(req,res)=>{
     VALUES(?,?,?,?) ON CONFLICT(empresa_id,modulo) DO UPDATE SET configuracao=excluded.configuracao,
     ativo=excluded.ativo,updated_at=datetime('now')`).run(Number(req.params.id),modulo,JSON.stringify(config),req.body?.ativo===false?0:1);
   res.json({ok:true,modulo,configuracao:config});
+});
+router.post("/:id/modulos",(req,res)=>{
+  if(req.user?.role!=="admin")return res.status(403).json({error:"Apenas administradores podem replicar módulos"});
+  const modulo=String(req.body?.modulo||""),destinos=(req.body?.destinos||[]).map(Number).filter(Boolean);
+  if(!Object.hasOwn(moduleDefaults,modulo)||!destinos.length)return res.status(400).json({error:"Módulo e destinos são obrigatórios"});
+  const source=db.prepare("SELECT configuracao,ativo FROM empresa_module_config WHERE empresa_id=? AND modulo=?").get(Number(req.params.id),modulo);
+  const config=source?.configuracao||JSON.stringify(moduleDefaults[modulo]),active=source?.ativo??1;
+  const save=db.prepare(`INSERT INTO empresa_module_config(empresa_id,modulo,configuracao,ativo) VALUES(?,?,?,?)
+    ON CONFLICT(empresa_id,modulo) DO UPDATE SET configuracao=excluded.configuracao,ativo=excluded.ativo,updated_at=datetime('now')`);
+  for(const target of destinos)if(db.prepare("SELECT id FROM empresas WHERE id=?").get(target))save.run(target,modulo,config,active);
+  res.json({ok:true,replicados:destinos.length});
+});
+router.delete("/:id",(req,res)=>{
+  if(req.user?.role!=="admin")return res.status(403).json({error:"Apenas administradores podem excluir"});
+  const count=db.prepare("SELECT COUNT(*) total FROM empresas WHERE empresa_matriz_id=?").get(Number(req.params.id)).total;
+  if(count)return res.status(409).json({error:"Exclua ou mova as filiais antes de excluir a matriz"});
+  db.prepare("DELETE FROM empresas WHERE id=?").run(Number(req.params.id));
+  res.json({ok:true});
 });
 
 // ---- Membros ----

@@ -4,6 +4,8 @@ import { ensureSchema, pool } from "../../_database.js";
 
 export const config={api:{bodyParser:false}};
 function sid(req){return decodeURIComponent(String(req.headers.cookie||"").match(/(?:^|;\s*)sid=([^;]+)/)?.[1]||"");}
+function safeName(value){return String(value||"certidao.pdf").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").replace(/[^\x20-\x7E]/g,"_").replace(/\s+/g,"_").slice(0,180);}
 export default async function handler(req,res){
   try{
     await ensureSchema();
@@ -15,7 +17,7 @@ export default async function handler(req,res){
       const file=Array.isArray(files.pdf)?files.pdf[0]:files.pdf;
       if(!file)return res.status(400).json({error:"Selecione um PDF"});
       const result=await pool.query("UPDATE certidoes SET pdf_data=$2,pdf_name=$3 WHERE id=$1 RETURNING id",
-        [id,await fs.readFile(file.filepath),file.originalFilename||"certidao.pdf"]);
+        [id,await fs.readFile(file.filepath),safeName(file.originalFilename)]);
       if(!result.rowCount)return res.status(404).json({error:"Certidão não encontrada"});
       return res.json({ok:true,pdf_url:`/api/certidoes/${id}/pdf`});
     }

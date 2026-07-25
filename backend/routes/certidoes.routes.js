@@ -63,6 +63,10 @@ db.exec(`
     UNIQUE(empresa_id,email)
   );
 `);
+for(const [name,type] of [["alerta_modo","TEXT DEFAULT 'dias'"],["alerta_dias","INTEGER DEFAULT 10"],
+  ["alerta_dia_semana","INTEGER"],["alerta_dia_mes","INTEGER"]]){
+  try{db.exec(`ALTER TABLE certidoes ADD COLUMN ${name} ${type}`)}catch{}
+}
 const matrizCnd = db.prepare("SELECT id FROM empresas WHERE cnpj='03857930000154'").get();
 if (matrizCnd) {
   const insertRecipient=db.prepare("INSERT OR IGNORE INTO cnd_destinatarios(empresa_id,email) VALUES(?,?)");
@@ -222,13 +226,16 @@ router.post("/", (req, res) => {
   const info = db.prepare(`
     INSERT INTO certidoes
       (empresa_id, entidade_tipo, entidade_nome, tipo, data_emissao, data_validade,
-       validade_dias, modo_validade, status, numero_certidao, observacoes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       validade_dias, modo_validade, status, numero_certidao, observacoes,
+       alerta_modo, alerta_dias, alerta_dia_semana, alerta_dia_mes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     empresaId, body.entidadeTipo || "empresa", body.entidadeNome || null,
     body.tipo, body.dataEmissao || null, validade, body.validadeDias || null,
     body.modoValidade || "data_direta", body.status,
     body.numeroCertidao || null, body.observacoes || null,
+    body.alertaModo || "dias", Number(body.alertaDias ?? 10),
+    body.alertaDiaSemana ?? null, body.alertaDiaMes ?? null,
   );
   res.json(db.prepare("SELECT * FROM certidoes WHERE id = ?").get(info.lastInsertRowid));
 });
@@ -348,11 +355,18 @@ router.put("/:id", (req, res) => {
       tipo = COALESCE(?, tipo), data_emissao = COALESCE(?, data_emissao),
       data_validade = COALESCE(?, data_validade), status = COALESCE(?, status),
       numero_certidao = COALESCE(?, numero_certidao),
-      observacoes = COALESCE(?, observacoes), updated_at = datetime('now')
+      observacoes = COALESCE(?, observacoes),
+      alerta_modo = COALESCE(?, alerta_modo),
+      alerta_dias = COALESCE(?, alerta_dias),
+      alerta_dia_semana = COALESCE(?, alerta_dia_semana),
+      alerta_dia_mes = COALESCE(?, alerta_dia_mes),
+      updated_at = datetime('now')
     WHERE id = ?
   `).run(
     body.tipo || null, body.dataEmissao || null, body.dataValidade || null,
     body.status || null, body.numeroCertidao ?? null, body.observacoes ?? null,
+    body.alertaModo || null, body.alertaDias ?? null,
+    body.alertaDiaSemana ?? null, body.alertaDiaMes ?? null,
     row.id,
   );
   res.json(db.prepare("SELECT * FROM certidoes WHERE id = ?").get(row.id));
