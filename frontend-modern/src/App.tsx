@@ -4236,8 +4236,9 @@ export default function App() {
                       key={p}
                       onClick={() => go(p)}
                     >
-                      <Icon />
-                      {label}
+                      <i className="sidebar-icon"><Icon /></i>
+                      <span>{label}</span>
+                      <b className="sidebar-arrow">›</b>
                     </button>
                   ))}
                 </section>
