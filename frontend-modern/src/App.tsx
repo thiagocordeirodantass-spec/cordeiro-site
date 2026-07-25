@@ -1749,8 +1749,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [results, setResults] = useState<any[]>([]),
     [busy, setBusy] = useState(false),
     [captchaToken, setCaptchaToken] = useState(""),
-    [sitekey, setSitekey] = useState(""),
-    [sitekeyInput, setSitekeyInput] = useState("");
+    [sitekey, setSitekey] = useState("0x4AAAAAAD9QFuEXmAjhoAuE"),
+    [sitekeyInput, setSitekeyInput] = useState("0x4AAAAAAD9QFuEXmAjhoAuE");
   const keyInput = useRef<HTMLTextAreaElement>(null);
   const openConnector = (target: string) => {
     if (target === "query") {
@@ -1773,8 +1773,9 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   useEffect(() => {
     api<any>("/api/meudanfe/config")
       .then((c) => {
-        setSitekey(c.turnstileSiteKey || "");
-        setSitekeyInput(c.turnstileSiteKey || "");
+        const configured=c.turnstileSiteKey||"0x4AAAAAAD9QFuEXmAjhoAuE";
+        setSitekey(configured);
+        setSitekeyInput(configured);
       })
       .catch(() => {});
   }, []);
