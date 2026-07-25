@@ -477,6 +477,20 @@ export default async function handler(request, response) {
     ) {
       if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
         return response.status(503).json({ error: "Certificado A1 não configurado" });
+      const rateState=await pool.query(`SELECT COUNT(*)::int used,
+        GREATEST(0,CEIL(EXTRACT(EPOCH FROM (MIN(created_at)+INTERVAL '1 hour'-NOW()))))::int retry_after
+        FROM sefaz_key_query_log WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,
+        [user.empresa_ativa_id]);
+      if(Number(rateState.rows[0]?.used||0)>=18){
+        const retryAfter=Math.max(1,Number(rateState.rows[0]?.retry_after||3600));
+        response.setHeader("Retry-After",String(retryAfter));
+        return response.status(429).json({
+          error:`Fila SEFAZ protegida: limite seguro de 18 consultas/hora atingido. Retomada em ${Math.ceil(retryAfter/60)} minuto(s).`,
+          code:"SEFAZ_SAFE_RATE_LIMIT",retryAfter,
+        });
+      }
+      await pool.query("INSERT INTO sefaz_key_query_log(empresa_id,chave) VALUES($1,$2)",
+        [user.empresa_ativa_id,route[2]]);
       const { consultarChaveComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );

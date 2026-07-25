@@ -1769,15 +1769,25 @@ function TurnstileBox({
 }
 
 function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
-  const [key, setKey] = useState(""),
+  const [key, setKey] = useState(()=>localStorage.getItem("cordeiro.sefaz.queue")||""),
     [kind, setKind] = useState("nfe"),
     [provider] = useState("sefaz"),
     [results, setResults] = useState<any[]>([]),
+    [queueProgress,setQueueProgress]=useState({done:0,total:0}),
     [busy, setBusy] = useState(false),
     [captchaToken, setCaptchaToken] = useState(""),
     [sitekey, setSitekey] = useState("0x4AAAAAAD9QFuEXmAjhoAuE"),
     [sitekeyInput, setSitekeyInput] = useState("0x4AAAAAAD9QFuEXmAjhoAuE");
   const keyInput = useRef<HTMLTextAreaElement>(null);
+  useEffect(()=>{localStorage.setItem("cordeiro.sefaz.queue",key)},[key]);
+  const informedKeys=[...new Set(key.split(/[\s,;]+/).map(value=>value.replace(/\D/g,"")).filter(Boolean))];
+  const safeQueriesPerHour=18;
+  const estimatedMinutes=Math.ceil(informedKeys.length/safeQueriesPerHour*60);
+  const durationLabel=(minutes:number)=>{
+    if(minutes<60)return `${minutes} min`;
+    const hours=Math.floor(minutes/60),rest=minutes%60;
+    return hours>=24?`${Math.floor(hours/24)} dia(s) e ${hours%24}h${rest?` ${rest}min`:""}`:`${hours}h${rest?` ${rest}min`:""}`;
+  };
   async function importKeySpreadsheet(file?:File){
     if(!file)return;
     try{
@@ -1860,10 +1870,10 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     setResults([]);
     try {
       const collected: any[] = [];
-      for (let index = 0; index < keys.length; index += 5) {
-        const batch = keys.slice(index, index + 5);
-        const responses = await Promise.all(
-          batch.map(async (accessKey) => {
+      setQueueProgress({done:0,total:keys.length});
+      for (let index = 0; index < keys.length; index += 1) {
+        const accessKey=keys[index];
+        const responses = [await (async () => {
             try {
               if (provider === "meudanfe" && !captchaToken)
                 throw new Error(
@@ -1907,55 +1917,19 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 error: (error as Error).message,
               };
             }
-          }),
-        );
+          })()];
         collected.push(...responses);
         setResults([...collected]);
+        setQueueProgress({done:index+1,total:keys.length});
+        const remaining=keys.slice(index+1);
+        setKey(remaining.join("\n"));
+        if(remaining.length)await new Promise(resolve=>window.setTimeout(resolve,200000));
       }
       const found = collected.filter((item) => item.ok).length;
       toast(
         `Consulta concluída: ${found} localizado(s), ${collected.length - found} com erro`,
         found === 0,
       );
-      if (provider !== "meudanfe")
-        try {
-          const sync = await fetch("/api/sefaz/cert/periodo-auto", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ultNSUInicial: "0" }),
-          });
-          if (!sync.ok) {
-            let reason = `Erro ${sync.status}`;
-            try {
-              reason = (await sync.json()).error || reason;
-            } catch {}
-            throw new Error(reason);
-          }
-          const total = sync.headers.get("X-Sefaz-Total") || "0";
-          const imported = sync.headers.get("X-Sefaz-Salvos") || "0";
-          const lastNsu = sync.headers.get("X-Sefaz-UltNSU") || "";
-          const contentType=sync.headers.get("content-type")||"";
-          const blob = await sync.blob();
-          if (blob.size > 0 && contentType.includes("application/zip")) {
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `sefaz-consulta-${new Date()
-              .toISOString()
-              .slice(0, 10)}.zip`;
-            link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }
-          toast(
-            `SEFAZ: ${total} arquivo(s) baixado(s), ${imported} integrado(s) em Documentos${lastNsu ? ` · NSU ${lastNsu}` : ""}`,
-          );
-        } catch (error) {
-          toast(
-            `Falha na sincronização SEFAZ: ${(error as Error).message}`,
-            true,
-          );
-        }
     } finally {
       setBusy(false);
     }
@@ -2070,12 +2044,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 }
               />
               <small>
-                {
-                  key
-                    .split(/[\s,;]+/)
-                    .map((value) => value.replace(/\D/g, ""))
-                    .filter(Boolean).length
-                }{" "}
+                {informedKeys.length}{" "}
                 chave(s) informada(s)
               </small>
             </label>
@@ -2084,9 +2053,15 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
               <span className="spreadsheet-button"><FileText/><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><UploadCloud/></span>
               <small>Excel, CSV ou TXT · todas as abas serão verificadas</small>
             </label>
+            {informedKeys.length>0&&<div className="sefaz-queue-estimate">
+              <ShieldCheck/><span><b>Fila protegida · {safeQueriesPerHour} consultas por hora</b>
+                <small>Estimativa: {durationLabel(estimatedMinutes)} · processamento sequencial com retomada</small></span>
+            </div>}
             <button className="primary" onClick={consult} disabled={busy}>
               {busy ? <RefreshCw className="spin" /> : <CloudDownload />}Consultar e importar
             </button>
+            {busy&&queueProgress.total>0&&<div className="sefaz-queue-progress"><span style={{width:`${queueProgress.done/queueProgress.total*100}%`}}/>
+              <small>{queueProgress.done} de {queueProgress.total} processada(s)</small></div>}
           </div>
           {results.length > 0 && (
             <div className="batch-query-results">

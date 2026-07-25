@@ -247,6 +247,14 @@ export function ensureSchema() {
         last_error TEXT,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS sefaz_key_query_log (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        chave TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS sefaz_key_query_rate_idx
+        ON sefaz_key_query_log(empresa_id, created_at DESC);
       INSERT INTO cnd_destinatarios(empresa_id,email)
       SELECT id,v.email FROM empresas CROSS JOIN (VALUES
         ('raul.guilherme25@gmail.com'),('thiagocordeirodantass@gmail.com')
