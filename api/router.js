@@ -579,8 +579,8 @@ export default async function handler(request, response) {
         if(!company.rowCount)return response.status(404).json({error:"Empresa ativa não encontrada"});
         const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.serie,d.data_emissao,d.valor_total,
           d.status,d.destinatario_nome,d.destinatario_doc,d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
-          FROM documents d WHERE d.empresa_id=$1 AND ($2='' OR d.kind=$2)
-          AND regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3
+          FROM documents d WHERE (d.empresa_id=$1 OR regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3)
+          AND ($2='' OR d.kind=$2)
           AND COALESCE(d.data_emissao,d.created_at)::date>=($4||'-01')::date
           AND COALESCE(d.data_emissao,d.created_at)::date<(($4||'-01')::date+INTERVAL '1 month')
           ORDER BY d.data_emissao DESC NULLS LAST,d.created_at DESC LIMIT 10000`,
