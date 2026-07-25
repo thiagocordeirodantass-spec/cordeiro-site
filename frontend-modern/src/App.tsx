@@ -3115,6 +3115,15 @@ function Admin({
       toast((e as Error).message, true);
     }
   }
+  async function activateCompany(company: any) {
+    try {
+      await api(`/api/empresas/${company.id}/ativar`, { method: "POST" });
+      toast(`Empresa ativa: ${company.nome}`);
+      window.setTimeout(() => window.location.reload(), 500);
+    } catch (error) {
+      toast((error as Error).message, true);
+    }
+  }
   async function saveCompany(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -3284,6 +3293,12 @@ function Admin({
                     </div>
                   </dl>
                   <footer>
+                    <button
+                      className="primary"
+                      onClick={() => activateCompany(company)}
+                    >
+                      Acessar empresa
+                    </button>
                     <button
                       className={inactive ? "primary" : "secondary"}
                       onClick={() => toggleCompany(company)}

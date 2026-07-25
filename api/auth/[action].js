@@ -35,7 +35,23 @@ function cookie(request, name) {
   return entry ? decodeURIComponent(entry.slice(1).join("=")) : null;
 }
 
-function publicUser(user) {
+async function publicUser(user) {
+  const membershipsResult = await pool.query(
+    `SELECT e.id AS empresa_id,eu.papel,e.cnpj,e.nome,e.nome_fantasia,e.ambiente
+       FROM empresa_users eu JOIN empresas e ON e.id=eu.empresa_id
+      WHERE eu.user_id=$1 AND eu.ativo=TRUE AND e.ativo=TRUE ORDER BY e.nome`,
+    [user.id],
+  );
+  const memberships = membershipsResult.rows;
+  let activeId = user.empresa_ativa_id || null;
+  if (!activeId && memberships.length === 1) activeId = memberships[0].empresa_id;
+  const activeResult = activeId
+    ? await pool.query(
+        `SELECT id AS empresa_id,cnpj,nome,nome_fantasia,ambiente,regime_tributario
+           FROM empresas WHERE id=$1 AND ativo=TRUE`,
+        [activeId],
+      )
+    : { rows: [] };
   return {
     id: Number(user.id),
     username: user.username,
@@ -45,9 +61,9 @@ function publicUser(user) {
     primeiro_login: Boolean(user.primeiro_login),
     ultimo_login: user.ultimo_login,
     is_super_admin: user.role === "admin",
-    memberships: [],
-    empresa_ativa_id: null,
-    empresa_ativa: null,
+    memberships,
+    empresa_ativa_id: activeId,
+    empresa_ativa: activeResult.rows[0] || null,
     preferencias: {},
     cargo: user.cargo || "",
     area_atuacao: user.area_atuacao || "",
@@ -117,14 +133,14 @@ export default async function handler(request, response) {
       await pool.query("UPDATE users SET ultimo_login = NOW() WHERE id = $1", [
         user.id,
       ]);
-      return response.json({ ok: true, user: publicUser(user), expiresAt });
+      return response.json({ ok: true, user: await publicUser(user), expiresAt });
     }
 
     if (action === "me" && request.method === "GET") {
       const user = await currentUser(request);
       if (!user)
         return response.status(401).json({ error: "Não autenticado" });
-      return response.json({ user: publicUser(user) });
+      return response.json({ user: await publicUser(user) });
     }
 
     if (action === "me" && request.method === "PUT") {
@@ -142,7 +158,7 @@ export default async function handler(request, response) {
          data.instagram_url || null,data.website_url || null,data.telefone || null,
          JSON.stringify(data.preferencias || {})],
       );
-      return response.json({ ok: true, user: publicUser(result.rows[0]) });
+      return response.json({ ok: true, user: await publicUser(result.rows[0]) });
     }
 
     if (action === "logout" && request.method === "POST") {
@@ -218,7 +234,7 @@ export default async function handler(request, response) {
       const expiresAt = await createSession(request, response, user.id);
       return response.json({
         ok: true,
-        user: publicUser(user),
+        user: await publicUser(user),
         expiresAt,
         role,
       });
