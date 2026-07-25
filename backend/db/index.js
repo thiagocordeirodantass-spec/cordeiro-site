@@ -151,6 +151,10 @@ if (matrizIntecom) {
         empresa_matriz_id=excluded.empresa_matriz_id`).run(...row,matrizIntecom.id);
     } catch (e) { console.error("[seed] filial falhou:", e.message); }
   }
+  try {
+    db.prepare(`UPDATE empresas SET empresa_matriz_id=?
+      WHERE cnpj LIKE '03857930%' AND cnpj<>'03857930000154'`).run(matrizIntecom.id);
+  } catch (e) { console.error("[seed] vínculo matriz/filiais falhou:", e.message); }
 }
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_docs_empresa ON documents(empresa_id)"); } catch (e) { console.error("[migration] idx_docs_empresa falhou:", e.message); }
 

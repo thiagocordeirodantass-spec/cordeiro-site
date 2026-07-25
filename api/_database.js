@@ -122,6 +122,11 @@ export function ensureSchema() {
       WHERE m.cnpj='03857930000154'
       ON CONFLICT(cnpj) DO UPDATE SET nome=EXCLUDED.nome,nome_fantasia=EXCLUDED.nome_fantasia,
         ie=EXCLUDED.ie,im=EXCLUDED.im,empresa_matriz_id=EXCLUDED.empresa_matriz_id;
+      UPDATE empresas filial SET empresa_matriz_id=matriz.id
+      FROM empresas matriz
+      WHERE matriz.cnpj='03857930000154'
+        AND filial.cnpj LIKE '03857930%'
+        AND filial.cnpj<>matriz.cnpj;
       CREATE TABLE IF NOT EXISTS empresa_users (
         empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

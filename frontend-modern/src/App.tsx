@@ -3378,8 +3378,9 @@ function Admin({
       <Panel>
         {items.length && kind === "companies" ? (
           <div className="company-grid">
-            {items.map((company, index) => {
+            {items.filter((item)=>!item.empresa_matriz_id).map((company, index) => {
               const inactive = company.ativo === false || company.ativo === 0;
+              const branches=items.filter((item)=>Number(item.empresa_matriz_id)===Number(company.id));
               return (
                 <article
                   className={`company-card ${inactive ? "inactive" : ""}`}
@@ -3431,6 +3432,18 @@ function Admin({
                       {inactive ? "Reativar empresa" : "Desativar empresa"}
                     </button>
                   </footer>
+                  {branches.length>0&&<section className="company-branches">
+                    <header><b>Filiais</b><span>{branches.length} unidade(s)</span></header>
+                    {branches.map(branch=>{
+                      const branchInactive=branch.ativo===false||branch.ativo===0;
+                      return <div className={branchInactive?"inactive":""} key={branch.id}>
+                        <i><Building2/></i>
+                        <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
+                        <button className="secondary" disabled={branchInactive}
+                          onClick={()=>activateCompany(branch)}>{branchInactive?"Desativada":"Acessar filial"}</button>
+                      </div>;
+                    })}
+                  </section>}
                 </article>
               );
             })}
