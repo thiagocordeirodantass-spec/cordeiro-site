@@ -2211,6 +2211,8 @@ input {
 .mtls-button>i{width:39px;height:39px;display:grid;place-items:center;border-radius:10px;background:#0d7e61;color:white}
 .mtls-button>span:nth-child(2){display:grid;gap:2px;flex:1}.mtls-button b{font-size:11px}.mtls-button small{font-size:9px;color:#59917f}
 .mtls-arrow{font-size:19px}.mtls-login>p{font-size:9px;display:flex;gap:6px;align-items:center;margin:0}.mtls-login>p svg{width:13px}
+.certificate-file-input{display:none}.certificate-password{display:grid;gap:6px;font-size:10px;color:#497a6d}
+.certificate-password input{width:100%;box-sizing:border-box}
 @media(max-width:720px){.auth-card{padding:25px 20px}.login-side{background:var(--bg)}}
 .company-card:has(.company-branches){grid-column:1/-1}
 .company-branches{margin:4px -2px -2px;padding-top:16px;border-top:1px solid var(--line)}

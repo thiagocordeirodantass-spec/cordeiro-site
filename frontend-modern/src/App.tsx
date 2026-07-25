@@ -88,6 +88,7 @@ function Brand() {
   );
 }
 function Login({ done }: { done: (u: User) => void }) {
+  const certificateInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"login" | "register" | "verify">("login"),
     [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
@@ -95,13 +96,32 @@ function Login({ done }: { done: (u: User) => void }) {
     [email, setEmail] = useState(""),
     [code, setCode] = useState(""),
     [devCode, setDevCode] = useState(""),
+    [certificate, setCertificate] = useState<File | null>(null),
+    [certificatePassword, setCertificatePassword] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  function loginWithCertificate() {
-    window.location.assign(
-      import.meta.env.VITE_MTLS_LOGIN_URL ||
-        "/api/auth/mtls-login?redirect=/",
-    );
+  async function loginWithCertificate() {
+    if (!certificate) {
+      certificateInput.current?.click();
+      return;
+    }
+    if (!certificatePassword) {
+      setError("Informe a senha do certificado digital.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("certificate", certificate);
+      form.append("password", certificatePassword);
+      await api("/api/auth/certificate-login", { method: "POST", body: form });
+      done((await api<{ user: User }>("/api/auth/me")).user);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -264,14 +284,35 @@ function Login({ done }: { done: (u: User) => void }) {
           {mode === "login" && (
             <div className="mtls-login">
               <div className="auth-divider"><span>ou acesse com</span></div>
+              <input
+                ref={certificateInput}
+                className="certificate-file-input"
+                type="file"
+                accept=".pfx,.p12,application/x-pkcs12"
+                onChange={(event) => {
+                  setCertificate(event.target.files?.[0] || null);
+                  setError("");
+                }}
+              />
               <button type="button" className="mtls-button" disabled={busy}
                 onClick={loginWithCertificate}>
                 <i><ShieldCheck /></i>
                 <span><b>Certificado digital INTECOM</b>
-                  <small>Client Certificate · mTLS</small></span>
+                  <small>{certificate ? certificate.name : "Selecionar arquivo .PFX ou .P12"}</small></span>
                 <span className="mtls-arrow">→</span>
               </button>
-              <p><ShieldCheck /> O certificado permanece no dispositivo e nunca é enviado como arquivo.</p>
+              {certificate && (
+                <label className="certificate-password">
+                  Senha do certificado
+                  <input
+                    type="password"
+                    value={certificatePassword}
+                    onChange={(event) => setCertificatePassword(event.target.value)}
+                    placeholder="Digite a senha do certificado"
+                  />
+                </label>
+              )}
+              <p><ShieldCheck /> O arquivo é processado somente para validar o acesso e não é salvo no servidor.</p>
             </div>
           )}
           <button
