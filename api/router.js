@@ -442,7 +442,7 @@ export default async function handler(request, response) {
         const status=String(request.query.status||"");
         const filters=`($2='' OR d.kind=$2) AND ($3='' OR d.status=$3) AND
           ($4='' OR d.chave ILIKE $5 OR d.numero ILIKE $5 OR d.remetente_nome ILIKE $5 OR
-           d.destinatario_nome ILIKE $5 OR d.emitente_razao_social ILIKE $5 OR d.emitente_cnpj ILIKE $5)`;
+           d.destinatario_nome ILIKE $5)`;
         const values=[user.empresa_ativa_id,kind,status,q,`%${q}%`];
         const [result,count]=await Promise.all([pool.query(
           `SELECT d.*,COALESCE(u.nome,u.username) AS created_by_name FROM documents d
