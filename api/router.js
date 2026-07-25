@@ -187,6 +187,14 @@ export default async function handler(request, response) {
         );
         return response.json(result.rows[0]);
       }
+      if(route[1]==="batch-delete"&&request.method==="POST"){
+        const ids=[...new Set((request.body?.ids||[]).map(Number).filter(Number.isSafeInteger))];
+        if(!ids.length)return response.status(400).json({error:"Selecione ao menos uma certidão"});
+        const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id)||null;
+        const deleted=await pool.query(`DELETE FROM certidoes WHERE id=ANY($1::bigint[])
+          AND ($2::bigint IS NULL OR empresa_id=$2) RETURNING id`,[ids,empresaId]);
+        return response.json({ok:true,deleted:deleted.rowCount});
+      }
       const certidaoId = Number(route[1]);
       if (Number.isInteger(certidaoId) && request.method === "PUT") {
         const d = request.body || {};

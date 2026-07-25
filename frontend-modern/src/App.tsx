@@ -1156,6 +1156,8 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [recipientEmail, setRecipientEmail] = useState(""),
     [filter, setFilter] = useState(""),
     [cndPage,setCndPage]=useState(1),
+    [selectedCnds,setSelectedCnds]=useState<number[]>([]),
+    [confirmCndBatch,setConfirmCndBatch]=useState(false),
     [form, setForm] = useState<any>(null),
     [viewingCertificate,setViewingCertificate]=useState<any>(null),
     [pendingDelete,setPendingDelete]=useState<any>(null),
@@ -1246,6 +1248,13 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
   async function deleteCertificate(item:any){
     try{await api(`/api/certidoes/${item.id}`,{method:"DELETE"});setPendingDelete(null);toast(`Documento excluído: certidão ${typeLabel[item.tipo]||item.tipo} removida com sucesso`);load()}
     catch(error){toast((error as Error).message,true)}
+  }
+  async function deleteCertificatesBatch(){
+    try{
+      const result=await api<any>("/api/certidoes/batch-delete",{method:"POST",body:{ids:selectedCnds}});
+      setSelectedCnds([]);setConfirmCndBatch(false);
+      toast(`${result.deleted} certidão(ões) e PDF(s) excluídos com sucesso`);load();
+    }catch(error){toast((error as Error).message,true)}
   }
   const visible = items.filter((item) =>
     `${item.empresa_nome} ${item.tipo} ${item.numero_certidao} ${item.status}`
@@ -1342,6 +1351,15 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <button className="secondary" onClick={load}>
             <RefreshCw /> Atualizar
           </button>
+          <button className="secondary" onClick={()=>setSelectedCnds(current=>
+            visiblePage.every(item=>current.includes(Number(item.id)))?
+              current.filter(id=>!visiblePage.some(item=>Number(item.id)===id)):
+              [...new Set([...current,...visiblePage.map(item=>Number(item.id))])])}>
+            {visiblePage.length>0&&visiblePage.every(item=>selectedCnds.includes(Number(item.id)))?"Desmarcar página":"Selecionar página"}
+          </button>
+          {selectedCnds.length>0&&<button className="secondary danger" onClick={()=>setConfirmCndBatch(true)}>
+            <Trash2/> Excluir selecionadas ({selectedCnds.length})
+          </button>}
         </div>
         <div className="cnd-grid">
           {visiblePage.length ? (
@@ -1356,10 +1374,14 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
               const expired = days != null && days < 0;
               return (
                 <article
-                  className={`cnd-card ${expired ? "expired" : ""}`}
+                  className={`cnd-card ${expired ? "expired" : ""} ${selectedCnds.includes(Number(item.id))?"selected":""}`}
                   key={item.id}
                 >
                   <header>
+                    <label className="cnd-select" title="Selecionar certidão"><input type="checkbox"
+                      checked={selectedCnds.includes(Number(item.id))}
+                      onChange={event=>setSelectedCnds(current=>event.target.checked?
+                        [...current,Number(item.id)]:current.filter(id=>id!==Number(item.id)))}/><span/></label>
                     <i>
                       <ShieldCheck />
                     </i>
@@ -1627,6 +1649,13 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <h2>Deseja excluir esta certidão?</h2><p>A certidão <b>{typeLabel[pendingDelete.tipo]||pendingDelete.tipo}</b> de <b>{pendingDelete.empresa_nome}</b> e seu arquivo serão removidos.</p>
           <div><button className="secondary" onClick={()=>setPendingDelete(null)}>Manter documento</button>
             <button className="primary danger-action" onClick={()=>deleteCertificate(pendingDelete)}><Trash2/> Excluir certidão</button></div>
+        </section>
+      </div>}
+      {confirmCndBatch&&<div className="modal-backdrop deletion-backdrop" role="dialog" aria-modal="true">
+        <section className="deletion-dialog"><i><Trash2/></i><span className="eyebrow">EXCLUSÃO EM LOTE · CND</span>
+          <h2>Excluir {selectedCnds.length} certidões?</h2><p>As certidões selecionadas e todos os PDFs vinculados serão removidos somente da empresa ativa.</p>
+          <div><button className="secondary" onClick={()=>setConfirmCndBatch(false)}>Manter certidões</button>
+            <button className="primary danger-action" onClick={deleteCertificatesBatch}><Trash2/> Excluir selecionadas</button></div>
         </section>
       </div>}
     </>
