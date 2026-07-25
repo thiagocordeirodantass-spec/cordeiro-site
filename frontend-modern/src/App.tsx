@@ -1939,8 +1939,15 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </span>
         </div>
       </section>
+      <section className="sefaz-flow">
+        {[
+          ["01","Carregue as chaves","Cole manualmente ou importe uma planilha Excel/CSV."],
+          ["02","Validação oficial","A consulta mTLS busca o XML diretamente na SEFAZ."],
+          ["03","Importação segura","Somente documentos completos entram na Central."],
+        ].map(([number,title,text])=><article key={number}><b>{number}</b><span><strong>{title}</strong><small>{text}</small></span></article>)}
+      </section>
       <div className="fiscal-grid">
-        <Panel title="Central de consulta por chave">
+        <Panel title="Consulta e importação de documentos">
           <div className="query-box">
             <label>
               Documento
