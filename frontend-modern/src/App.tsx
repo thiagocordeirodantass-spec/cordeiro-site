@@ -318,6 +318,7 @@ function Login({ done }: { done: (u: User) => void }) {
                 <label className="certificate-password">
                   Senha do certificado
                   <input
+                    required
                     type="password"
                     value={certificatePassword}
                     onChange={(event) => setCertificatePassword(event.target.value)}
@@ -1223,6 +1224,11 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     try { await api(`/api/certidoes/destinatarios/${id}`,{method:"DELETE"}); load(); }
     catch(error) { toast((error as Error).message,true); }
   }
+  async function deleteCertificate(item:any){
+    if(!confirm(`Excluir a certidão ${typeLabel[item.tipo]||item.tipo} de ${item.empresa_nome}? O PDF original também será removido.`))return;
+    try{await api(`/api/certidoes/${item.id}`,{method:"DELETE"});toast("Certidão excluída");load()}
+    catch(error){toast((error as Error).message,true)}
+  }
   const visible = items.filter((item) =>
     `${item.empresa_nome} ${item.tipo} ${item.numero_certidao} ${item.status}`
       .toLowerCase()
@@ -1405,6 +1411,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
                         Visualizar
                       </a>
                     )}
+                    <button className="secondary danger" onClick={()=>deleteCertificate(item)}><X/> Excluir</button>
                   </footer>
                 </article>
               );
@@ -3338,12 +3345,18 @@ function Admin({
   async function saveCompany(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api(companyForm.id?`/api/empresas/${companyForm.id}`:"/api/empresas", {
+      const saved=await api<any>(companyForm.id?`/api/empresas/${companyForm.id}`:"/api/empresas", {
         method: companyForm.id?"PUT":"POST",
         body: companyForm,
       });
+      if(!companyForm.id&&companyForm.cadastrarFilial&&companyForm.filial){
+        await api("/api/empresas",{method:"POST",body:{
+          ...companyForm.filial,empresa_matriz_id:saved.id,
+          regime_tributario:companyForm.regime_tributario,ambiente:companyForm.ambiente,
+        }});
+      }
       setCompanyForm(null);
-      toast(companyForm.id?"Cadastro atualizado":"Empresa cadastrada");
+      toast(companyForm.id?"Cadastro atualizado":companyForm.cadastrarFilial?"Matriz e filial cadastradas":"Empresa cadastrada");
       load();
     } catch (error) {
       toast((error as Error).message, true);
@@ -3433,6 +3446,8 @@ function Admin({
                   ie: "",
                   regime_tributario: "simples",
                   ambiente: "producao",
+                  cadastrarFilial:false,
+                  filial:{cnpj:"",nome:"",nome_fantasia:"",ie:"",im:""},
                 })
               }
             >
@@ -3536,10 +3551,6 @@ function Admin({
                       <Save /> Configurar módulos
                     </button>
                     <button className="secondary" onClick={()=>setCompanyForm({...company})}>Editar</button>
-                    {branches.length>0&&<button className="secondary branch-create" onClick={()=>setCompanyForm({
-                      cnpj:"",nome:"",nome_fantasia:"",ie:"",im:"",regime_tributario:company.regime_tributario||"simples",
-                      ambiente:company.ambiente||"producao",empresa_matriz_id:company.id,
-                    })}><Network/> Nova filial</button>}
                     {branches.length>0&&<button className="secondary" onClick={()=>setExpandedCompanies({
                       ...expandedCompanies,[company.id]:!expandedCompanies[company.id],
                     })}>{expandedCompanies[company.id]?"Recolher filiais":`Expandir filiais (${branches.length})`}</button>}
@@ -3836,6 +3847,26 @@ function Admin({
                 </select>
               </label>
             </div>
+            {!companyForm.id&&!companyForm.empresa_matriz_id&&<>
+              <label className="company-branch-flag"><input type="checkbox" checked={Boolean(companyForm.cadastrarFilial)}
+                onChange={event=>setCompanyForm({...companyForm,cadastrarFilial:event.target.checked})}/>
+                <i><Network/></i><span><b>Esta matriz possui filial</b><small>Cadastre a primeira filial junto com a empresa.</small></span><em/></label>
+              {companyForm.cadastrarFilial&&<section className="inline-branch-form">
+                <header><span>02</span><div><b>Dados da primeira filial</b><small>A filial ficará agrupada e vinculada à matriz.</small></div></header>
+                <div className="fields">
+                  <label>CNPJ da filial<input required inputMode="numeric" value={companyForm.filial?.cnpj||""}
+                    onChange={event=>setCompanyForm({...companyForm,filial:{...companyForm.filial,cnpj:event.target.value.replace(/\D/g,"").slice(0,14)}})}/></label>
+                  <label>Razão social<input required value={companyForm.filial?.nome||""}
+                    onChange={event=>setCompanyForm({...companyForm,filial:{...companyForm.filial,nome:event.target.value}})}/></label>
+                  <label>Nome fantasia<input value={companyForm.filial?.nome_fantasia||""}
+                    onChange={event=>setCompanyForm({...companyForm,filial:{...companyForm.filial,nome_fantasia:event.target.value}})}/></label>
+                  <label>Inscrição estadual<input value={companyForm.filial?.ie||""}
+                    onChange={event=>setCompanyForm({...companyForm,filial:{...companyForm.filial,ie:event.target.value}})}/></label>
+                  <label>Inscrição municipal<input value={companyForm.filial?.im||""}
+                    onChange={event=>setCompanyForm({...companyForm,filial:{...companyForm.filial,im:event.target.value}})}/></label>
+                </div>
+              </section>}
+            </>}
             <footer>
               <button
                 type="button"

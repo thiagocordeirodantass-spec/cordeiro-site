@@ -41,7 +41,7 @@ export default async function handler(request, response) {
              DO UPDATE SET ativo=TRUE,papel='admin'`,
             [result.rows[0].id,current.rows[0].user_id],
           );
-          await pool.query(
+          if(!data.empresa_matriz_id) await pool.query(
             "UPDATE sessions SET empresa_ativa_id=$1 WHERE id=$2",
             [result.rows[0].id,decodeURIComponent(sid)],
           );

@@ -205,7 +205,10 @@ export default async function handler(request, response) {
         return response.json(result.rows[0]);
       }
       if (Number.isInteger(certidaoId) && request.method === "DELETE") {
-        await pool.query("DELETE FROM certidoes WHERE id=$1", [certidaoId]);
+        const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id)||null;
+        const deleted=await pool.query(`DELETE FROM certidoes WHERE id=$1
+          AND ($2::bigint IS NULL OR empresa_id=$2) RETURNING id`, [certidaoId,empresaId]);
+        if(!deleted.rowCount)return response.status(404).json({error:"Certidão não encontrada nesta empresa"});
         return response.json({ ok: true });
       }
       if (Number.isInteger(certidaoId) && route[2] === "pdf")
