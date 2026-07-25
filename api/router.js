@@ -578,22 +578,45 @@ export default async function handler(request, response) {
         [user.empresa_ativa_id],
       );
       const xmlValue=(xml,name)=>String(xml||"").match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)<\\/${name}>`,"i"))?.[1]?.trim()||"";
-      let reportRows=result.rows.map(row=>({
-        tipo:row.kind,chave:row.chave,numero:row.numero,serie:xmlValue(row.xml_data,"serie"),
-        emissao:row.data_emissao,valor_total:row.valor_total,status:row.status,
-        emitente:row.remetente_nome||xmlValue(row.xml_data,"xNome"),
-        emitente_cnpj:xmlValue(row.xml_data,"CNPJ"),emitente_ie:xmlValue(row.xml_data,"IE"),
-        destinatario:row.destinatario_nome,destinatario_documento:xmlValue(row.xml_data,"CPF"),
-        natureza_operacao:xmlValue(row.xml_data,"natOp"),cfop:xmlValue(row.xml_data,"CFOP"),
-        uf_origem:xmlValue(row.xml_data,"UFIni"),uf_destino:xmlValue(row.xml_data,"UFFim"),
-        protocolo:xmlValue(row.xml_data,"nProt"),valor_produtos:xmlValue(row.xml_data,"vProd"),
-        valor_frete:xmlValue(row.xml_data,"vFrete"),valor_desconto:xmlValue(row.xml_data,"vDesc"),
-        base_icms:xmlValue(row.xml_data,"vBC"),valor_icms:xmlValue(row.xml_data,"vICMS"),
-        valor_ipi:xmlValue(row.xml_data,"vIPI"),valor_pis:xmlValue(row.xml_data,"vPIS"),
-        valor_cofins:xmlValue(row.xml_data,"vCOFINS"),origem:sourceInfoServer(row.source),
+      const xmlBlock=(xml,name)=>String(xml||"").match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,"i"))?.[1]||"";
+      let reportRows=result.rows.flatMap(row=>{
+        const xml=String(row.xml_data||""),emit=xmlBlock(xml,"emit"),dest=xmlBlock(xml,"dest");
+        const base={
+        tipo:row.kind,chave:row.chave,numero_nota:row.numero||xmlValue(xml,"nNF")||xmlValue(xml,"nCT"),
+        serie:xmlValue(xml,"serie"),emissao:row.data_emissao||xmlValue(xml,"dhEmi")||xmlValue(xml,"dEmi"),
+        valor_total:row.valor_total,status:row.status,
+        emitente:row.remetente_nome||xmlValue(emit,"xNome"),emitente_fantasia:xmlValue(emit,"xFant"),
+        emitente_cnpj:xmlValue(emit,"CNPJ")||xmlValue(emit,"CPF"),emitente_ie:xmlValue(emit,"IE"),
+        destinatario:row.destinatario_nome||xmlValue(dest,"xNome"),
+        destinatario_documento:xmlValue(dest,"CNPJ")||xmlValue(dest,"CPF"),
+        natureza_operacao:xmlValue(xml,"natOp"),uf_origem:xmlValue(xml,"UFIni"),uf_destino:xmlValue(xml,"UFFim"),
+        protocolo:xmlValue(xml,"nProt"),valor_produtos:xmlValue(xmlBlock(xml,"ICMSTot"),"vProd"),
+        valor_frete:xmlValue(xmlBlock(xml,"ICMSTot"),"vFrete"),valor_desconto:xmlValue(xmlBlock(xml,"ICMSTot"),"vDesc"),
+        base_icms:xmlValue(xmlBlock(xml,"ICMSTot"),"vBC"),valor_icms:xmlValue(xmlBlock(xml,"ICMSTot"),"vICMS"),
+        valor_ipi:xmlValue(xmlBlock(xml,"ICMSTot"),"vIPI"),valor_pis:xmlValue(xmlBlock(xml,"ICMSTot"),"vPIS"),
+        valor_cofins:xmlValue(xmlBlock(xml,"ICMSTot"),"vCOFINS"),origem:sourceInfoServer(row.source),
         incluido_por:row.created_by_name,incluido_em:row.created_at,
         arquivo:row.file_name||`${row.chave||"documento"}.xml`,
-      }));
+        };
+        const details=[...xml.matchAll(/<det\b([^>]*)>([\s\S]*?)<\/det>/gi)];
+        if(!details.length)return [{...base,item_numero:"",produto_codigo:"",produto_descricao:"",
+          ncm:"",cest:"",cfop:xmlValue(xml,"CFOP"),unidade:"",quantidade:"",valor_unitario:"",
+          valor_produto:"",ean:"",origem_mercadoria:"",cst_csosn:"",base_icms_item:"",
+          aliquota_icms:"",icms_item:"",ipi_item:"",pis_item:"",cofins_item:""}];
+        return details.map((match,index)=>{
+          const item=match[2],prod=xmlBlock(item,"prod"),imposto=xmlBlock(item,"imposto");
+          return {...base,item_numero:match[1].match(/\bnItem=["']([^"']+)/i)?.[1]||String(index+1),
+            produto_codigo:xmlValue(prod,"cProd"),produto_descricao:xmlValue(prod,"xProd"),
+            ncm:xmlValue(prod,"NCM"),cest:xmlValue(prod,"CEST"),cfop:xmlValue(prod,"CFOP"),
+            unidade:xmlValue(prod,"uCom"),quantidade:xmlValue(prod,"qCom"),
+            valor_unitario:xmlValue(prod,"vUnCom"),valor_produto:xmlValue(prod,"vProd"),
+            ean:xmlValue(prod,"cEAN"),origem_mercadoria:xmlValue(imposto,"orig"),
+            cst_csosn:xmlValue(imposto,"CST")||xmlValue(imposto,"CSOSN"),
+            base_icms_item:xmlValue(imposto,"vBC"),aliquota_icms:xmlValue(imposto,"pICMS"),
+            icms_item:xmlValue(imposto,"vICMS"),ipi_item:xmlValue(imposto,"vIPI"),
+            pis_item:xmlValue(imposto,"vPIS"),cofins_item:xmlValue(imposto,"vCOFINS")};
+        });
+      });
       const model=String(request.query.modelo||"completo").toLowerCase();
       if(model==="nfe")reportRows=reportRows.filter(row=>row.tipo==="NFE");
       if(model==="cte")reportRows=reportRows.filter(row=>row.tipo==="CTE");
@@ -601,11 +624,14 @@ export default async function handler(request, response) {
       if(model==="manual")reportRows=reportRows.filter(row=>/manual/i.test(row.origem));
       if(model==="sefaz")reportRows=reportRows.filter(row=>/sefaz/i.test(row.origem));
       const reportColumns=Object.keys(reportRows[0]||{
-        tipo:"",chave:"",numero:"",serie:"",emissao:"",valor_total:"",status:"",emitente:"",
-        emitente_cnpj:"",emitente_ie:"",destinatario:"",destinatario_documento:"",natureza_operacao:"",
-        cfop:"",uf_origem:"",uf_destino:"",protocolo:"",valor_produtos:"",valor_frete:"",
+        tipo:"",chave:"",numero_nota:"",serie:"",emissao:"",valor_total:"",status:"",emitente:"",
+        emitente_fantasia:"",emitente_cnpj:"",emitente_ie:"",destinatario:"",destinatario_documento:"",natureza_operacao:"",
+        uf_origem:"",uf_destino:"",protocolo:"",valor_produtos:"",valor_frete:"",
         valor_desconto:"",base_icms:"",valor_icms:"",valor_ipi:"",valor_pis:"",valor_cofins:"",
-        origem:"",incluido_por:"",incluido_em:"",arquivo:"",
+        origem:"",incluido_por:"",incluido_em:"",arquivo:"",item_numero:"",produto_codigo:"",
+        produto_descricao:"",ncm:"",cest:"",cfop:"",unidade:"",quantidade:"",valor_unitario:"",
+        valor_produto:"",ean:"",origem_mercadoria:"",cst_csosn:"",base_icms_item:"",
+        aliquota_icms:"",icms_item:"",ipi_item:"",pis_item:"",cofins_item:"",
       });
       if (route[1] === "csv") {
         const escape = (value) => `"${String(value ?? "").replaceAll('"','""')}"`;
