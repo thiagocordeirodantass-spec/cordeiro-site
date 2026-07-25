@@ -230,6 +230,87 @@ export default async function handler(request, response) {
       }
     }
 
+    if (route[0] === "sefaz" && route[1] === "cert" && route[2] === "listar") {
+      const configured = Boolean(process.env.SEFAZ_PFX_BASE64 && process.env.SEFAZ_PFX_PASSWORD);
+      return response.json({
+        certificados: configured
+          ? [{
+              thumbprint: "vercel-secret",
+              label: "INTECOM SERVIÇOS DE LOGÍSTICA LTDA",
+              subject: `CNPJ ${process.env.SEFAZ_CNPJ || ""}`,
+              issuer: "Certificado A1 protegido na Vercel",
+            }]
+          : [],
+      });
+    }
+
+    if (
+      route[0] === "sefaz" &&
+      route[1] === "cert" &&
+      route[2] === "periodo-auto" &&
+      request.method === "POST"
+    ) {
+      if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
+        return response.status(503).json({ error: "Certificado A1 não configurado" });
+      const { consultarPeriodoComCertificado } = await import(
+        "../backend/services/sefaz-distribuicao.js"
+      );
+      const result = await consultarPeriodoComCertificado({
+        pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
+        passphrase: process.env.SEFAZ_PFX_PASSWORD,
+        uf: process.env.SEFAZ_UF || "MG",
+        ambiente: "producao",
+        cnpjOuCpf: process.env.SEFAZ_CNPJ,
+        ultNSUInicial: request.body?.ultNSUInicial || "0",
+        dateFrom: request.body?.dateFrom,
+        dateTo: request.body?.dateTo,
+        maxIteracoes: 5,
+      });
+      response.setHeader("X-Sefaz-Total", String(result.docs.length));
+      response.setHeader("X-Sefaz-Salvos", "0");
+      response.setHeader("X-Sefaz-UltNSU", String(result.ultNSU || ""));
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      return response.status(200).send(
+        JSON.stringify({
+          ok: true,
+          documentos: result.docs.map((doc) => ({
+            nsu: doc.nsu,
+            schema: doc.schema,
+            xml: doc.xml,
+          })),
+          ultNSU: result.ultNSU,
+          atingiuFim: result.atingiuFim,
+        }),
+      );
+    }
+
+    if (
+      route[0] === "consulta" &&
+      ["nfe", "cte"].includes(route[1]) &&
+      /^\d{44}$/.test(route[2] || "")
+    ) {
+      if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
+        return response.status(503).json({ error: "Certificado A1 não configurado" });
+      const { consultarChaveComCertificado } = await import(
+        "../backend/services/sefaz-distribuicao.js"
+      );
+      const xml = await consultarChaveComCertificado({
+        pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
+        passphrase: process.env.SEFAZ_PFX_PASSWORD,
+        uf: process.env.SEFAZ_UF || "MG",
+        ambiente: "producao",
+        cnpjOuCpf: process.env.SEFAZ_CNPJ,
+        chave: route[2],
+      });
+      return response.json({
+        ok: true,
+        status: "Documento localizado na Distribuição DF-e",
+        provider: "sefaz",
+        chave: route[2],
+        xml,
+      });
+    }
+
     if (route[0] === "docs" && request.method === "GET") {
       if (route.length === 1) {
         const result = await pool.query(
