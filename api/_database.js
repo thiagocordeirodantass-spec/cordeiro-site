@@ -90,6 +90,31 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS documents_empresa_idx ON documents(empresa_id);
       CREATE INDEX IF NOT EXISTS documents_emissao_idx ON documents(data_emissao);
+      CREATE TABLE IF NOT EXISTS feedback (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        username TEXT NOT NULL,
+        categoria TEXT NOT NULL DEFAULT 'outro',
+        assunto TEXT,
+        mensagem TEXT NOT NULL,
+        anonimo BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'aberto',
+        resposta TEXT,
+        respondido_por TEXT,
+        respondido_em TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS user_messages (
+        id BIGSERIAL PRIMARY KEY,
+        sender_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipient_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS messages_pair_idx
+        ON user_messages(sender_id, recipient_id, created_at);
     `);
   }
   return schemaReady;
