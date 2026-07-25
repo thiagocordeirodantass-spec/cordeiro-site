@@ -400,25 +400,35 @@ export default async function handler(request, response) {
       const { consultarChaveComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
-      const xml = await consultarChaveComCertificado({
-        pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
-        passphrase: process.env.SEFAZ_PFX_PASSWORD,
-        uf: process.env.SEFAZ_UF || "MG",
-        ambiente: "producao",
-        cnpjOuCpf: process.env.SEFAZ_CNPJ,
-        chave: route[2],
-      });
+      let xml=null,cancelled=false;
+      try{
+        xml = await consultarChaveComCertificado({
+          pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
+          passphrase: process.env.SEFAZ_PFX_PASSWORD,
+          uf: process.env.SEFAZ_UF || "MG",
+          ambiente: "producao",
+          cnpjOuCpf: process.env.SEFAZ_CNPJ,
+          chave: route[2],
+        });
+      }catch(error){
+        if(/cStat 653|NF-e Cancelada/i.test(error.message||""))cancelled=true;
+        else throw error;
+      }
       const kind=route[1].toUpperCase();
       await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
-        SELECT $1,$2,$3::text,'importado',$4,'sefaz-consulta',$5,$6
+        SELECT $1,$2,$3::text,$4,$5,'sefaz-consulta',$6,$7
         WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
-        [user.empresa_ativa_id,kind,route[2],xml,`${route[2]}.xml`,user.id]);
+        [user.empresa_ativa_id,kind,route[2],cancelled?"cancelado":"importado",xml,
+          cancelled?null:`${route[2]}.xml`,user.id]);
       return response.json({
         ok: true,
-        status: "Documento localizado na Distribuição DF-e",
+        status: cancelled
+          ?"NF-e cancelada. A SEFAZ não disponibiliza mais o XML (cStat 653)."
+          :"Documento localizado na Distribuição DF-e",
         provider: "sefaz",
         chave: route[2],
         xml,
+        cancelled,
       });
     }
 
@@ -533,6 +543,8 @@ export default async function handler(request, response) {
     console.error("api error", error);
     if(/cStat 656|Consumo Indevido/i.test(error.message||""))
       return response.status(429).json({error:"A SEFAZ bloqueou temporariamente consultas repetidas por NSU. Aguarde 1 hora e continue a partir do último NSU."});
+    if(/cStat 653|NF-e Cancelada/i.test(error.message||""))
+      return response.status(409).json({error:"NF-e cancelada: a SEFAZ não disponibiliza mais o XML para download (cStat 653)."});
     return response.status(error.code === "23505" ? 400 : 500).json({
       error: error.code === "23505" ? "Registro já cadastrado" : "Erro interno da API",
     });
