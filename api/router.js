@@ -17,6 +17,7 @@ async function authenticated(request) {
       WHERE s.id=$1 AND s.expires_at>NOW() AND u.ativo=TRUE`,
     [sid],
   );
+  if(result.rowCount) await pool.query("UPDATE sessions SET last_seen_at=NOW() WHERE id=$1",[sid]);
   return result.rows[0] || null;
 }
 function hash(password) {
@@ -181,7 +182,8 @@ export default async function handler(request, response) {
       if (route.length === 1 && request.method === "GET") {
         const result = await pool.query(
           `SELECT u.id,u.username,u.nome,u.email,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
-            EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()) online,
+            EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
+              AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
             eu.empresa_id,eu.permissoes FROM users u LEFT JOIN empresa_users eu ON eu.user_id=u.id
             ORDER BY u.nome,u.username`,
         );
@@ -365,8 +367,8 @@ export default async function handler(request, response) {
         const chave=match?.[1]; if(!chave) continue;
         const kind=doc.xml.includes("<CTe")||doc.xml.includes("<cteProc")?"CTE":"NFE";
         const inserted=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
-          SELECT $1,$2,$3,'importado',$4,'sefaz-mtls-auto',$5,$6
-          WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3 AND empresa_id IS NOT DISTINCT FROM $1)`,
+          SELECT $1,$2,$3::text,'importado',$4,'sefaz-mtls-auto',$5,$6
+          WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
           [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`,user.id]);
         saved+=inserted.rowCount;
       }
@@ -408,8 +410,8 @@ export default async function handler(request, response) {
       });
       const kind=route[1].toUpperCase();
       await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
-        SELECT $1,$2,$3,'importado',$4,'sefaz-consulta',$5,$6
-        WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3 AND empresa_id IS NOT DISTINCT FROM $1)`,
+        SELECT $1,$2,$3::text,'importado',$4,'sefaz-consulta',$5,$6
+        WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
         [user.empresa_ativa_id,kind,route[2],xml,`${route[2]}.xml`,user.id]);
       return response.json({
         ok: true,
@@ -422,14 +424,27 @@ export default async function handler(request, response) {
 
     if (route[0] === "docs" && request.method === "GET") {
       if (route.length === 1) {
-        const result = await pool.query(
+        const page=Math.max(1,Number(request.query.page)||1);
+        const limit=Math.min(100,Math.max(10,Number(request.query.limit)||25));
+        const offset=(page-1)*limit;
+        const q=String(request.query.q||"").trim();
+        const kind=String(request.query.kind||"").toUpperCase();
+        const status=String(request.query.status||"");
+        const filters=`($2='' OR d.kind=$2) AND ($3='' OR d.status=$3) AND
+          ($4='' OR d.chave ILIKE $5 OR d.numero ILIKE $5 OR d.remetente_nome ILIKE $5 OR
+           d.destinatario_nome ILIKE $5 OR d.emitente_razao_social ILIKE $5 OR d.emitente_cnpj ILIKE $5)`;
+        const values=[user.empresa_ativa_id,kind,status,q,`%${q}%`];
+        const [result,count]=await Promise.all([pool.query(
           `SELECT d.*,COALESCE(u.nome,u.username) AS created_by_name FROM documents d
             LEFT JOIN users u ON u.id=d.created_by
             WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
-            ORDER BY d.data_emissao DESC NULLS LAST,d.id DESC LIMIT 500`,
-          [user.empresa_ativa_id],
-        );
-        return response.json({ items: result.rows, total: result.rowCount });
+              AND ${filters}
+            ORDER BY d.data_emissao DESC NULLS LAST,d.id DESC LIMIT $6 OFFSET $7`,
+          [...values,limit,offset],
+        ),pool.query(`SELECT COUNT(*)::int total FROM documents d
+          WHERE ($1::bigint IS NULL OR d.empresa_id=$1) AND ${filters}`,values)]);
+        return response.json({items:result.rows,total:count.rows[0].total,page,limit,
+          pages:Math.max(1,Math.ceil(count.rows[0].total/limit))});
       }
       const result = await pool.query(
         "SELECT * FROM documents WHERE id=$1 AND ($2::bigint IS NULL OR empresa_id=$2)",
@@ -463,20 +478,40 @@ export default async function handler(request, response) {
            ORDER BY data_emissao DESC NULLS LAST`,
         [user.empresa_ativa_id],
       );
+      const xmlValue=(xml,name)=>String(xml||"").match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)<\\/${name}>`,"i"))?.[1]?.trim()||"";
+      const reportRows=result.rows.map(row=>({
+        tipo:row.kind,chave:row.chave,numero:row.numero,serie:xmlValue(row.xml_data,"serie"),
+        emissao:row.data_emissao,valor_total:row.valor_total,status:row.status,
+        emitente:row.remetente_nome||xmlValue(row.xml_data,"xNome"),
+        emitente_cnpj:xmlValue(row.xml_data,"CNPJ"),emitente_ie:xmlValue(row.xml_data,"IE"),
+        destinatario:row.destinatario_nome,destinatario_documento:xmlValue(row.xml_data,"CPF"),
+        natureza_operacao:xmlValue(row.xml_data,"natOp"),cfop:xmlValue(row.xml_data,"CFOP"),
+        uf_origem:xmlValue(row.xml_data,"UFIni"),uf_destino:xmlValue(row.xml_data,"UFFim"),
+        protocolo:xmlValue(row.xml_data,"nProt"),valor_produtos:xmlValue(row.xml_data,"vProd"),
+        valor_frete:xmlValue(row.xml_data,"vFrete"),valor_desconto:xmlValue(row.xml_data,"vDesc"),
+        base_icms:xmlValue(row.xml_data,"vBC"),valor_icms:xmlValue(row.xml_data,"vICMS"),
+        valor_ipi:xmlValue(row.xml_data,"vIPI"),valor_pis:xmlValue(row.xml_data,"vPIS"),
+        valor_cofins:xmlValue(row.xml_data,"vCOFINS"),arquivo:row.file_name||`${row.chave||row.id}.xml`,
+      }));
+      const reportColumns=Object.keys(reportRows[0]||{
+        tipo:"",chave:"",numero:"",serie:"",emissao:"",valor_total:"",status:"",emitente:"",
+        emitente_cnpj:"",emitente_ie:"",destinatario:"",destinatario_documento:"",natureza_operacao:"",
+        cfop:"",uf_origem:"",uf_destino:"",protocolo:"",valor_produtos:"",valor_frete:"",
+        valor_desconto:"",base_icms:"",valor_icms:"",valor_ipi:"",valor_pis:"",valor_cofins:"",arquivo:"",
+      });
       if (route[1] === "csv") {
-        const columns = ["kind","chave","numero","data_emissao","valor_total","status","remetente_nome","destinatario_nome"];
         const escape = (value) => `"${String(value ?? "").replaceAll('"','""')}"`;
-        const csv = [columns.join(";"), ...result.rows.map((row) => columns.map((key) => escape(row[key])).join(";"))].join("\r\n");
+        const csv = [reportColumns.join(";"), ...reportRows.map((row) => reportColumns.map((key) => escape(row[key])).join(";"))].join("\r\n");
         response.setHeader("Content-Type", "text/csv; charset=utf-8");
         response.setHeader("Content-Disposition", "attachment; filename=relatorio-fiscal.csv");
         return response.send(`\uFEFF${csv}`);
       }
       if(route[1]==="xlsx"){
         const {gerarXlsx,headerRow,dataRow}=await import("../backend/xlsx-writer.js");
-        const rows=[headerRow(["Tipo","Chave","Número","Emissão","Valor","Status","Emitente","Destinatário"]),
-          ...result.rows.map(row=>dataRow([row.kind,row.chave,row.numero,row.data_emissao,row.valor_total,row.status,
-            row.remetente_nome,row.destinatario_nome],[4]))];
-        const buffer=gerarXlsx([{name:"Documentos",rows,freezeHeader:true,colWidths:[12,48,14,20,16,18,32,32]}]);
+        const labels=reportColumns.map(key=>key.replaceAll("_"," ").replace(/\b\w/g,char=>char.toUpperCase()));
+        const rows=[headerRow(labels),...reportRows.map(row=>dataRow(reportColumns.map(key=>row[key])))];
+        const buffer=gerarXlsx([{name:"Documentos destrinchados",rows,freezeHeader:true,
+          colWidths:reportColumns.map(key=>key==="chave"?48:key.includes("nome")||["emitente","destinatario"].includes(key)?32:18)}]);
         response.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition",'attachment; filename="relatorio-fiscal.xlsx"');
         return response.send(buffer);
@@ -496,6 +531,8 @@ export default async function handler(request, response) {
     return response.status(404).json({ error: "Endpoint ainda não migrado" });
   } catch (error) {
     console.error("api error", error);
+    if(/cStat 656|Consumo Indevido/i.test(error.message||""))
+      return response.status(429).json({error:"A SEFAZ bloqueou temporariamente consultas repetidas por NSU. Aguarde 1 hora e continue a partir do último NSU."});
     return response.status(error.code === "23505" ? 400 : 500).json({
       error: error.code === "23505" ? "Registro já cadastrado" : "Erro interno da API",
     });

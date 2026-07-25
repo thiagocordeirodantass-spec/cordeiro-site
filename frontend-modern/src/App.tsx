@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  Bot,
   BarChart3,
   Bell,
   Building2,
   CloudDownload,
   FileDown,
   FileText,
+  Files,
   Gauge,
   LayoutDashboard,
+  Network,
   Link,
   Linkedin,
   LogOut,
@@ -16,6 +19,7 @@ import {
   MessageCircle,
   Moon,
   PackageSearch,
+  Radar,
   RefreshCw,
   Save,
   Search,
@@ -333,21 +337,22 @@ function Login({ done }: { done: (u: User) => void }) {
   );
 }
 const groups = [
-  ["Visão geral", [["dashboard", "Dashboard", LayoutDashboard]]],
+  ["Visão operacional", [["dashboard", "Cockpit fiscal", Radar]]],
   [
-    "Documentos",
+    "Gestão documental",
     [
-      ["documents", "Documentos fiscais", FileText],
-      ["reports", "Relatórios", BarChart3],
-      ["certificates", "Certidões CND", ShieldCheck],
+      ["documents", "Central de documentos", Files],
+      ["import", "Central XML", UploadCloud],
+      ["reports", "Inteligência fiscal", BarChart3],
+      ["certificates", "Regularidade CND", ShieldCheck],
     ],
   ],
-  ["Operações", [["integrations", "SEFAZ e integrações", CloudDownload]]],
+  ["Integrações", [["integrations", "Hub SEFAZ", Network]]],
   [
-    "Administração",
+    "Governança",
     [
       ["companies", "Empresas", Building2],
-      ["users", "Usuários", Users],
+      ["users", "Controle de acessos", UserRound],
     ],
   ],
 ] as any[];
@@ -650,28 +655,31 @@ function FiscalFilters({
 function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [items, setItems] = useState<any[]>([]),
     [q, setQ] = useState(""),
+    [page,setPage]=useState(1),
+    [total,setTotal]=useState(0),
+    [pages,setPages]=useState(1),
     [busy, setBusy] = useState(true),
     [selected, setSelected] = useState<any>(null),
     [showFilters, setShowFilters] = useState(false),
     [filters, setFilters] = useState<Record<string, string>>({});
   const load = useCallback(() => {
     setBusy(true);
-    const params = new URLSearchParams({ limit: "500", ...filters });
+    const params = new URLSearchParams({limit:"25",page:String(page),q,...filters});
     api<any>(`/api/docs?${params}`)
-      .then((r) =>
+      .then((r) => {
         setItems(
           Array.isArray(r) ? r : r.items || r.docs || r.documentos || [],
-        ),
-      )
+        );
+        setTotal(Array.isArray(r)?r.length:Number(r.total||0));
+        setPages(Array.isArray(r)?1:Number(r.pages||1));
+      })
       .catch((e) => toast(e.message, true))
       .finally(() => setBusy(false));
-  }, [toast, filters]);
+  }, [toast, filters,page,q]);
   useEffect(() => {
     load();
   }, [load]);
-  const rows = items.filter((x) =>
-    JSON.stringify(x).toLowerCase().includes(q.toLowerCase()),
-  );
+  const rows = items;
   const exportParams = new URLSearchParams(filters);
   const setFilter = (name: string, value: string) =>
     setFilters((current) => ({ ...current, [name]: value }));
@@ -731,7 +739,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
       <Head
         tag="DOCUMENTOS"
         title="Documentos fiscais"
-        text={`${rows.length} registros encontrados`}
+        text={`${total} registros encontrados · página ${page} de ${pages}`}
       />
       <Panel>
         <div className="document-downloads">
@@ -788,7 +796,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <Search />
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {setQ(e.target.value);setPage(1)}}
               placeholder="Buscar por chave, número, emitente ou CNPJ..."
             />
           </div>
@@ -878,6 +886,14 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </table>
           {!busy && !rows.length && <Empty />}
         </div>
+        {pages>1&&<nav className="pagination" aria-label="Paginação de documentos">
+          <button className="secondary" disabled={page===1} onClick={()=>setPage(value=>value-1)}>← Anterior</button>
+          <div>{Array.from({length:Math.min(7,pages)},(_,index)=>{
+            const start=Math.max(1,Math.min(page-3,pages-6)),number=start+index;
+            return <button className={number===page?"active":""} key={number} onClick={()=>setPage(number)}>{number}</button>;
+          })}</div>
+          <button className="secondary" disabled={page===pages} onClick={()=>setPage(value=>value+1)}>Próxima →</button>
+        </nav>}
       </Panel>
       {selected && (
         <div
@@ -974,10 +990,11 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     </>
   );
 }
-function Importer({ toast }: { toast: (s: string, e?: boolean) => void }) {
+function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; done:()=>void }) {
   const [files, setFiles] = useState<File[]>([]),
     [drag, setDrag] = useState(false),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [progress,setProgress]=useState({current:0,total:0,imported:0});
   const add = (f: FileList | null) =>
     setFiles((v) => [
       ...v,
@@ -986,13 +1003,29 @@ function Importer({ toast }: { toast: (s: string, e?: boolean) => void }) {
       ),
     ]);
   async function send() {
-    const body = new FormData();
-    files.forEach((f) => body.append("files", f));
+    if(!files.length)return;
+    const batches:File[][]=[];let current:File[]=[],size=0;
+    for(const file of files){
+      if(file.size>3_500_000){toast(`${file.name}: arquivo maior que 3,5 MB`,true);continue}
+      if(size+file.size>3_500_000&&current.length){batches.push(current);current=[];size=0}
+      current.push(file);size+=file.size;
+    }
+    if(current.length)batches.push(current);
+    if(!batches.length)return;
     setBusy(true);
+    setProgress({current:0,total:batches.length,imported:0});
     try {
-      const r = await api<any>("/api/docs/upload", { method: "POST", body });
-      toast(`${r.importados ?? files.length} documento(s) processado(s)`);
+      let imported=0;
+      for(let index=0;index<batches.length;index++){
+        const body=new FormData();
+        batches[index].forEach(file=>body.append("files",file));
+        const response=await api<any>("/api/docs/upload",{method:"POST",body});
+        imported+=Number(response.importados??response.items?.length??0);
+        setProgress({current:index+1,total:batches.length,imported});
+      }
+      toast(`${imported} documento(s) importado(s) e disponível(is) em Documentos`);
       setFiles([]);
+      done();
     } catch (e) {
       toast((e as Error).message, true);
     } finally {
@@ -1032,6 +1065,7 @@ function Importer({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <h3>Arraste seus arquivos XML aqui</h3>
           <p>ou clique para selecionar no computador</p>
           <small>Até 10.000 documentos por lote</small>
+          <small>Grandes seleções são divididas e enviadas automaticamente em lotes seguros.</small>
         </label>
         {files.length > 0 && (
           <div className="queue">
@@ -1045,7 +1079,8 @@ function Importer({ toast }: { toast: (s: string, e?: boolean) => void }) {
               Limpar
             </button>
             <button className="primary" onClick={send} disabled={busy}>
-              {busy ? <RefreshCw className="spin" /> : <UploadCloud />}Processar
+              {busy ? <RefreshCw className="spin" /> : <UploadCloud />}
+              {busy?`Enviando ${progress.current}/${progress.total} · ${progress.imported} importados`:"Importar e abrir Documentos"}
             </button>
           </div>
         )}
@@ -1144,6 +1179,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [recipientCompany, setRecipientCompany] = useState(""),
     [recipientEmail, setRecipientEmail] = useState(""),
     [filter, setFilter] = useState(""),
+    [cndPage,setCndPage]=useState(1),
     [form, setForm] = useState<any>(null),
     [cndPdf, setCndPdf] = useState<File | null>(null),
     [uploadId, setUploadId] = useState<number | null>(null),
@@ -1251,6 +1287,8 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       .toLowerCase()
       .includes(filter.toLowerCase()),
   );
+  const cndPages=Math.max(1,Math.ceil(visible.length/12));
+  const visiblePage=visible.slice((cndPage-1)*12,cndPage*12);
   const typeLabel: Record<string, string> = {
     federal: "Federal",
     estadual: "Estadual",
@@ -1333,7 +1371,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <Search />
           <input
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={(e) => {setFilter(e.target.value);setCndPage(1)}}
             placeholder="Buscar empresa, tipo, número ou status..."
           />
           <button className="secondary" onClick={load}>
@@ -1341,8 +1379,8 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </button>
         </div>
         <div className="cnd-grid">
-          {visible.length ? (
-            visible.map((item) => {
+          {visiblePage.length ? (
+            visiblePage.map((item) => {
               const days = item.data_validade
                 ? Math.ceil(
                     (new Date(`${item.data_validade}T23:59:59`).getTime() -
@@ -1434,6 +1472,14 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <Empty />
           )}
         </div>
+        {cndPages>1&&<nav className="pagination" aria-label="Paginação de certidões">
+          <button className="secondary" disabled={cndPage===1} onClick={()=>setCndPage(value=>value-1)}>← Anterior</button>
+          <div>{Array.from({length:Math.min(7,cndPages)},(_,index)=>{
+            const start=Math.max(1,Math.min(cndPage-3,cndPages-6)),number=start+index;
+            return <button className={number===cndPage?"active":""} key={number} onClick={()=>setCndPage(number)}>{number}</button>;
+          })}</div>
+          <button className="secondary" disabled={cndPage===cndPages} onClick={()=>setCndPage(value=>value+1)}>Próxima →</button>
+        </nav>}
         <input
           ref={fileInput}
           hidden
@@ -3621,9 +3667,7 @@ function Admin({
                       <dt>Último acesso</dt>
                       <dd>
                         {userItem.ultimo_login
-                          ? new Date(userItem.ultimo_login).toLocaleDateString(
-                              "pt-BR",
-                            )
+                          ? new Date(userItem.ultimo_login).toLocaleString("pt-BR")
                           : "Primeiro acesso"}
                       </dd>
                     </div>
@@ -4164,7 +4208,7 @@ export default function App() {
         <main>
           {page === "dashboard" && <Dashboard />}
           {page === "documents" && <Documents toast={toast} />}{" "}
-          {page === "import" && <Importer toast={toast} />}{" "}
+          {page === "import" && <Importer toast={toast} done={()=>go("documents")} />}{" "}
           {page === "reports" && <Reports toast={toast} />}{" "}
           {page === "certificates" && <Certificates toast={toast} />}{" "}
           {page === "integrations" && <Integrations toast={toast} />}{" "}

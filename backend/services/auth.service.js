@@ -56,6 +56,7 @@ export function findSession(token) {
     WHERE s.id = ? AND u.ativo = 1
   `).get(token);
   if (!row) return null;
+  db.prepare("UPDATE sessions SET last_seen_at = datetime('now') WHERE id = ?").run(token);
   if (new Date(row.expires_at).getTime() < Date.now()) {
     deleteSession(token);
     return null;

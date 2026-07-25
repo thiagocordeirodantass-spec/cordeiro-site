@@ -109,6 +109,7 @@ try { ensureColumn("empresas", "requer_certificado", "INTEGER NOT NULL DEFAULT 0
 try { ensureColumn("sessions", "auth_method", "TEXT NOT NULL DEFAULT 'password'"); } catch (e) { console.error("[migration] auth_method falhou:", e.message); }
 try { ensureColumn("empresa_users", "permissoes", `TEXT NOT NULL DEFAULT '{"documentos_visualizar":true,"documentos_incluir":true,"documentos_excluir":false,"cnd_editar":true,"sefaz_consultar":true,"relatorios_gerar":true}'`); } catch (e) { console.error("[migration] permissoes falhou:", e.message); }
 try { ensureColumn("documents", "created_by", "INTEGER REFERENCES users(id)"); } catch (e) { console.error("[migration] documents.created_by falhou:", e.message); }
+try { ensureColumn("sessions", "last_seen_at", "TEXT"); } catch (e) { console.error("[migration] sessions.last_seen_at falhou:", e.message); }
 try { ensureColumn("documents", "updated_by", "INTEGER REFERENCES users(id)"); } catch (e) { console.error("[migration] documents.updated_by falhou:", e.message); }
 try { db.exec(`CREATE TABLE IF NOT EXISTS empresa_activity_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT,empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,

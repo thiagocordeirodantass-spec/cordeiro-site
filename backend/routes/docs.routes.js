@@ -66,7 +66,7 @@ router.get("/_stats", (req, res) => {
 router.get("/", (req, res) => {
   const {
     kind, status, q, uf, dateFrom, dateTo, papel, meuCnpj, source,
-    limit = 200, offset = 0,
+    limit = 25, offset = 0, page = 1,
     // Filtros novos (item 9 da lista de requisitos)
     emitenteCnpj, emitenteRazaoSocial, emitenteNomeFantasia,
     destinatarioNome, destinatarioDoc,
@@ -176,8 +176,14 @@ router.get("/", (req, res) => {
     ORDER BY datetime(data_emissao) DESC, id DESC
     LIMIT ? OFFSET ?
   `;
-  params.push(Number(limit), Number(offset));
-  res.json(db.prepare(sql).all(...params));
+  const safeLimit=Math.min(100,Math.max(10,Number(limit)||25));
+  const safeOffset=req.query.page ? (Math.max(1,Number(page)||1)-1)*safeLimit : Math.max(0,Number(offset)||0);
+  const countParams=[...params];
+  params.push(safeLimit,safeOffset);
+  const items=db.prepare(sql).all(...params);
+  const total=db.prepare(`SELECT COUNT(*) total FROM documents ${where.length ? "WHERE "+where.join(" AND ") : ""}`).get(...countParams).total;
+  res.json({items,total:Number(total),page:Math.floor(safeOffset/safeLimit)+1,limit:safeLimit,
+    pages:Math.max(1,Math.ceil(Number(total)/safeLimit))});
 });
 
 // ---- Detalhe
