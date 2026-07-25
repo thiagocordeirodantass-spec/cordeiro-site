@@ -43,6 +43,7 @@ export function ensureSchema() {
         user_agent TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS empresa_ativa_id BIGINT;
       CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
       CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
       CREATE TABLE IF NOT EXISTS email_verifications (
@@ -57,6 +58,38 @@ export function ensureSchema() {
         expires_at TIMESTAMPTZ NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS empresas (
+        id BIGSERIAL PRIMARY KEY,
+        cnpj VARCHAR(14) UNIQUE,
+        nome VARCHAR(160) NOT NULL,
+        nome_fantasia VARCHAR(160),
+        ie VARCHAR(30),
+        regime_tributario VARCHAR(30),
+        ambiente VARCHAR(20) NOT NULL DEFAULT 'producao',
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS empresa_users (
+        empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        papel VARCHAR(20) NOT NULL DEFAULT 'operador',
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        PRIMARY KEY (empresa_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS documents (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id BIGINT REFERENCES empresas(id) ON DELETE SET NULL,
+        kind VARCHAR(10),
+        chave VARCHAR(44),
+        numero TEXT,
+        data_emissao TIMESTAMPTZ,
+        valor_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+        status VARCHAR(30),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS documents_empresa_idx ON documents(empresa_id);
+      CREATE INDEX IF NOT EXISTS documents_emissao_idx ON documents(data_emissao);
     `);
   }
   return schemaReady;
