@@ -171,6 +171,10 @@ export function ensureSchema() {
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_name TEXT;
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS remetente_nome TEXT;
       ALTER TABLE documents ADD COLUMN IF NOT EXISTS destinatario_nome TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS serie TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS protocolo TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS remetente_doc TEXT;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS destinatario_doc TEXT;
       CREATE TABLE IF NOT EXISTS feedback (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

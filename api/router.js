@@ -9,6 +9,23 @@ function token(request) {
   const match = String(request.headers.cookie || "").match(/(?:^|;\s*)sid=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
+function fiscalSummary(xml){
+  const source=String(xml||"");
+  const first=(name,scope=source)=>scope.match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)<\\/${name}>`,"i"))?.[1]?.trim()||null;
+  const block=(name)=>source.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,"i"))?.[1]||"";
+  const emit=block("emit"),dest=block("dest"),isCte=/<(?:CTe|cteProc|infCte)\b/i.test(source);
+  return {
+    numero:first(isCte?"nCT":"nNF"),
+    serie:first("serie"),
+    dataEmissao:first("dhEmi")||first("dEmi"),
+    valor:Number(first(isCte?"vTPrest":"vNF")||0),
+    emitente:first("xNome",emit),
+    emitenteDoc:first("CNPJ",emit)||first("CPF",emit),
+    destinatario:first("xNome",dest),
+    destinatarioDoc:first("CNPJ",dest)||first("CPF",dest),
+    protocolo:first("nProt"),
+  };
+}
 async function authenticated(request) {
   const sid = token(request);
   if (!sid) return null;
@@ -370,6 +387,15 @@ export default async function handler(request, response) {
           SELECT $1,$2,$3::text,'importado',$4,'sefaz-mtls-auto',$5,$6
           WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
           [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`,user.id]);
+        const summary=fiscalSummary(doc.xml);
+        await pool.query(`UPDATE documents SET numero=COALESCE($3,numero),serie=COALESCE($4,serie),data_emissao=COALESCE($5,data_emissao),
+          valor_total=COALESCE($6,valor_total),remetente_nome=COALESCE($7,remetente_nome),
+          remetente_doc=COALESCE($8,remetente_doc),destinatario_nome=COALESCE($9,destinatario_nome),
+          destinatario_doc=COALESCE($10,destinatario_doc),protocolo=COALESCE($11,protocolo),
+          status='importado',xml_data=COALESCE($12,xml_data)
+          WHERE empresa_id IS NOT DISTINCT FROM $1 AND chave=$2::text`,
+          [user.empresa_ativa_id,chave,summary.numero,summary.serie,summary.dataEmissao,summary.valor,
+            summary.emitente,summary.emitenteDoc,summary.destinatario,summary.destinatarioDoc,summary.protocolo,doc.xml]);
         saved+=inserted.rowCount;
       }
       response.setHeader("X-Sefaz-Total", String(result.docs.length));
@@ -415,11 +441,20 @@ export default async function handler(request, response) {
         else throw error;
       }
       const kind=route[1].toUpperCase();
+      const summary=fiscalSummary(xml);
       await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
         SELECT $1,$2,$3::text,$4,$5,'sefaz-consulta',$6,$7
         WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
         [user.empresa_ativa_id,kind,route[2],cancelled?"cancelado":"importado",xml,
           cancelled?null:`${route[2]}.xml`,user.id]);
+      if(xml)await pool.query(`UPDATE documents SET numero=COALESCE($3,numero),serie=COALESCE($4,serie),data_emissao=COALESCE($5,data_emissao),
+        valor_total=COALESCE($6,valor_total),remetente_nome=COALESCE($7,remetente_nome),
+        remetente_doc=COALESCE($8,remetente_doc),destinatario_nome=COALESCE($9,destinatario_nome),
+        destinatario_doc=COALESCE($10,destinatario_doc),protocolo=COALESCE($11,protocolo),
+        status='importado',xml_data=COALESCE($12,xml_data)
+        WHERE empresa_id IS NOT DISTINCT FROM $1 AND chave=$2::text`,
+        [user.empresa_ativa_id,route[2],summary.numero,summary.serie,summary.dataEmissao,summary.valor,
+          summary.emitente,summary.emitenteDoc,summary.destinatario,summary.destinatarioDoc,summary.protocolo,xml]);
       return response.json({
         ok: true,
         status: cancelled

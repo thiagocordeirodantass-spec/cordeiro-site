@@ -2372,6 +2372,43 @@ aside nav section button:hover svg,aside nav section button.active svg{backgroun
 @media(max-width:900px){.company-grid{grid-template-columns:1fr!important}.company-card>dl{min-width:150px}.online-presence{min-width:0}.online-presence small{display:none}}
 @media(max-width:620px){.company-card{grid-template-columns:1fr!important}.company-card>dl{grid-column:1}.company-branches>div{grid-template-columns:34px 1fr!important}
   .company-branches>div button{grid-column:auto}.online-presence{display:none!important}}
+
+/* Solid UI — maximum readability */
+:root{--bg:#f3f6f8;--panel:#ffffff;--line:#dbe4e8;--text:#14231f;--muted:#667a74;--field:#f7f9fa}
+:root[data-theme="dark"]{--bg:#071015;--panel:#101a20;--line:#26353d;--text:#f2faf7;--muted:#91a39e;--field:#0b1419}
+body,.workspace{background:var(--bg)!important;background-image:none!important}
+.workspace>.top{background:var(--panel)!important;backdrop-filter:none!important;border-bottom:1px solid var(--line)!important}
+.panel,.company-card,.user-card,.cnd-card,.admin-stats article,.promo,.advanced-filters,.official-note,.sefaz-command,
+.report-grid>*,.feedback-modal,.assistant,.messenger-panel,.notification-panel{background:var(--panel)!important;
+  backdrop-filter:none!important;box-shadow:0 12px 32px #05100d0c!important;border-color:var(--line)!important}
+:root[data-theme="dark"] .panel,:root[data-theme="dark"] .company-card,:root[data-theme="dark"] .user-card,
+:root[data-theme="dark"] .cnd-card,:root[data-theme="dark"] .feedback-modal{box-shadow:0 14px 38px #00000030!important}
+.shell>aside{background:#0a1718!important}.shell>aside:after,.company-card:before,.user-card:before,.cnd-card:before{display:none!important}
+input,select,textarea,.toolbar>div,.query-provider{background:var(--field)!important;border:1px solid var(--line)!important;color:var(--text)!important;
+  box-shadow:none!important}input:focus,select:focus,textarea:focus{border-color:#1bb187!important;box-shadow:0 0 0 3px #1bb18718!important}
+button{transition:background .16s,border-color .16s,color .16s,transform .16s!important}
+button.primary,.primary{background:#118c6b!important;color:#fff!important;border:1px solid #118c6b!important;
+  box-shadow:0 7px 17px #118c6b25!important}button.primary:hover,.primary:hover{background:#0d7559!important;transform:translateY(-1px)}
+button.secondary,.secondary{background:var(--panel)!important;color:var(--text)!important;border:1px solid var(--line)!important;box-shadow:none!important}
+button.secondary:hover,.secondary:hover{background:var(--field)!important;border-color:#7e9690!important}
+button.danger,.danger-button,.square.danger{background:#fff1f3!important;color:#c9364c!important;border-color:#f4bdc6!important}
+:root[data-theme="dark"] button.danger,:root[data-theme="dark"] .danger-button,:root[data-theme="dark"] .square.danger{background:#32151b!important;color:#ff8796!important;border-color:#67313b!important}
+.table{background:var(--panel)!important;border-color:var(--line)!important}.table thead{background:var(--field)!important}
+.table tbody tr{background:var(--panel)!important}.table tbody tr:hover{background:var(--field)!important}
+.modal-backdrop{background:#06100edb!important;backdrop-filter:none!important}.feedback-modal{background-image:none!important}
+.user-data-section,.user-permissions,.module-config>label,.permission-tile,.company-card>dl>div,.company-branches,
+.module-tabs,.module-replication{background:var(--field)!important}.permission-tile:has(input:checked){background:#e9f8f3!important}
+:root[data-theme="dark"] .permission-tile:has(input:checked){background:#112d25!important}
+.assistant-button{opacity:1!important;filter:none!important}.assistant{background:var(--panel)!important}
+.login-side,.auth-card{background:var(--panel)!important;backdrop-filter:none!important}.auth-card{border:1px solid var(--line)!important;
+  box-shadow:0 22px 55px #06110e18!important}.login-art{animation:none!important;background:#0b211d!important}
+.login-art:after{opacity:.45}.source-badge{background:var(--field)!important}.online-presence{background:#eefaf6!important}
+:root[data-theme="dark"] .online-presence{background:#102820!important}
+.module-modal>header:before,.modal-hero-icon{background:#118c6b!important;box-shadow:none!important;color:#fff!important}
+.module-tabs button.active{background:#e9f8f3!important;border-color:#a8dfcf!important;color:#0e6d54!important}
+:root[data-theme="dark"] .module-tabs button.active{background:#112d25!important;border-color:#285c4d!important;color:#72e2c1!important}
+.pagination>div button{background:var(--panel)!important}.pagination>div button.active{background:#118c6b!important;box-shadow:none!important}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 @media(max-width:720px){.auth-card{padding:25px 20px}.login-side{background:var(--bg)}}
 .company-card:has(.company-branches){grid-column:1/-1}
 .company-branches{margin:4px -2px -2px;padding-top:16px;border-top:1px solid var(--line)}
