@@ -26,6 +26,14 @@ function fiscalSummary(xml){
     protocolo:first("nProt"),
   };
 }
+function sourceInfoServer(value){
+  const key=String(value||"system").toLowerCase();
+  if(key==="upload")return "Importação manual";
+  if(key==="paste")return "Inclusão manual";
+  if(key.includes("mtls-auto"))return "SEFAZ automática";
+  if(key.includes("sefaz"))return "Consulta SEFAZ por chave";
+  return "Sistema";
+}
 async function authenticated(request) {
   const sid = token(request);
   if (!sid) return null;
@@ -61,7 +69,20 @@ export default async function handler(request, response) {
     const route = parts(request);
 
     if (route[0] === "news" && request.method === "GET")
-      return response.json({ externos: [], curadas: [] });
+      return response.json({ externos: [], curadas: [
+        {id:"reforma",tagLabel:"REFORMA TRIBUTÁRIA",titulo:"Acompanhe a regulamentação da Reforma Tributária",
+          resumo:"Atualizações oficiais, legislação e orientações publicadas pelo Governo Federal.",
+          fonte:"Ministério da Fazenda",url:"https://www.gov.br/fazenda/pt-br/assuntos/reforma-tributaria",data:new Date().toISOString()},
+        {id:"receita",tagLabel:"RECEITA FEDERAL",titulo:"Normas e orientações tributárias",
+          resumo:"Comunicados, serviços e mudanças que afetam empresas e profissionais contábeis.",
+          fonte:"Receita Federal",url:"https://www.gov.br/receitafederal/pt-br",data:new Date().toISOString()},
+        {id:"sped",tagLabel:"SPED",titulo:"Escrituração e documentos digitais",
+          resumo:"Publicações técnicas, tabelas, manuais e atualizações dos projetos SPED.",
+          fonte:"Portal SPED",url:"http://sped.rfb.gov.br/",data:new Date().toISOString()},
+        {id:"confaz",tagLabel:"ICMS",titulo:"Convênios, ajustes SINIEF e atos COTEPE",
+          resumo:"Acompanhe normas nacionais relacionadas ao ICMS e documentos fiscais eletrônicos.",
+          fonte:"CONFAZ",url:"https://www.confaz.fazenda.gov.br/",data:new Date().toISOString()},
+      ] });
 
     const user = await authenticated(request);
     if (!user) return response.status(401).json({ error: "Não autenticado" });
@@ -468,6 +489,14 @@ export default async function handler(request, response) {
     }
 
     if (route[0] === "docs" && request.method === "GET") {
+      if(route[1]==="import-log"){
+        const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.status,d.source,d.file_name,d.created_at,
+          COALESCE(u.nome,u.username,'Sistema / SEFAZ') created_by_name
+          FROM documents d LEFT JOIN users u ON u.id=d.created_by
+          WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
+          ORDER BY d.created_at DESC NULLS LAST,d.id DESC LIMIT 200`,[user.empresa_ativa_id]);
+        return response.json({items:result.rows,total:result.rowCount});
+      }
       if (route.length === 1) {
         const page=Math.max(1,Number(request.query.page)||1);
         const limit=Math.min(100,Math.max(10,Number(request.query.limit)||25));
@@ -518,13 +547,15 @@ export default async function handler(request, response) {
 
     if (route[0] === "relatorio") {
       const result = await pool.query(
-        `SELECT kind,chave,numero,data_emissao,valor_total,status,remetente_nome,destinatario_nome,xml_data
-           FROM documents WHERE ($1::bigint IS NULL OR empresa_id=$1)
-           ORDER BY data_emissao DESC NULLS LAST`,
+        `SELECT d.kind,d.chave,d.numero,d.data_emissao,d.valor_total,d.status,d.remetente_nome,d.destinatario_nome,
+           d.xml_data,d.source,d.file_name,d.created_at,COALESCE(u.nome,u.username,'Sistema / SEFAZ') created_by_name
+           FROM documents d LEFT JOIN users u ON u.id=d.created_by
+           WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
+           ORDER BY d.created_at DESC NULLS LAST`,
         [user.empresa_ativa_id],
       );
       const xmlValue=(xml,name)=>String(xml||"").match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)<\\/${name}>`,"i"))?.[1]?.trim()||"";
-      const reportRows=result.rows.map(row=>({
+      let reportRows=result.rows.map(row=>({
         tipo:row.kind,chave:row.chave,numero:row.numero,serie:xmlValue(row.xml_data,"serie"),
         emissao:row.data_emissao,valor_total:row.valor_total,status:row.status,
         emitente:row.remetente_nome||xmlValue(row.xml_data,"xNome"),
@@ -536,13 +567,22 @@ export default async function handler(request, response) {
         valor_frete:xmlValue(row.xml_data,"vFrete"),valor_desconto:xmlValue(row.xml_data,"vDesc"),
         base_icms:xmlValue(row.xml_data,"vBC"),valor_icms:xmlValue(row.xml_data,"vICMS"),
         valor_ipi:xmlValue(row.xml_data,"vIPI"),valor_pis:xmlValue(row.xml_data,"vPIS"),
-        valor_cofins:xmlValue(row.xml_data,"vCOFINS"),arquivo:row.file_name||`${row.chave||row.id}.xml`,
+        valor_cofins:xmlValue(row.xml_data,"vCOFINS"),origem:sourceInfoServer(row.source),
+        incluido_por:row.created_by_name,incluido_em:row.created_at,
+        arquivo:row.file_name||`${row.chave||"documento"}.xml`,
       }));
+      const model=String(request.query.modelo||"completo").toLowerCase();
+      if(model==="nfe")reportRows=reportRows.filter(row=>row.tipo==="NFE");
+      if(model==="cte")reportRows=reportRows.filter(row=>row.tipo==="CTE");
+      if(model==="cancelados")reportRows=reportRows.filter(row=>String(row.status).toLowerCase()==="cancelado");
+      if(model==="manual")reportRows=reportRows.filter(row=>/manual/i.test(row.origem));
+      if(model==="sefaz")reportRows=reportRows.filter(row=>/sefaz/i.test(row.origem));
       const reportColumns=Object.keys(reportRows[0]||{
         tipo:"",chave:"",numero:"",serie:"",emissao:"",valor_total:"",status:"",emitente:"",
         emitente_cnpj:"",emitente_ie:"",destinatario:"",destinatario_documento:"",natureza_operacao:"",
         cfop:"",uf_origem:"",uf_destino:"",protocolo:"",valor_produtos:"",valor_frete:"",
-        valor_desconto:"",base_icms:"",valor_icms:"",valor_ipi:"",valor_pis:"",valor_cofins:"",arquivo:"",
+        valor_desconto:"",base_icms:"",valor_icms:"",valor_ipi:"",valor_pis:"",valor_cofins:"",
+        origem:"",incluido_por:"",incluido_em:"",arquivo:"",
       });
       if (route[1] === "csv") {
         const escape = (value) => `"${String(value ?? "").replaceAll('"','""')}"`;

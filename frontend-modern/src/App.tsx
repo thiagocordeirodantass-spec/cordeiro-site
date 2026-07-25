@@ -423,82 +423,17 @@ function TeamActivity(){
     </article>)}</div>:<Empty/>}</Panel></>;
 }
 function Dashboard() {
-  const [k, setK] = useState<any>({}),
-    [months, setMonths] = useState<any[]>([]),
-    [busy, setBusy] = useState(true);
-  const load = useCallback(async () => {
-    setBusy(true);
-    try {
-      const [a, b] = await Promise.all([
-        api<any>("/api/dashboard/kpis"),
-        api<any>("/api/dashboard/por-mes?ultimos=8"),
-      ]);
-      setK(a);
-      setMonths(Array.isArray(b) ? b : b.items || b.data || []);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
-  const cards = [
-    ["Documentos", k.total ?? k.documentos ?? 0, FileText, "mint"],
-    ["Valor movimentado", brl(k.valor_total ?? k.valor), Gauge, "violet"],
-    ["Autorizados", k.autorizados ?? 0, ShieldCheck, "blue"],
-    ["Este mês", k.mes_atual ?? k.no_mes ?? 0, Activity, "amber"],
-  ] as any[];
   return (
     <>
       <Head
-        tag="VISÃO GERAL"
-        title="Dashboard"
-        text="Acompanhe os principais indicadores da operação."
-        action={
-          <button className="secondary" onClick={load}>
-            <RefreshCw className={busy ? "spin" : ""} />
-            Atualizar
-          </button>
-        }
+        tag="RADAR CONTÁBIL & FISCAL"
+        title="Cockpit de conhecimento"
+        text="Notícias, mudanças regulatórias e referências para a rotina fiscal e contábil."
       />
-      <div className="kpis">
-        {cards.map(([label, value, Icon, tone]) => (
-          <article className="kpi" key={label}>
-            <i className={tone}>
-              <Icon />
-            </i>
-            <div>
-              <small>{label}</small>
-              <strong>{value}</strong>
-              <em>Dados atualizados</em>
-            </div>
-          </article>
-        ))}
-      </div>
-      <Panel title="Movimentação mensal">
-        <div className="chart">
-          <ResponsiveContainer>
-            <AreaChart data={months}>
-              <defs>
-                <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#16a37b" stopOpacity=".35" />
-                  <stop offset="1" stopColor="#16a37b" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <CartesianGrid vertical={false} stroke="var(--line)" />
-              <XAxis dataKey="mes" axisLine={false} tickLine={false} />
-              <YAxis axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Area
-                dataKey="total"
-                stroke="#16a37b"
-                strokeWidth={3}
-                fill="url(#fill)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </Panel>
+      <section className="knowledge-hero"><div><Radar/><span><small>ACOMPANHAMENTO CONTÍNUO</small>
+        <h2>O que muda no fiscal, explicado para a operação.</h2><p>Reforma tributária, obrigações, documentos eletrônicos, certidões e prazos.</p></span></div>
+        <div className="knowledge-tags"><span>Reforma Tributária</span><span>NF-e & CT-e</span><span>SPED</span><span>Contabilidade</span></div></section>
+      <FiscalNews/>
     </>
   );
 }
@@ -667,6 +602,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [page,setPage]=useState(1),
     [total,setTotal]=useState(0),
     [pages,setPages]=useState(1),
+    [stats,setStats]=useState<any>({}),
     [busy, setBusy] = useState(true),
     [selected, setSelected] = useState<any>(null),
     [showFilters, setShowFilters] = useState(false),
@@ -688,6 +624,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(()=>{api<any>("/api/dashboard/kpis").then(setStats).catch(()=>{})},[]);
   const rows = items;
   const exportParams = new URLSearchParams(filters);
   const setFilter = (name: string, value: string) =>
@@ -750,6 +687,13 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
         title="Documentos fiscais"
         text={`${total} registros encontrados · página ${page} de ${pages}`}
       />
+      <div className="kpis document-kpis">{[
+        ["Documentos",stats.total??stats.documentos??total,FileText,"mint"],
+        ["Valor movimentado",brl(stats.valor_total??stats.valor),Gauge,"violet"],
+        ["Autorizados",stats.autorizados??0,ShieldCheck,"blue"],
+        ["Incluídos este mês",stats.mes_atual??stats.no_mes??0,Activity,"amber"],
+      ].map(([label,value,Icon,tone]:any)=><article className="kpi" key={label}><i className={tone}><Icon/></i>
+        <div><small>{label}</small><strong>{value}</strong><em>Empresa ativa</em></div></article>)}</div>
       <Panel>
         <div className="document-downloads">
           <button
@@ -987,7 +931,11 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
   const [files, setFiles] = useState<File[]>([]),
     [drag, setDrag] = useState(false),
     [busy, setBusy] = useState(false),
-    [progress,setProgress]=useState({current:0,total:0,imported:0});
+    [progress,setProgress]=useState({current:0,total:0,imported:0}),
+    [importLog,setImportLog]=useState<any[]>([]);
+  const loadLog=useCallback(()=>api<any>("/api/docs/import-log")
+    .then(response=>setImportLog(response.items||response||[])).catch(()=>{}),[]);
+  useEffect(()=>{loadLog()},[loadLog]);
   const add = (f: FileList | null) =>
     setFiles((v) => [
       ...v,
@@ -1018,7 +966,8 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
       }
       toast(`${imported} documento(s) importado(s) e disponível(is) em Documentos`);
       setFiles([]);
-      done();
+      loadLog();
+      setTimeout(done,700);
     } catch (e) {
       toast((e as Error).message, true);
     } finally {
@@ -1078,16 +1027,43 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
           </div>
         )}
       </Panel>
+      <Panel title="Histórico de importações XML">
+        <div className="import-log-head"><div><b>Rastreabilidade documental</b>
+          <small>Últimos {importLog.length} XMLs processados nesta empresa.</small></div>
+          <button className="secondary" onClick={loadLog}><RefreshCw/> Atualizar</button></div>
+        <div className="import-timeline">
+          {importLog.map(item=>{const origin=sourceInfo(item.source);return <article key={item.id}>
+            <i className={origin.tone}><FileText/></i>
+            <div><b>{item.kind||"XML"} {item.numero?`nº ${item.numero}`:""}</b>
+              <small>{item.file_name||item.chave||"Documento fiscal"}</small>
+              <code>{item.chave||"Chave não identificada"}</code></div>
+            <span><span className={`source-badge ${origin.tone}`}><i/>{origin.label}</span>
+              <small>{item.created_by_name}</small><time>{item.created_at?new Date(item.created_at).toLocaleString("pt-BR"):"—"}</time></span>
+          </article>})}
+          {!importLog.length&&<Empty/>}
+        </div>
+      </Panel>
     </>
   );
 }
 function Reports({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [format, setFormat] = useState("xlsx"),
-    [type, setType] = useState("todos");
-  async function run() {
+    [type, setType] = useState("completo");
+  const reportModels=[
+    {id:"completo",title:"Relatório fiscal completo",text:"Todos os documentos e campos extraídos do XML.",icon:Files,tone:"mint"},
+    {id:"nfe",title:"Notas fiscais NF-e",text:"NF-e com emitente, destinatário, valores e impostos.",icon:FileText,tone:"blue"},
+    {id:"cte",title:"Conhecimentos CT-e",text:"CT-e, prestação, origem, destino e participantes.",icon:PackageSearch,tone:"violet"},
+    {id:"cancelados",title:"Documentos cancelados",text:"Chaves canceladas e situação registrada na SEFAZ.",icon:X,tone:"red"},
+    {id:"manual",title:"Importações manuais",text:"XMLs incluídos pela equipe na Central XML.",icon:UploadCloud,tone:"amber"},
+    {id:"sefaz",title:"Importações automáticas SEFAZ",text:"Documentos obtidos por consulta ou sincronização.",icon:CloudDownload,tone:"mint"},
+    {id:"impostos",title:"Valores e impostos",text:"Bases, ICMS, IPI, PIS, COFINS, frete e descontos.",icon:Gauge,tone:"blue"},
+    {id:"participantes",title:"Emitentes e destinatários",text:"Relacionamento de CNPJs e participantes fiscais.",icon:Building2,tone:"violet"},
+    {id:"auditoria",title:"Auditoria documental",text:"Origem, usuário responsável, arquivo e data de inclusão.",icon:ShieldCheck,tone:"amber"},
+  ];
+  async function run(selected=type) {
     try {
       const params = new URLSearchParams({
-        tipo: type,
+        modelo: selected,
         itens: "1",
       });
       await download(
@@ -1102,48 +1078,21 @@ function Reports({ toast }: { toast: (s: string, e?: boolean) => void }) {
   return (
     <>
       <Head
-        tag="ANÁLISE"
+        tag="INTELIGÊNCIA FISCAL"
         title="Central de relatórios"
-        text="Configure filtros e colunas para gerar relatórios fiscais completos."
+        text="Modelos prontos, dados destrinchados e rastreabilidade por empresa."
       />
-      <div className="report-grid">
-        <Panel title="Novo relatório">
-          <div className="fields">
-            <label>
-              Tipo
-              <select value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="todos">Todos</option>
-                <option value="nfe">NF-e</option>
-                <option value="cte">CT-e</option>
-              </select>
-            </label>
-            <label>
-              Formato
-              <select
-                value={format}
-                onChange={(e) => setFormat(e.target.value)}
-              >
-                <option value="xlsx">Excel</option>
-                <option value="csv">CSV</option>
-              </select>
-            </label>
-          </div>
-          <div className="report-actions">
-            <button className="primary" onClick={run}>
-              <FileDown />
-              Gerar relatório
-            </button>
-          </div>
-        </Panel>
-        <article className="promo">
-          <BarChart3 />
-          <span className="eyebrow">INSIGHTS</span>
-          <h2>Transforme dados em decisões.</h2>
-          <p>
-            Relatórios organizados para conferência fiscal e análise gerencial.
-          </p>
-        </article>
-      </div>
+      <section className="report-command"><div><BarChart3/><span><small>FORMATO DE SAÍDA</small><b>Escolha como deseja analisar</b></span></div>
+        <div className="format-switch"><button className={format==="xlsx"?"active":""} onClick={()=>setFormat("xlsx")}>Excel .XLSX</button>
+          <button className={format==="csv"?"active":""} onClick={()=>setFormat("csv")}>Dados .CSV</button></div></section>
+      <div className="report-catalog">{reportModels.map(model=><article className={type===model.id?"selected":""} key={model.id}
+        onClick={()=>setType(model.id)}><header><i className={model.tone}><model.icon/></i>
+          {type===model.id&&<span><ShieldCheck/> Selecionado</span>}</header>
+        <h3>{model.title}</h3><p>{model.text}</p><footer><button className="secondary" onClick={event=>{event.stopPropagation();run(model.id)}}>
+          <FileDown/> Gerar {format.toUpperCase()}</button></footer></article>)}</div>
+      <div className="report-runner"><span><b>{reportModels.find(model=>model.id===type)?.title}</b>
+        <small>O relatório respeitará a empresa ativa e utilizará somente dados reais armazenados.</small></span>
+        <button className="primary" onClick={()=>run()}><Sparkles/> Gerar relatório selecionado</button></div>
     </>
   );
 }

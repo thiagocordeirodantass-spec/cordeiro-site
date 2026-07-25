@@ -62,6 +62,16 @@ router.get("/_stats", (req, res) => {
   res.json({ total, nfe, cte, cancelados: canc, valorTotal });
 });
 
+router.get("/import-log", (req,res)=>{
+  const where=req.tenantFilter?`WHERE d.${req.tenantFilter.where}`:"";
+  const params=req.tenantFilter?[req.tenantFilter.param]:[];
+  const items=db.prepare(`SELECT d.id,d.kind,d.chave,d.numero,d.status,d.source,d.xml_path file_name,d.created_at,
+    COALESCE(u.nome,u.username,'Sistema / SEFAZ') created_by_name
+    FROM documents d LEFT JOIN users u ON u.id=d.created_by ${where}
+    ORDER BY datetime(d.created_at) DESC,d.id DESC LIMIT 200`).all(...params);
+  res.json({items,total:items.length});
+});
+
 // ---- Listagem com filtros
 router.get("/", (req, res) => {
   const {
