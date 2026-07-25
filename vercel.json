@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "devCommand": "npm --prefix frontend-modern run dev -- --port $PORT",
   "installCommand": "npm install && npm --prefix frontend-modern install && npm --prefix backend install",
   "buildCommand": "npm --prefix frontend-modern run build",
   "outputDirectory": "frontend-modern/dist",
