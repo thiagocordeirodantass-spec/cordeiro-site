@@ -95,28 +95,13 @@ function Login({ done }: { done: (u: User) => void }) {
     [email, setEmail] = useState(""),
     [code, setCode] = useState(""),
     [devCode, setDevCode] = useState(""),
-    [certFile, setCertFile] = useState<File | null>(null),
-    [certPassword, setCertPassword] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  async function loginWithCertificate() {
-    if (!certFile || !certPassword) {
-      setError("Selecione o certificado A1 e informe a senha");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const body = new FormData();
-      body.set("certificate", certFile);
-      body.set("password", certPassword);
-      await api("/api/auth/certificate-login", { method: "POST", body });
-      done((await api<{ user: User }>("/api/auth/me")).user);
-    } catch (error) {
-      setError((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  function loginWithCertificate() {
+    window.location.assign(
+      import.meta.env.VITE_MTLS_LOGIN_URL ||
+        "/api/auth/mtls-login?redirect=/",
+    );
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -277,34 +262,16 @@ function Login({ done }: { done: (u: User) => void }) {
             )}
           </button>
           {mode === "login" && (
-            <div className="certificate-login">
-              <small>ACESSO EXCLUSIVO INTECOM</small>
-              <label>
-                Certificado A1
-                <input
-                  type="file"
-                  accept=".pfx,.p12,application/x-pkcs12"
-                  onChange={(event) =>
-                    setCertFile(event.target.files?.[0] || null)
-                  }
-                />
-              </label>
-              <label>
-                Senha do certificado
-                <input
-                  type="password"
-                  value={certPassword}
-                  onChange={(event) => setCertPassword(event.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={loginWithCertificate}
-              >
-                <ShieldCheck /> Entrar na INTECOM com certificado
+            <div className="mtls-login">
+              <div className="auth-divider"><span>ou acesse com</span></div>
+              <button type="button" className="mtls-button" disabled={busy}
+                onClick={loginWithCertificate}>
+                <i><ShieldCheck /></i>
+                <span><b>Certificado digital INTECOM</b>
+                  <small>Client Certificate · mTLS</small></span>
+                <span className="mtls-arrow">→</span>
               </button>
+              <p><ShieldCheck /> O certificado permanece no dispositivo e nunca é enviado como arquivo.</p>
             </div>
           )}
           <button
@@ -1826,7 +1793,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     }
   }
   async function xml(accessKey: string, data?: any, source?: string) {
-    if ((source === "Portal SEFAZ" || data?.provider === "sefaz") && data?.xml) {
+    if (data?.xml) {
       const url = URL.createObjectURL(
         new Blob([data.xml], { type: "application/xml;charset=utf-8" }),
       );
@@ -1837,6 +1804,15 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
       URL.revokeObjectURL(url);
       toast("XML retornado pela SEFAZ");
       return;
+    }
+    if (source !== "MeuDANFE" && data?.provider !== "meudanfe") {
+      try {
+        const response=await fetch(`/api/docs/${accessKey}/xml`,{credentials:"same-origin"});
+        if(!response.ok) throw new Error((await response.json()).error||"XML ainda não foi importado");
+        const url=URL.createObjectURL(await response.blob()),anchor=document.createElement("a");
+        anchor.href=url; anchor.download=`${kind}-${accessKey}.xml`; anchor.click();
+        URL.revokeObjectURL(url); toast("XML importado baixado"); return;
+      } catch(error) { toast((error as Error).message,true); return; }
     }
     if (!captchaToken) {
       toast("Conclua o CAPTCHA antes do download", true);
@@ -1937,7 +1913,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
               </small>
             </label>
             <button className="primary" onClick={consult} disabled={busy}>
-              {busy ? <RefreshCw className="spin" /> : <Search />}Consultar
+              {busy ? <RefreshCw className="spin" /> : <CloudDownload />}Consultar e importar
             </button>
           </div>
           {results.length > 0 && (

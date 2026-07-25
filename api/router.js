@@ -330,8 +330,20 @@ export default async function handler(request, response) {
         dateTo: request.body?.dateTo,
         maxIteracoes: 5,
       });
+      let saved=0;
+      for(const doc of result.docs){
+        if(doc.xml.includes("<resNFe")||doc.xml.includes("<resEvento")) continue;
+        const match=doc.xml.match(/<chNFe>([^<]+)<\/chNFe>/)||doc.xml.match(/<chCTe>([^<]+)<\/chCTe>/)||doc.xml.match(/Id="[A-Za-z]*(\d{44})"/);
+        const chave=match?.[1]; if(!chave) continue;
+        const kind=doc.xml.includes("<CTe")||doc.xml.includes("<cteProc")?"CTE":"NFE";
+        const inserted=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name)
+          SELECT $1,$2,$3,'importado',$4,'sefaz-mtls-auto',$5
+          WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3 AND empresa_id IS NOT DISTINCT FROM $1)`,
+          [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`]);
+        saved+=inserted.rowCount;
+      }
       response.setHeader("X-Sefaz-Total", String(result.docs.length));
-      response.setHeader("X-Sefaz-Salvos", "0");
+      response.setHeader("X-Sefaz-Salvos", String(saved));
       response.setHeader("X-Sefaz-UltNSU", String(result.ultNSU || ""));
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       return response.status(200).send(
@@ -366,6 +378,11 @@ export default async function handler(request, response) {
         cnpjOuCpf: process.env.SEFAZ_CNPJ,
         chave: route[2],
       });
+      const kind=route[1].toUpperCase();
+      await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name)
+        SELECT $1,$2,$3,'importado',$4,'sefaz-consulta',$5
+        WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3 AND empresa_id IS NOT DISTINCT FROM $1)`,
+        [user.empresa_ativa_id,kind,route[2],xml,`${route[2]}.xml`]);
       return response.json({
         ok: true,
         status: "Documento localizado na Distribuição DF-e",

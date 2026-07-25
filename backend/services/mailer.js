@@ -99,7 +99,7 @@ export function buildVerificationEmail({ codigo, nomeUsuario, expiresMin = 15 })
             <div style="display:inline-block;background:rgba(255,255,255,0.15);border-radius:50%;padding:8px;backdrop-filter:blur(4px);">
               ${CORDEIRO_SVG_INLINE}
             </div>
-            <h1 style="margin:14px 0 4px;color:#ffffff;font-size:24px;font-weight:700;">Cordeiro Sistema</h1>
+            <h1 style="margin:14px 0 4px;color:#ffffff;font-size:24px;font-weight:700;">Cordeiro Fiscal</h1>
             <p style="margin:0;color:rgba(255,255,255,0.9);font-size:13px;letter-spacing:0.04em;text-transform:uppercase;">Sistema Fiscal Inteligente</p>
           </td>
         </tr>
@@ -111,7 +111,7 @@ export function buildVerificationEmail({ codigo, nomeUsuario, expiresMin = 15 })
               Recebemos um pedido de cadastro no <strong>Cordeiro Sistema</strong>. Para confirmar seu email e ativar sua conta, use o código de verificação abaixo:
             </p>
             <!-- Codigo em destaque -->
-            <div style="background:linear-gradient(135deg,#0e7c66 0%,#075c4b 100%);border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+            <div style="background:linear-gradient(135deg,#06251e 0%,#0e604d 100%);border:1px solid #42b995;border-radius:16px;padding:26px;text-align:center;margin:24px 0;box-shadow:0 12px 32px rgba(7,92,75,.22);">
               <p style="margin:0 0 6px;color:rgba(255,255,255,0.85);font-size:11px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;">Seu código de verificação</p>
               <div style="font-family:'JetBrains Mono','Courier New',monospace;font-size:36px;font-weight:700;color:#ffffff;letter-spacing:8px;margin:6px 0;">${codigo}</div>
               <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:12px;">Válido por ${expiresMin} minutos</p>

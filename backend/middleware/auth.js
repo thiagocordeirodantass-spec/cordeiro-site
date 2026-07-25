@@ -12,6 +12,7 @@ import { db } from "../db/index.js";
 
 const PUBLIC_API_PATHS = new Set([
   "/api/auth/login",
+  "/api/auth/mtls-login",
   "/api/auth/register-start",
   "/api/auth/register-verify",
   "/api/auth/resend-code",

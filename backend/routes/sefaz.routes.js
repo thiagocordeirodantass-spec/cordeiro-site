@@ -11,6 +11,8 @@
 // =============================================================================
 import { Router } from "express";
 import path from "path";
+import fs from "fs";
+import forge from "node-forge";
 import multer from "multer";
 import { fileURLToPath } from "url";
 import * as sefazDistribuicao from "../services/sefaz-distribuicao.js";
@@ -28,6 +30,23 @@ const DATA_DIR = path.resolve(__dirname, "..", "..", "data");
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 router.use(requireRole("admin", "operador"));
+
+function normalizePfx(buffer,password){
+  try{
+    const p12=forge.pkcs12.pkcs12FromAsn1(
+      forge.asn1.fromDer(buffer.toString("binary")),false,String(password));
+    let key=null; const certificates=[];
+    for(const content of p12.safeContents) for(const bag of content.safeBags){
+      if(bag.key&&!key) key=bag.key;
+      if(bag.cert) certificates.push(bag.cert);
+    }
+    if(!key||!certificates.length) return buffer;
+    const rebuilt=forge.pkcs12.toPkcs12Asn1(key,certificates,String(password),{
+      algorithm:"3des",generateLocalKeyId:true,friendlyName:"Cordeiro SEFAZ",
+    });
+    return Buffer.from(forge.asn1.toDer(rebuilt).getBytes(),"binary");
+  }catch{return buffer;}
+}
 
 // =============================================================================
 //  GET /api/sefaz/cert/listar
@@ -50,17 +69,34 @@ router.post("/cert/periodo-auto", async (req, res) => {
   const cnpj = String(empresa?.cnpj || "").replace(/\D/g, "");
   if (!cnpj) return res.status(400).json({ error: "A empresa ativa não possui CNPJ configurado" });
   try {
-    const certificados = await certWindows.listarCertificadosWindows();
-    const cert = certificados.find((item) =>
-      String(item.subject || "").replace(/\D/g, "").includes(cnpj)
-    );
-    if (!cert) {
-      return res.status(400).json({ error: "Nenhum certificado privado correspondente ao CNPJ foi encontrado no Windows" });
+    let pfx;
+    let passphrase;
+    const configuredPath = process.env.SEFAZ_PFX_PATH ||
+      "C:\\Users\\thiag\\Downloads\\INTECOM SERVICOS DE LOGISTICA LTDA_03857930000154.pfx";
+    if (fs.existsSync(configuredPath)) {
+      pfx = fs.readFileSync(configuredPath);
+      passphrase = process.env.SEFAZ_PFX_PASSWORD || "12345678";
+      pfx = normalizePfx(pfx,passphrase);
+    } else {
+      const certificados = await certWindows.listarCertificadosWindows();
+      const cert = certificados.find((item) =>
+        String(item.subject || "").replace(/\D/g, "").includes(cnpj)
+      );
+      if (!cert) return res.status(400).json({
+        error: "Certificado A1 não encontrado. Configure SEFAZ_PFX_PATH.",
+      });
+      passphrase = `Cordeiro-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        pfx = await certWindows.exportarPfxWindows(cert.thumbprint, passphrase);
+      } catch (error) {
+        return res.status(422).json({
+          error: "A chave instalada não é exportável. Configure SEFAZ_PFX_PATH com o arquivo A1 original.",
+          detail: error.message,
+        });
+      }
     }
-    const senhaTemporaria = `Cordeiro-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const pfx = await certWindows.exportarPfxWindows(cert.thumbprint, senhaTemporaria);
     const resultado = await sefazDistribuicao.consultarPeriodoComCertificado({
-      pfx, passphrase: senhaTemporaria, uf: "91",
+      pfx, passphrase, uf: process.env.SEFAZ_UF || "MG",
       ambiente: empresa.ambiente === "homologacao" ? "homologacao" : "producao",
       cnpjOuCpf: cnpj, ultNSUInicial: String(req.body?.ultNSUInicial || "0"),
       maxIteracoes: 30,

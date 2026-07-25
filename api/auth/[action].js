@@ -3,6 +3,28 @@ import { ensureSchema, pool } from "../_database.js";
 
 const COOKIE = "sid";
 const SESSION_HOURS = 8;
+async function sendAccessCode({to,name,code}){
+  if(!process.env.RESEND_API_KEY) return {sent:false};
+  const safeName=String(name||"").replace(/[<>&"']/g,"");
+  const html=`<!doctype html><html><body style="margin:0;background:#061713;padding:36px 16px;font-family:Arial,sans-serif;color:#eafff8">
+  <table role="presentation" width="100%"><tr><td align="center"><table width="560" style="max-width:560px;background:#0b241d;border:1px solid #1f5a49;border-radius:24px;overflow:hidden">
+  <tr><td style="padding:34px;background:#0b2d24"><div style="color:#62e0b8;font-size:11px;letter-spacing:3px">CORDEIRO FISCAL · ACESSO SEGURO</div>
+  <h1 style="margin:14px 0 8px;font-size:27px;color:#fff">Confirme sua identidade</h1>
+  <p style="margin:0;color:#9fc4b8;line-height:1.6">Olá, ${safeName}. Use o código abaixo para concluir seu acesso à plataforma.</p></td></tr>
+  <tr><td style="padding:34px"><div style="padding:25px;text-align:center;border:1px solid #2f8068;border-radius:16px;background:#071d18">
+  <small style="color:#7ca99b;letter-spacing:2px">CÓDIGO DE VERIFICAÇÃO</small>
+  <div style="font:700 38px monospace;letter-spacing:10px;color:#65e2ba;margin:13px 0">${code}</div>
+  <small style="color:#d9aa52">EXPIRA EM 15 MINUTOS</small></div>
+  <p style="color:#789b90;font-size:12px;line-height:1.6;margin:22px 0 0">🔐 Não compartilhe este código. A equipe Cordeiro nunca solicitará sua senha ou certificado por e-mail.</p></td></tr>
+  <tr><td style="padding:18px 34px;border-top:1px solid #173f34;color:#587c71;font-size:10px">CONEXÃO PROTEGIDA · MONITORAMENTO ATIVO · ${new Date().getFullYear()}</td></tr>
+  </table></td></tr></table></body></html>`;
+  const result=await fetch("https://api.resend.com/emails",{method:"POST",headers:{
+    Authorization:`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json"},
+    body:JSON.stringify({from:process.env.MAIL_FROM||"Cordeiro Fiscal <acesso@cordeirofiscal.com.br>",
+      to:[to],subject:`${code} é seu código de acesso · Cordeiro Fiscal`,html})});
+  if(!result.ok) throw new Error("Falha no serviço de e-mail");
+  return {sent:true};
+}
 
 function hashPassword(password, saltHex) {
   const salt = saltHex ? Buffer.from(saltHex, "hex") : crypto.randomBytes(16);
@@ -89,9 +111,11 @@ async function currentUser(request) {
 }
 
 function setSession(response, token) {
+  const domain = process.env.MTLS_COOKIE_DOMAIN
+    ? `; Domain=${process.env.MTLS_COOKIE_DOMAIN}` : "";
   response.setHeader(
     "Set-Cookie",
-    `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}`,
+    `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}${domain}`,
   );
 }
 
@@ -117,6 +141,37 @@ export default async function handler(request, response) {
   try {
     await ensureSchema();
     const action = request.query.action;
+
+    if (action === "mtls-login" && request.method === "GET") {
+      const configuredSecret=String(process.env.MTLS_EDGE_SECRET||"");
+      const receivedSecret=String(request.headers["x-mtls-edge-secret"]||"");
+      if(!configuredSecret) return response.status(503).json({
+        error:"mTLS ainda não configurado no domínio Cloudflare",
+      });
+      const secretOk=receivedSecret.length===configuredSecret.length &&
+        crypto.timingSafeEqual(Buffer.from(receivedSecret),Buffer.from(configuredSecret));
+      const verified=String(request.headers["cf-cert-verified"]||"").toUpperCase()==="SUCCESS";
+      const subject=String(request.headers["cf-cert-subject-dn"]||"");
+      const serial=String(request.headers["cf-cert-serial"]||"");
+      if(!secretOk||!verified) return response.status(401).json({
+        error:"O navegador não apresentou um certificado cliente válido",
+      });
+      if(!subject.replace(/\D/g,"").includes("03857930000154"))
+        return response.status(403).json({error:"Certificado não autorizado para a INTECOM"});
+      const company=await pool.query("SELECT id FROM empresas WHERE cnpj='03857930000154' AND ativo=TRUE");
+      if(!company.rowCount) return response.status(403).json({error:"Empresa INTECOM desativada"});
+      const admin=await pool.query(`SELECT u.* FROM users u LEFT JOIN empresa_users eu
+        ON eu.user_id=u.id AND eu.empresa_id=$1 WHERE u.role='admin' AND u.ativo=TRUE
+        ORDER BY (eu.user_id IS NOT NULL) DESC,u.id LIMIT 1`,[company.rows[0].id]);
+      if(!admin.rowCount) return response.status(403).json({error:"Administrador não configurado"});
+      await createSession(request,response,admin.rows[0].id);
+      const token=String(response.getHeader("Set-Cookie")||"").match(/^sid=([^;]+)/)?.[1];
+      if(token) await pool.query(`UPDATE sessions SET empresa_ativa_id=$1,auth_method='certificate',
+        user_agent=COALESCE(user_agent,'') || $3 WHERE id=$2`,
+        [company.rows[0].id,token,` mTLS:${serial}`]);
+      const target=String(request.query.redirect||"/");
+      return response.redirect(302,target.startsWith("/")&&!target.startsWith("//")?target:"/");
+    }
 
     if (action === "login" && request.method === "POST") {
       const username = String(request.body?.username || "").trim();
@@ -196,10 +251,11 @@ export default async function handler(request, response) {
          VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '15 minutes')`,
         [email, username, nome, hash, salt, codigo],
       );
+      const mail=await sendAccessCode({to:email,name:nome,code:codigo});
       return response.json({
         ok: true,
-        codigoDev: codigo,
-        mailMethod: "console",
+        codigoDev: mail.sent ? null : codigo,
+        mailMethod: mail.sent ? "email" : "console",
       });
     }
 

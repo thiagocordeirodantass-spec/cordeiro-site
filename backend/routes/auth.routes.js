@@ -101,6 +101,24 @@ router.post("/certificate-login", uploadAvatar.single("certificate"), (req, res)
   }
 });
 
+router.get("/mtls-login", (req, res) => {
+  if (!req.socket?.authorized || typeof req.socket.getPeerCertificate !== "function")
+    return res.status(401).json({ error: "O navegador não apresentou um certificado cliente válido" });
+  const certificate=req.socket.getPeerCertificate();
+  const subject=JSON.stringify(certificate?.subject||{});
+  if(!subject.replace(/\D/g,"").includes("03857930000154"))
+    return res.status(403).json({error:"Certificado não autorizado para a INTECOM"});
+  const empresa=db.prepare("SELECT id FROM empresas WHERE cnpj=? AND ativo=1").get("03857930000154");
+  if(!empresa)return res.status(403).json({error:"Empresa INTECOM desativada"});
+  const user=db.prepare("SELECT * FROM users WHERE role='admin' AND ativo=1 ORDER BY id LIMIT 1").get();
+  if(!user)return res.status(403).json({error:"Administrador não configurado"});
+  const {id}=createSession({userId:user.id,ip:req.ip,userAgent:req.headers["user-agent"]||null});
+  db.prepare("UPDATE sessions SET empresa_ativa_id=?,auth_method='mtls' WHERE id=?").run(empresa.id,id);
+  setSessionCookie(res,id);
+  const target=String(req.query.redirect||"/");
+  return res.redirect(target.startsWith("/")&&!target.startsWith("//")?target:"/");
+});
+
 router.post("/logout", (req, res) => {
   if (req.sessionToken) deleteSession(req.sessionToken);
   clearSessionCookie(res);
