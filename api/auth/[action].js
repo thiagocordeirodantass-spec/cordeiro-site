@@ -49,6 +49,13 @@ function publicUser(user) {
     empresa_ativa_id: null,
     empresa_ativa: null,
     preferencias: {},
+    cargo: user.cargo || "",
+    area_atuacao: user.area_atuacao || "",
+    bio: user.bio || "",
+    linkedin_url: user.linkedin_url || "",
+    instagram_url: user.instagram_url || "",
+    website_url: user.website_url || "",
+    telefone: user.telefone || "",
   };
 }
 
@@ -118,6 +125,24 @@ export default async function handler(request, response) {
       if (!user)
         return response.status(401).json({ error: "Não autenticado" });
       return response.json({ user: publicUser(user) });
+    }
+
+    if (action === "me" && request.method === "PUT") {
+      const user = await currentUser(request);
+      if (!user)
+        return response.status(401).json({ error: "Não autenticado" });
+      const data = request.body || {};
+      const result = await pool.query(
+        `UPDATE users SET nome=COALESCE($2,nome),email=COALESCE($3,email),
+          cargo=$4,area_atuacao=$5,bio=$6,linkedin_url=$7,instagram_url=$8,
+          website_url=$9,telefone=$10,preferencias=$11::jsonb
+         WHERE id=$1 RETURNING *`,
+        [user.id,data.nome || null,data.email || null,data.cargo || null,
+         data.area_atuacao || null,data.bio || null,data.linkedin_url || null,
+         data.instagram_url || null,data.website_url || null,data.telefone || null,
+         JSON.stringify(data.preferencias || {})],
+      );
+      return response.json({ ok: true, user: publicUser(result.rows[0]) });
     }
 
     if (action === "logout" && request.method === "POST") {

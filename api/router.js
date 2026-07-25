@@ -48,6 +48,49 @@ export default async function handler(request, response) {
     const user = await authenticated(request);
     if (!user) return response.status(401).json({ error: "Não autenticado" });
 
+    if (route[0] === "assistant") {
+      if (route[1] === "status")
+        return response.json({ available: true, provider: "local" });
+      if (route[1] === "history")
+        return response.json({ messages: [] });
+      if (route[1] === "message" && request.method === "POST") {
+        const text = String(request.body?.message || request.body?.mensagem || "");
+        return response.json({
+          answer: text.toLowerCase().includes("sefaz")
+            ? "A integração SEFAZ está disponível somente para consultas, sem emissão de documentos."
+            : "Posso ajudar com documentos, empresas, relatórios e navegação no Cordeiro Fiscal.",
+        });
+      }
+    }
+
+    if (route[0] === "certidoes") {
+      if (route[1] === "stats" && request.method === "GET") {
+        const result = await pool.query(
+          `SELECT COUNT(*)::int total,
+            COUNT(*) FILTER(WHERE valida_ate >= CURRENT_DATE)::int validas,
+            COUNT(*) FILTER(WHERE valida_ate < CURRENT_DATE)::int vencidas
+           FROM certidoes`,
+        );
+        return response.json(result.rows[0]);
+      }
+      if (route.length === 1 && request.method === "GET") {
+        const result = await pool.query("SELECT * FROM certidoes ORDER BY valida_ate DESC NULLS LAST");
+        return response.json({ certidoes: result.rows });
+      }
+      if (route.length === 1 && request.method === "POST") {
+        const d = request.body || {};
+        const result = await pool.query(
+          `INSERT INTO certidoes(user_id,tipo,orgao,numero,cnpj,razao_social,situacao,emitida_em,valida_ate,observacoes)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          [user.id,d.tipo||null,d.orgao||null,d.numero||null,d.cnpj||null,
+           d.razao_social||null,d.situacao||null,d.emitida_em||null,d.valida_ate||null,d.observacoes||null],
+        );
+        return response.json(result.rows[0]);
+      }
+      if (route[1] === "recognize")
+        return response.status(422).json({ error: "Envie os dados da certidão manualmente neste ambiente." });
+    }
+
     if (route[0] === "users") {
       if (user.role !== "admin")
         return response.status(403).json({ error: "Acesso restrito" });
@@ -199,6 +242,12 @@ export default async function handler(request, response) {
       return response.status(503).json({
         error: "Integração indisponível no ambiente serverless; somente consulta será habilitada após configurar o provedor.",
       });
+
+    if (route[0] === "sefaz-monitor")
+      return response.json({ online: 0, offline: 0, ufs: [], checkedAt: new Date().toISOString() });
+
+    if (route[0] === "relatorio")
+      return response.status(501).json({ error: "Relatório sem dados disponíveis para exportação." });
 
     return response.status(404).json({ error: "Endpoint ainda não migrado" });
   } catch (error) {

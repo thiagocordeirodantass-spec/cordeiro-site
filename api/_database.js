@@ -33,8 +33,24 @@ export function ensureSchema() {
         ativo BOOLEAN NOT NULL DEFAULT TRUE,
         primeiro_login BOOLEAN NOT NULL DEFAULT FALSE,
         ultimo_login TIMESTAMPTZ,
+        cargo TEXT,
+        area_atuacao TEXT,
+        bio TEXT,
+        linkedin_url TEXT,
+        instagram_url TEXT,
+        website_url TEXT,
+        telefone TEXT,
+        preferencias JSONB NOT NULL DEFAULT '{}'::jsonb,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS cargo TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS area_atuacao TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS instagram_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS website_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS telefone TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS preferencias JSONB NOT NULL DEFAULT '{}'::jsonb;
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -115,6 +131,13 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS messages_pair_idx
         ON user_messages(sender_id, recipient_id, created_at);
+      CREATE TABLE IF NOT EXISTS certidoes (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        tipo TEXT, orgao TEXT, numero TEXT, cnpj TEXT,
+        razao_social TEXT, situacao TEXT, emitida_em DATE, valida_ate DATE,
+        observacoes TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
   }
   return schemaReady;

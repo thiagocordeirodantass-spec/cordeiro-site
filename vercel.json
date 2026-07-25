@@ -38,6 +38,22 @@
       "destination": "/api/router?route=consulta/:path*"
     },
     {
+      "source": "/api/assistant/:path*",
+      "destination": "/api/router?route=assistant/:path*"
+    },
+    {
+      "source": "/api/certidoes/:path*",
+      "destination": "/api/router?route=certidoes/:path*"
+    },
+    {
+      "source": "/api/relatorio/:path*",
+      "destination": "/api/router?route=relatorio/:path*"
+    },
+    {
+      "source": "/api/sefaz-monitor",
+      "destination": "/api/router?route=sefaz-monitor"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
