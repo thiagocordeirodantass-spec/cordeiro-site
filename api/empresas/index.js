@@ -26,6 +26,25 @@ export default async function handler(request, response) {
           data.ambiente || "producao",
         ],
       );
+      const sid = String(request.headers.cookie || "").match(/(?:^|;\s*)sid=([^;]+)/)?.[1];
+      if (sid) {
+        const current = await pool.query(
+          `SELECT user_id FROM sessions WHERE id=$1 AND expires_at>NOW()`,
+          [decodeURIComponent(sid)],
+        );
+        if (current.rowCount) {
+          await pool.query(
+            `INSERT INTO empresa_users(empresa_id,user_id,papel)
+             VALUES($1,$2,'admin') ON CONFLICT(empresa_id,user_id)
+             DO UPDATE SET ativo=TRUE,papel='admin'`,
+            [result.rows[0].id,current.rows[0].user_id],
+          );
+          await pool.query(
+            "UPDATE sessions SET empresa_ativa_id=$1 WHERE id=$2",
+            [result.rows[0].id,decodeURIComponent(sid)],
+          );
+        }
+      }
       return response.status(201).json(result.rows[0]);
     }
     return response.status(405).json({ error: "Método não permitido" });

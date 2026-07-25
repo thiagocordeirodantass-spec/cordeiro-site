@@ -1678,7 +1678,19 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
       setBusy(false);
     }
   }
-  async function xml(accessKey: string) {
+  async function xml(accessKey: string, data?: any, source?: string) {
+    if ((source === "Portal SEFAZ" || data?.provider === "sefaz") && data?.xml) {
+      const url = URL.createObjectURL(
+        new Blob([data.xml], { type: "application/xml;charset=utf-8" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${kind}-${accessKey}.xml`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast("XML retornado pela SEFAZ");
+      return;
+    }
     if (!captchaToken) {
       toast("Conclua o CAPTCHA antes do download", true);
       return;
@@ -1813,7 +1825,10 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                     </small>
                   </div>
                   {item.ok && (
-                    <button className="secondary" onClick={() => xml(item.key)}>
+                    <button
+                      className="secondary"
+                      onClick={() => xml(item.key, item.data, item.provider)}
+                    >
                       <FileDown />
                       XML
                     </button>
