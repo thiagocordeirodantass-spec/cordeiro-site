@@ -1031,14 +1031,16 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
     setProgress({current:0,total:batches.length,imported:0});
     try {
       let imported=0;
+      let failed=0;
       for(let index=0;index<batches.length;index++){
         const body=new FormData();
         batches[index].forEach(file=>body.append("files",file));
         const response=await api<any>("/api/docs/upload",{method:"POST",body});
         imported+=Number(response.importados??0);
+        failed+=Number(response.falhas??0);
         setProgress({current:index+1,total:batches.length,imported});
       }
-      toast(`${imported} novo(s) documento(s) importado(s). Chaves já existentes foram ignoradas.`);
+      toast(`${imported} novo(s) documento(s) importado(s)${failed?` · ${failed} arquivo(s) rejeitado(s), confira o log`:""}. Chaves já existentes foram ignoradas.`,imported===0&&failed>0);
       setFiles([]);
       done();
     } catch (e) {
@@ -2050,13 +2052,13 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 <option value="cte">CT-e</option>
               </select>
             </label>
-            <div className="query-provider"><ShieldCheck/><span><small>FONTE OFICIAL</small>
+            <div className="query-source-note"><ShieldCheck/><span><small>Consulta protegida pela fonte oficial</small>
               <b>SEFAZ · Distribuição DF-e</b></span></div>
             <label>
               Chave de acesso
               <textarea
                 ref={keyInput}
-                rows={3}
+                rows={2}
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 placeholder={
@@ -2075,7 +2077,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </label>
             <label className="spreadsheet-import">
               <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
-              <span className="secondary"><FileText/> Importar planilha de chaves</span>
+              <span className="spreadsheet-button"><FileText/><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><UploadCloud/></span>
               <small>Excel, CSV ou TXT · todas as abas serão verificadas</small>
             </label>
             <button className="primary" onClick={consult} disabled={busy}>
@@ -3830,15 +3832,17 @@ function Admin({
           </div>
           <section className="module-replication">
             <header><div><span>03</span><p><b>Replicar configuração deste módulo</b><small>Marque as unidades que receberão uma cópia.</small></p></div>
-              <em>{replicateTargets.length} selecionada(s)</em></header>
+              <div className="replication-actions"><em>{replicateTargets.length} selecionada(s)</em>
+                <button onClick={()=>setReplicateTargets(items.filter(item=>item.id!==moduleCompany.id).map(item=>Number(item.id)))}>Selecionar todas</button>
+                <button disabled={!replicateTargets.length} onClick={()=>setReplicateTargets([])}>Limpar</button></div></header>
             <div>{items.filter(item=>item.id!==moduleCompany.id).map(item=><label key={item.id}>
               <input type="checkbox" checked={replicateTargets.includes(Number(item.id))}
                 onChange={e=>setReplicateTargets(e.target.checked?[...replicateTargets,Number(item.id)]:
                   replicateTargets.filter(id=>id!==Number(item.id)))}/>
-              {item.nome} {item.empresa_matriz_id?"· Filial":"· Matriz"}
+              <i><Building2/></i><span><b>{item.nome}</b><small>{item.empresa_matriz_id?"Filial":"Matriz"}</small></span><em/>
             </label>)}</div>
             <button className="secondary" disabled={!replicateTargets.length} onClick={replicateModule}>
-              <Network/> Replicar para {replicateTargets.length||0} selecionada(s)</button>
+              <Network/><span><b>Replicar configuração</b><small>Aplicar em {replicateTargets.length||0} unidade(s) selecionada(s)</small></span></button>
           </section>
           <footer><span><ShieldCheck/><small>Alterações aplicadas somente após salvar.</small></span>
             <div><button className="secondary" onClick={()=>setModuleCompany(null)}><X/> Fechar sem salvar</button>
