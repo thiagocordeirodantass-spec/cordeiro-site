@@ -110,18 +110,19 @@ async function currentUser(request) {
   return result.rows[0] || null;
 }
 
-function setSession(response, token) {
+function setSession(response, token, hours = SESSION_HOURS) {
   const domain = process.env.MTLS_COOKIE_DOMAIN
     ? `; Domain=${process.env.MTLS_COOKIE_DOMAIN}` : "";
   response.setHeader(
     "Set-Cookie",
-    `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_HOURS * 3600}${domain}`,
+    `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${hours * 3600}${domain}`,
   );
 }
 
-async function createSession(request, response, userId) {
+async function createSession(request, response, userId, remember = false) {
   const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600_000);
+  const hours=remember?24*30:SESSION_HOURS;
+  const expiresAt = new Date(Date.now() + hours * 3600_000);
   await pool.query(
     `INSERT INTO sessions (id, user_id, expires_at, ip, user_agent)
      VALUES ($1, $2, $3, $4, $5)`,
@@ -133,7 +134,7 @@ async function createSession(request, response, userId) {
       request.headers["user-agent"] || null,
     ],
   );
-  setSession(response, token);
+  setSession(response, token, hours);
   return expiresAt.toISOString();
 }
 
@@ -184,7 +185,7 @@ export default async function handler(request, response) {
       if (!user || !validPassword(password, user.password_salt, user.password_hash)) {
         return response.status(401).json({ error: "Usuário ou senha inválidos" });
       }
-      const expiresAt = await createSession(request, response, user.id);
+      const expiresAt = await createSession(request, response, user.id,Boolean(request.body?.remember));
       await pool.query("UPDATE users SET ultimo_login = NOW() WHERE id = $1", [
         user.id,
       ]);

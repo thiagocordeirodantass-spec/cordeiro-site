@@ -51,6 +51,7 @@ import { api, Company, download, setCompany, User } from "./api";
 type Page =
   | "dashboard"
   | "documents"
+  | "issued"
   | "import"
   | "reports"
   | "certificates"
@@ -117,6 +118,7 @@ function Login({ done }: { done: (u: User) => void }) {
     [devCode, setDevCode] = useState(""),
     [certificate, setCertificate] = useState<File | null>(null),
     [certificatePassword, setCertificatePassword] = useState(""),
+    [remember,setRemember]=useState(()=>localStorage.getItem("cordeiro.remember")!=="0"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function loginWithCertificate() {
@@ -150,8 +152,9 @@ function Login({ done }: { done: (u: User) => void }) {
       if (mode === "login") {
         await api("/api/auth/login", {
           method: "POST",
-          body: { username, password },
+          body: { username, password,remember },
         });
+        localStorage.setItem("cordeiro.remember",remember?"1":"0");
         done((await api<{ user: User }>("/api/auth/me")).user);
       } else if (mode === "register") {
         const response = await api<any>("/api/auth/register-start", {
@@ -249,6 +252,7 @@ function Login({ done }: { done: (u: User) => void }) {
                 Usuário
                 <input
                   autoFocus={mode === "login"}
+                  autoComplete="username"
                   required
                   minLength={3}
                   value={username}
@@ -262,11 +266,15 @@ function Login({ done }: { done: (u: User) => void }) {
                   required
                   minLength={4}
                   type="password"
+                  autoComplete={mode==="login"?"current-password":"new-password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                 />
               </label>
+              {mode==="login"&&<label className="remember-login"><input type="checkbox" checked={remember}
+                onChange={event=>setRemember(event.target.checked)}/><span><b>Lembrar meu acesso</b>
+                  <small>Entrar automaticamente neste dispositivo por até 30 dias.</small></span><em/></label>}
             </>
           )}
           {mode === "verify" && (
@@ -358,6 +366,7 @@ const groups = [
     "Gestão documental",
     [
       ["documents", "Central de documentos", Files],
+      ["issued", "Documentos emitidos", Send],
       ["import", "Central XML", UploadCloud],
       ["reports", "Inteligência fiscal", BarChart3],
       ["certificates", "Regularidade CND", ShieldCheck],
@@ -594,6 +603,34 @@ function FiscalFilters({
       </div>
     </section>
   );
+}
+
+function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
+  const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),[busy,setBusy]=useState(true);
+  const load=useCallback((notify=false)=>{setBusy(true);api<any>(`/api/docs/issued${kind?`?kind=${kind}`:""}`)
+    .then(result=>{setData(result);if(notify)toast(`${result.items?.length||0} documento(s) emitido(s) atualizado(s)`)})
+    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,toast]);
+  useEffect(()=>{load();const timer=window.setInterval(()=>load(false),30000);return()=>window.clearInterval(timer)},[load]);
+  const stats=data.stats||{};
+  return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
+    text="NF-e, NFS-e e CT-e emitidos pelo CNPJ da empresa ativa, organizados automaticamente."
+    action={<button className="primary" onClick={()=>load(true)} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Atualizar agora</button>}/>
+    <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
+      <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
+      <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
+    <div className="issued-kpis">{[["Total",stats.total||0,Files],["NF-e",stats.nfe||0,FileText],["NFS-e",stats.nfse||0,FileText],["CT-e",stats.cte||0,CloudDownload]]
+      .map(([label,value,Icon]:any)=><article key={label}><i><Icon/></i><span><small>{label}</small><b>{value}</b></span></article>)}</div>
+    <Panel><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
+      <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}>{label}</button>)}</div>
+      <small>Atualização automática a cada 30 segundos</small></div>
+      <div className="table"><table><thead><tr><th>Documento</th><th>Destinatário</th><th>Emissão</th><th>Valor</th><th>Status</th><th>Origem</th><th>XML</th></tr></thead>
+        <tbody>{(data.items||[]).map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
+          <td>{item.destinatario_nome||"Não identificado"}<small>{item.destinatario_doc||""}</small></td><td>{date(item.data_emissao)}</td>
+          <td><b>{brl(item.valor_total)}</b></td><td><span className="status">{item.status}</span></td>
+          <td><span className={`source-badge ${sourceInfo(item.source).tone}`}><i/>{sourceInfo(item.source).label}</span></td>
+          <td><button className="square" disabled={!item.has_xml} onClick={()=>download(`/api/docs/${item.id}/xml`,`${item.chave||item.id}.xml`)}><FileDown/></button></td></tr>)}</tbody></table>
+        {!busy&&!data.items?.length&&<Empty/>}</div></Panel>
+  </>;
 }
 
 function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
@@ -1001,8 +1038,7 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
       }
       toast(`${imported} novo(s) documento(s) importado(s). Chaves já existentes foram ignoradas.`);
       setFiles([]);
-      loadLog();
-      setTimeout(done,700);
+      done();
     } catch (e) {
       toast((e as Error).message, true);
     } finally {
@@ -4268,6 +4304,7 @@ export default function App() {
         <main>
           {page === "dashboard" && <Dashboard />}
           {page === "documents" && <Documents toast={toast} />}{" "}
+          {page === "issued" && <IssuedDocuments toast={toast} />}{" "}
           {page === "import" && <Importer toast={toast} done={()=>go("documents")} />}{" "}
           {page === "reports" && <Reports toast={toast} />}{" "}
           {page === "certificates" && <Certificates toast={toast} />}{" "}

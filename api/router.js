@@ -554,6 +554,24 @@ export default async function handler(request, response) {
       return response.json({ok:true,deleted:1});
     }
     if (route[0] === "docs" && request.method === "GET") {
+      if(route[1]==="issued"){
+        const kind=String(request.query.kind||"").toUpperCase();
+        const company=await pool.query("SELECT regexp_replace(cnpj,'\\D','','g') cnpj,nome FROM empresas WHERE id=$1 AND ativo=TRUE",
+          [user.empresa_ativa_id]);
+        if(!company.rowCount)return response.status(404).json({error:"Empresa ativa não encontrada"});
+        const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.serie,d.data_emissao,d.valor_total,
+          d.status,d.destinatario_nome,d.destinatario_doc,d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
+          FROM documents d WHERE d.empresa_id=$1 AND ($2='' OR d.kind=$2)
+          AND regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3
+          ORDER BY d.data_emissao DESC NULLS LAST,d.created_at DESC LIMIT 1000`,
+          [user.empresa_ativa_id,kind,company.rows[0].cnpj]);
+        const stats=result.rows.reduce((summary,row)=>{
+          summary.total++;const key=String(row.kind||"").toLowerCase();
+          if(Object.hasOwn(summary,key))summary[key]++;return summary;
+        },{total:0,nfe:0,nfse:0,cte:0});
+        return response.json({items:result.rows,stats,company:company.rows[0],
+          connectors:{nfe:"nsu_protegido",cte:"aguardando_configuracao",nfse:"aguardando_provedor"}});
+      }
       if(route[1]==="import-log"){
         const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.status,d.source,d.file_name,d.created_at,
           COALESCE(u.nome,u.username,'Sistema / SEFAZ') created_by_name

@@ -15,6 +15,7 @@ function parseDate(value){
   return match?`${match[3]}-${match[2]}-${match[1]}`:null;
 }
 export default async function handler(req,res){
+  let stage="inicialização",parser;
   try{
     if(req.method!=="POST") return res.status(405).json({error:"Método não permitido"});
     await ensureSchema();
@@ -25,10 +26,13 @@ export default async function handler(req,res){
     if(!file) return res.status(400).json({error:"Selecione um PDF"});
     const empresaId=Number(req.headers["x-empresa-id"]||fields.empresaId?.[0]||session.rows[0].empresa_ativa_id);
     if(!empresaId) return res.status(400).json({error:"Selecione uma empresa"});
+    stage="leitura do arquivo";
     const bytes=await fs.readFile(file.filepath);
-    const parser=new PDFParse({data:bytes});
+    stage="extração do texto";
+    parser=new PDFParse({data:bytes});
     const parsed=await parser.getText();
     await parser.destroy();
+    parser=null;
     const text=String(parsed.text||"").replace(/\s+/g," ").trim();
     if(text.length<30)return res.status(422).json({error:"O PDF não possui texto pesquisável suficiente para leitura automática"});
     const normalized=text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
@@ -41,7 +45,8 @@ export default async function handler(req,res){
     const emissionRaw=text.match(/(?:EMISS[AÃ]O|EMITIDA?)(?:\s+EM|\s*:)?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i)?.[1];
     const validityRaw=text.match(/(?:VALIDADE|V[AÁ]LIDA?\s+AT[EÉ])(?:\s*:|\s+AT[EÉ])?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i)?.[1];
     const dataEmissao=parseDate(emissionRaw||allDates[0]);
-    const dataValidade=parseDate(validityRaw||allDates.find(date=>date!==emissionRaw&&date!==allDates[0])||allDates[1]);
+    const filenameDate=String(file.originalFilename||"").match(/(?:VALIDADE[_\s-]*)?(\d{2}[.-]\d{2}[.-]\d{4})/i)?.[1];
+    const dataValidade=parseDate(validityRaw||filenameDate||allDates.find(date=>date!==emissionRaw&&date!==allDates[0])||allDates[1]);
     const tipo=/FGTS|FUNDO DE GARANTIA/.test(normalized)?"fgts":/TRABALHIST|CNDT/.test(normalized)?"cndt":
       /IMOBILI|IPTU/.test(normalized)?"imobiliario":/MUNICIP|PREFEITURA|ISS/.test(normalized)?"municipal":
       /ESTADUAL|FAZENDA DO ESTADO|ICMS/.test(normalized)?"estadual":"federal";
@@ -52,6 +57,7 @@ export default async function handler(req,res){
     const prazo=10;
     const diagnostico=days==null?"Validade não identificada":days<0?`Vencida há ${Math.abs(days)} dia(s)`:
       days<=prazo?`Próxima do vencimento: ${days} dia(s) restante(s)`:`Válida: ${days} dia(s) restante(s)`;
+    stage="gravação da certidão";
     const saved=await pool.query(`INSERT INTO certidoes(user_id,empresa_id,empresa_nome,tipo,status,numero_certidao,
       data_emissao,data_validade,observacoes,pdf_data,pdf_name)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
@@ -61,5 +67,10 @@ export default async function handler(req,res){
     if(!dataValidade)missing.push("data de validade");if(!numero)missing.push("número");
     return res.json({ok:true,id:Number(saved.rows[0].id),recognized:{cnpj,tipo,status,numero,dataEmissao,dataValidade},
       diagnostico,missing,message:`Certidão lida, vinculada a ${company.rows[0].nome} e diagnosticada: ${diagnostico}.`});
-  }catch(error){console.error(error);return res.status(500).json({error:"Não foi possível importar o PDF"});}
+  }catch(error){
+    if(parser)try{await parser.destroy()}catch{}
+    console.error("CND recognize",stage,error);
+    const detail=String(error?.message||"falha desconhecida").replace(/postgresql:\/\/\S+/gi,"[conexão protegida]").slice(0,240);
+    return res.status(500).json({error:`Não foi possível importar o PDF durante ${stage}: ${detail}`,stage});
+  }
 }
