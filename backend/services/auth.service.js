@@ -48,8 +48,9 @@ export function createSession({ userId, ip, userAgent }) {
 export function findSession(token) {
   if (!token) return null;
   const row = db.prepare(`
-    SELECT s.id as sid, s.expires_at, s.ip, s.user_agent,
-           u.id as user_id, u.username, u.nome, u.email, u.role, u.ativo, u.primeiro_login
+    SELECT s.id as sid, s.expires_at, s.ip, s.user_agent, s.empresa_ativa_id,
+           u.id as user_id, u.username, u.nome, u.email, u.role, u.ativo, u.primeiro_login,
+           u.last_empresa_id
     FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.id = ? AND u.ativo = 1
@@ -59,6 +60,40 @@ export function findSession(token) {
     deleteSession(token);
     return null;
   }
+
+  // Carrega memberships do user
+  const memberships = db.prepare(`
+    SELECT eu.empresa_id, eu.papel, e.cnpj, e.nome, e.nome_fantasia, e.ambiente
+    FROM empresa_users eu
+    JOIN empresas e ON e.id = eu.empresa_id
+    WHERE eu.user_id = ? AND eu.ativo = 1 AND e.ativo = 1
+  `).all(row.user_id);
+
+  // Resolve empresa ativa
+  //  - super-admin: usa EXPLICITAMENTE a ativa da sessão (pode ser NULL = "ver tudo")
+  //  - demais: prioriza sessão; se inválida (sem membership), cai pro last; senão a única
+  const isSuperAdmin = row.role === "admin";
+  let empresaAtivaId;
+  if (isSuperAdmin) {
+    // NULL explícito na sessão é válido (super-admin quer ver tudo)
+    empresaAtivaId = row.empresa_ativa_id ?? null;
+  } else {
+    empresaAtivaId = row.empresa_ativa_id || row.last_empresa_id || null;
+    if (empresaAtivaId && !memberships.find((m) => m.empresa_id === empresaAtivaId)) {
+      empresaAtivaId = memberships.length === 1 ? memberships[0].empresa_id : null;
+    } else if (!empresaAtivaId && memberships.length === 1) {
+      empresaAtivaId = memberships[0].empresa_id;
+    }
+  }
+
+  // Persistir a escolha na sessão (se mudou) — só se houver diferença
+  if (empresaAtivaId !== row.empresa_ativa_id) {
+    db.prepare("UPDATE sessions SET empresa_ativa_id = ? WHERE id = ?").run(empresaAtivaId, row.sid);
+  }
+  if (empresaAtivaId && empresaAtivaId !== row.last_empresa_id) {
+    db.prepare("UPDATE users SET last_empresa_id = ? WHERE id = ?").run(empresaAtivaId, row.user_id);
+  }
+
   return {
     token: row.sid,
     expiresAt: row.expires_at,
@@ -69,6 +104,9 @@ export function findSession(token) {
       email: row.email,
       role: row.role,
       primeiro_login: !!row.primeiro_login,
+      isSuperAdmin,
+      memberships,
+      empresaAtivaId,
     },
   };
 }

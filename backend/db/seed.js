@@ -3,6 +3,7 @@
 //  -----------------------------------------------------------------------------
 //  Gera uma senha temporária aleatória e a imprime UMA VEZ no console.
 //  O usuário é forçado a trocar a senha no primeiro login (campo primeiro_login=1).
+//  Cria também uma empresa padrão "Minha Empresa" e vincula o admin a ela.
 // =============================================================================
 import crypto from "crypto";
 import { db } from "./index.js";
@@ -23,6 +24,26 @@ export function runSeed(logger = console.log) {
     VALUES (?, ?, ?, ?, ?, 'admin', 1, 1)
   `);
   const info = stmt.run("admin", "Administrador", null, hash, salt);
+  const adminId = Number(info.lastInsertRowid);
+
+  // Cria empresa padrão "Minha Empresa" e vincula o admin
+  try {
+    const totalEmp = db.prepare("SELECT COUNT(*) as c FROM empresas").get().c;
+    if (totalEmp === 0) {
+      const empInfo = db.prepare(`
+        INSERT INTO empresas (cnpj, nome, ambiente, ativo)
+        VALUES ('00000000000000', 'Minha Empresa', 'homologacao', 1)
+      `).run();
+      const empId = Number(empInfo.lastInsertRowid);
+      db.prepare(`
+        INSERT INTO empresa_users (empresa_id, user_id, papel, ativo)
+        VALUES (?, ?, 'admin', 1)
+      `).run(empId, adminId);
+      logger("  + empresa padrão 'Minha Empresa' criada e admin vinculado");
+    }
+  } catch (e) {
+    logger("[seed] falha ao criar empresa padrão: " + e.message);
+  }
 
   logger("");
   logger("=================================================================");
@@ -35,5 +56,5 @@ export function runSeed(logger = console.log) {
   logger("=================================================================");
   logger("");
 
-  return { created: true, id: Number(info.lastInsertRowid), tempPassword };
+  return { created: true, id: adminId, tempPassword };
 }

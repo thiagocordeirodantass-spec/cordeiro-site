@@ -10,23 +10,27 @@ export async function render(root) {
   const passwordInput = el("input", { class: "input", type: "password", placeholder: "••••••••", autocomplete: "current-password", required: "true" });
   const submitBtn = el("button", { class: "btn btn--primary btn--lg", type: "submit" }, "Entrar no sistema");
 
-  const form = el("form", { onSubmit: async (e) => {
+  async function onSubmit(e) {
     e.preventDefault();
     errBox.textContent = "";
-    submitBtn.disabled = true; submitBtn.textContent = "Entrando…";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Entrando…";
     try {
       const r = await api("/api/auth/login", {
         method: "POST",
         body: { username: usernameInput.value.trim(), password: passwordInput.value },
       });
-      toast(`Bem-vindo, ${r.user.nome || r.user.username}!`);
+      toast("Bem-vindo, " + (r.user.nome || r.user.username) + "!");
       if (r.user.primeiro_login) navigate("change-password");
       else navigate("dashboard");
-    } catch (e) {
-      errBox.textContent = e.message || "Erro ao entrar";
-      submitBtn.disabled = false; submitBtn.textContent = "Entrar no sistema";
+    } catch (err) {
+      errBox.textContent = err.message || "Erro ao entrar";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Entrar no sistema";
     }
-  } },
+  }
+
+  const form = el("form", { onSubmit: onSubmit },
     el("div", { class: "brand" },
       el("div", { class: "logo-cordeiro logo-cordeiro--lg", html: CORDEIRO_SVG }),
       el("h1", {}, "Cordeiro Sistema"),

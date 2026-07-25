@@ -43,6 +43,57 @@ router.get("/cert/listar", async (_req, res) => {
   }
 });
 
+// Consulta automática: identidade pelo tenant/mTLS e certificado privado
+// correspondente ao CNPJ localizado no Windows Certificate Store.
+router.post("/cert/periodo-auto", async (req, res) => {
+  const empresa = req.empresa;
+  const cnpj = String(empresa?.cnpj || "").replace(/\D/g, "");
+  if (!cnpj) return res.status(400).json({ error: "A empresa ativa não possui CNPJ configurado" });
+  try {
+    const certificados = await certWindows.listarCertificadosWindows();
+    const cert = certificados.find((item) =>
+      String(item.subject || "").replace(/\D/g, "").includes(cnpj)
+    );
+    if (!cert) {
+      return res.status(400).json({ error: "Nenhum certificado privado correspondente ao CNPJ foi encontrado no Windows" });
+    }
+    const senhaTemporaria = `Cordeiro-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const pfx = await certWindows.exportarPfxWindows(cert.thumbprint, senhaTemporaria);
+    const resultado = await sefazDistribuicao.consultarPeriodoComCertificado({
+      pfx, passphrase: senhaTemporaria, uf: "91",
+      ambiente: empresa.ambiente === "homologacao" ? "homologacao" : "producao",
+      cnpjOuCpf: cnpj, ultNSUInicial: String(req.body?.ultNSUInicial || "0"),
+      maxIteracoes: 30,
+    });
+    const zip = new ZipWriter();
+    const salvos = [];
+    for (const doc of resultado.docs) {
+      const resumo = doc.xml.includes("<resNFe") || doc.xml.includes("<resEvento");
+      const match = doc.xml.match(/<chNFe>([^<]+)<\/chNFe>/) || doc.xml.match(/Id="[A-Za-z]*(\d{44})"/);
+      const chave = match?.[1] || `nsu-${doc.nsu}`;
+      zip.addFile(`${chave}${resumo ? "-resumo" : ""}.xml`, doc.xml);
+      if (!resumo) {
+        try {
+          const parsed = parseXml(doc.xml);
+          const kind = parsed ? detectKind(parsed) : "NFE";
+          if (parsed && kind !== "OUTROS") {
+            const saved = saveDocument({ xmlText: doc.xml, kind, source: "sefaz-mtls-auto", empresaId: req.tenantId });
+            if (saved?.ok) salvos.push(saved.id);
+          }
+        } catch {}
+      }
+    }
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="nfs-destinadas-${Date.now()}.zip"`);
+    res.setHeader("X-Sefaz-Total", String(resultado.docs.length));
+    res.setHeader("X-Sefaz-Salvos", String(salvos.length));
+    res.setHeader("X-Sefaz-UltNSU", String(resultado.ultNSU || ""));
+    res.send(zip.toBuffer());
+  } catch (e) {
+    res.status(502).json({ error: "Falha na consulta automática: " + e.message });
+  }
+});
+
 // =============================================================================
 //  POST /api/sefaz/cert/lote
 //  Busca em lote na SEFAZ via certificado A1.
@@ -128,7 +179,7 @@ router.post("/cert/lote", upload.single("certificado"), async (req, res) => {
           const parsed = parseXml(xmlText);
           const kind = parsed ? detectKind(parsed) : "NFE";
           if (parsed && kind && kind !== "OUTROS") {
-            const r = saveDocument({ xmlText, kind, source: "sefaz-cert" });
+            const r = saveDocument({ xmlText, kind, source: "sefaz-cert", empresaId: req.tenantId || null });
             if (r && r.ok) {
               docId = r.id;
               salvos.push({ chave, id: r.id, kind: r.kind });
@@ -227,7 +278,7 @@ router.post("/cert/periodo", upload.single("certificado"), async (req, res) => {
             const parsed = parseXml(doc.xml);
             const kind = parsed ? detectKind(parsed) : "NFE";
             if (parsed && kind && kind !== "OUTROS") {
-              const r = saveDocument({ xmlText: doc.xml, kind, source: "sefaz-cert-periodo" });
+              const r = saveDocument({ xmlText: doc.xml, kind, source: "sefaz-cert-periodo", empresaId: req.tenantId || null });
               if (r && r.ok) salvos.push({ chave, id: r.id });
             }
           } catch (e) {}
@@ -284,7 +335,7 @@ router.post("/provedor/lote", async (req, res) => {
           const parsed = parseXml(xmlText);
           const kind = parsed ? detectKind(parsed) : "NFE";
           if (parsed && kind && kind !== "OUTROS") {
-            const r = saveDocument({ xmlText, kind, source: "sefaz-provedor" });
+            const r = saveDocument({ xmlText, kind, source: "sefaz-provedor", empresaId: req.tenantId || null });
             if (r && r.ok) salvos.push({ chave, id: r.id });
           }
         } catch (e) {}

@@ -22,11 +22,14 @@ router.get("/", (req, res) => {
 });
 
 router.post("/", (req, res) => {
-  const { username, nome, email, role, ativo } = req.body || {};
+  const { username, nome, email, role, ativo, empresaId } = req.body || {};
   if (!username || !nome || !role) return res.status(400).json({ error: "username, nome e role são obrigatórios" });
   if (!["admin", "operador", "visualizador"].includes(role)) return res.status(400).json({ error: "role inválido" });
   if (db.prepare("SELECT 1 FROM users WHERE username = ?").get(username)) {
     return res.status(400).json({ error: "Já existe um usuário com esse username" });
+  }
+  if (empresaId && !db.prepare("SELECT id FROM empresas WHERE id = ? AND ativo = 1").get(Number(empresaId))) {
+    return res.status(400).json({ error: "Empresa inválida ou inativa" });
   }
   const tempPassword = crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "x").slice(0, 12);
   const { hash, salt } = hashPassword(tempPassword);
@@ -36,6 +39,14 @@ router.post("/", (req, res) => {
   `).run(String(username).trim(), String(nome).trim(), email || null, hash, salt, role, ativo === false ? 0 : 1);
 
   const created = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(info.lastInsertRowid));
+  if (empresaId) {
+    db.prepare(`
+      INSERT INTO empresa_users (empresa_id, user_id, papel, ativo)
+      VALUES (?, ?, ?, 1)
+    `).run(Number(empresaId), Number(info.lastInsertRowid), role === "admin" ? "admin" : role);
+    db.prepare("UPDATE users SET last_empresa_id = ? WHERE id = ?")
+      .run(Number(empresaId), Number(info.lastInsertRowid));
+  }
   res.json({ user: sanitize(created), senhaTemporaria: tempPassword });
 });
 

@@ -17,6 +17,7 @@ import { db } from "../db/index.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const XML_DIR = path.resolve(__dirname, "..", "..", "data", "xml");
+const XML_DIR_ROOT = XML_DIR; // raiz; cada empresa fica em XML_DIR/empresa_{id}/
 
 // ---- Parser / Builder XML ----
 const xmlParser = new XMLParser({
@@ -576,7 +577,7 @@ function deriveEnrichedFields(kind, fullData, summary) {
   };
 }
 
-export function saveDocument({ xmlText, kind, source = "upload", fileName = null }) {
+export function saveDocument({ xmlText, kind, source = "upload", fileName = null, empresaId = null }) {
   const parsed = parseXml(xmlText);
   if (!parsed) return { ok: false, error: "XML invalido" };
 
@@ -602,7 +603,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
   // Opcionalmente re-parseamos para atualizar os campos enriquecidos
   // quando o XML mudou (ex.: evento de cancelamento entrou depois).
   const existing = db
-    .prepare("SELECT id, xml_path, xml_size, source FROM documents WHERE chave = ?")
+    .prepare("SELECT id, xml_path, xml_size, source, empresa_id FROM documents WHERE chave = ?")
     .get(chave);
   if (existing) {
     // Atualiza os campos enriquecidos sem mexer no XML em disco
@@ -657,10 +658,14 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
     };
   }
 
-  fs.mkdirSync(XML_DIR, { recursive: true });
+  // Resolve diretório por empresa (multi-tenant); fallback para raiz se empresaId ausente
+  const dir = empresaId ? path.join(XML_DIR, `empresa_${empresaId}`) : XML_DIR;
+  fs.mkdirSync(dir, { recursive: true });
   const safeFileName = `${chave}-${Date.now()}.xml`;
-  const xmlPath = path.join(XML_DIR, safeFileName);
+  const xmlPath = path.join(dir, safeFileName);
   fs.writeFileSync(xmlPath, xmlText, "utf-8");
+  // Armazena apenas o basename + empresa_id, para getXmlPathByRow reconstruir
+  const relPath = empresaId ? path.join(`empresa_${empresaId}`, safeFileName) : safeFileName;
 
   const stmt = db.prepare(`
     INSERT INTO documents (
@@ -677,7 +682,8 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       tipo_documento, documento_terceiros, carta_correcao,
       eventos, ultima_manifestacao, data_ultima_manifestacao, sem_manifestacao,
       data_validacao_regra, regra_validacao, regra_violada,
-      finalidade_emissao, tipo_operacao
+      finalidade_emissao, tipo_operacao,
+      empresa_id
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
       ?, ?,
@@ -692,7 +698,8 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?,
-      ?, ?
+      ?, ?,
+      ?
     )
     ON CONFLICT(chave) DO UPDATE SET
       numero = excluded.numero,
@@ -736,7 +743,8 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
       regra_validacao = excluded.regra_validacao,
       regra_violada = excluded.regra_violada,
       finalidade_emissao = excluded.finalidade_emissao,
-      tipo_operacao = excluded.tipo_operacao
+      tipo_operacao = excluded.tipo_operacao,
+      empresa_id = COALESCE(documents.empresa_id, excluded.empresa_id)
   `);
 
   // Deriva campos enriquecidos a partir do fullData (XML destrinchado)
@@ -758,7 +766,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
     summary.valorTotal ?? null,
     summary.status ?? "pendente",
     summary.protocolo ?? null,
-    safeFileName,
+    relPath,
     Buffer.byteLength(xmlText, "utf-8"),
     source,
     JSON.stringify(fullData),
@@ -787,6 +795,7 @@ export function saveDocument({ xmlText, kind, source = "upload", fileName = null
     enriched.regra_violada,
     enriched.finalidade_emissao,
     enriched.tipo_operacao,
+    empresaId,
   );
 
   return {
@@ -980,6 +989,13 @@ export function generateCTe(input) {
 
 // ---- Busca do XML em disco ----
 export function getXmlPathByRow(row) {
-  return path.join(XML_DIR, row.xml_path);
+  // Suporta tanto path relativo (empresa_X/arquivo.xml) quanto apenas basename (legado)
+  // Se row.xml_path tem separador, usa direto; senão, anexa empresa_id
+  let rel = row.xml_path;
+  if (rel && !rel.includes("/") && !rel.includes(path.sep) && row.empresa_id) {
+    rel = path.join(`empresa_${row.empresa_id}`, rel);
+  }
+  return path.join(XML_DIR, rel);
 }
 export const XML_DIR_PATH = XML_DIR;
+export const XML_DIR_ROOT_PATH = XML_DIR_ROOT;

@@ -65,7 +65,8 @@ router.get("/me", (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Não autenticado" });
   // Recarrega do banco para refletir avatar/dados atualizados (req.user é cache da sessão)
   const fresh = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id);
-  res.json({ user: userPublic(fresh || req.user) });
+  const enriched = { ...(fresh || req.user), empresaAtivaId: req.user.empresaAtivaId || null };
+  res.json({ user: userPublic(enriched) });
 });
 
 router.post("/change-password", (req, res) => {
@@ -233,13 +234,28 @@ router.post("/me/avatar", uploadAvatar.single("avatar"), (req, res) => {
 
 router.put("/me", (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Não autenticado" });
-  const { nome, email } = req.body || {};
+  const { nome, email, cargo, area_atuacao, bio, linkedin_url, instagram_url, website_url, telefone, preferencias } = req.body || {};
   if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "Email inválido" });
   }
-  db.prepare("UPDATE users SET nome = ?, email = ?, updated_at = datetime('now') WHERE id = ?")
-    .run(nome, email || null, req.user.id);
+  const cleanUrl = (value) => {
+    const text = String(value || "").trim();
+    if (!text) return null;
+    try { const url = new URL(text); return ["http:", "https:"].includes(url.protocol) ? url.toString() : null; } catch { return null; }
+  };
+  db.prepare(`UPDATE users SET nome = ?, email = ?, cargo = ?, area_atuacao = ?, bio = ?,
+    linkedin_url = ?, instagram_url = ?, website_url = ?, telefone = ?, preferencias = ?,
+    updated_at = datetime('now') WHERE id = ?`).run(
+      String(nome).trim().slice(0, 120), email || null,
+      String(cargo || "").trim().slice(0, 100) || null,
+      String(area_atuacao || "").trim().slice(0, 100) || null,
+      String(bio || "").trim().slice(0, 600) || null,
+      cleanUrl(linkedin_url), cleanUrl(instagram_url), cleanUrl(website_url),
+      String(telefone || "").trim().slice(0, 30) || null,
+      JSON.stringify(preferencias && typeof preferencias === "object" ? preferencias : {}),
+      req.user.id
+    );
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id);
   res.json({ ok: true, user: userPublic(user) });
 });
@@ -251,6 +267,34 @@ router.delete("/me/avatar", (req, res) => {
     try { fs.unlinkSync(path.join(DATA_DIR, old.avatar_path)); } catch (e) {}
   }
   db.prepare("UPDATE users SET avatar_path = NULL WHERE id = ?").run(req.user.id);
+  res.json({ ok: true });
+});
+
+// =============================================================================
+//  CERTIFICADOS DE CLIENTE mTLS (admin)
+// =============================================================================
+router.get("/certificates", requireAdmin, (_req, res) => {
+  const rows = db.prepare(`SELECT c.id, c.user_id, c.fingerprint256, c.subject, c.issuer,
+    c.ativo, c.created_at, u.username, u.nome
+    FROM client_certificates c JOIN users u ON u.id = c.user_id
+    ORDER BY c.created_at DESC`).all();
+  res.json({ certificates: rows });
+});
+router.post("/certificates", requireAdmin, (req, res) => {
+  const { user_id, fingerprint256, subject, issuer } = req.body || {};
+  const fp = String(fingerprint256 || "").trim().toUpperCase();
+  if (!user_id || !/^([A-F0-9]{2}:){31}[A-F0-9]{2}$/.test(fp)) {
+    return res.status(400).json({ error: "user_id e fingerprint SHA-256 válidos são obrigatórios" });
+  }
+  db.prepare(`INSERT INTO client_certificates (user_id, fingerprint256, subject, issuer)
+    VALUES (?, ?, ?, ?) ON CONFLICT(fingerprint256) DO UPDATE SET
+    user_id=excluded.user_id, subject=excluded.subject, issuer=excluded.issuer, ativo=1`)
+    .run(Number(user_id), fp, String(subject || "").slice(0, 300) || null,
+      String(issuer || "").slice(0, 300) || null);
+  res.json({ ok: true });
+});
+router.delete("/certificates/:id", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM client_certificates WHERE id = ?").run(Number(req.params.id));
   res.json({ ok: true });
 });
 
@@ -295,6 +339,42 @@ router.post("/mail/test", requireAdmin, async (req, res) => {
 //  HELPER
 // =============================================================================
 function userPublic(u) {
+  // Carrega memberships + empresa ativa (se houver)
+  let memberships = [];
+  let empresaAtivaId = null;
+  let empresaAtiva = null;
+  let isSuperAdmin = false;
+  try {
+    isSuperAdmin = u.role === "admin";
+    memberships = db.prepare(`
+      SELECT eu.empresa_id, eu.papel, e.cnpj, e.nome, e.nome_fantasia, e.ambiente
+      FROM empresa_users eu
+      JOIN empresas e ON e.id = eu.empresa_id
+      WHERE eu.user_id = ? AND eu.ativo = 1 AND e.ativo = 1
+    `).all(u.id);
+    if (isSuperAdmin) {
+      // super-admin: ativa pode ser null explícito (= ver tudo) ou qualquer empresa_id
+      empresaAtivaId = u.empresaAtivaId ?? null;
+    } else {
+      empresaAtivaId = u.empresaAtivaId || u.last_empresa_id || null;
+      if (empresaAtivaId && !memberships.find((m) => m.empresa_id === empresaAtivaId)) {
+        empresaAtivaId = memberships.length === 1 ? memberships[0].empresa_id : null;
+      } else if (!empresaAtivaId && memberships.length === 1) {
+        empresaAtivaId = memberships[0].empresa_id;
+      }
+    }
+    // Carrega a empresa ativa completa (independente de membership — super-admin pode estar em uma sem vínculo)
+    if (empresaAtivaId) {
+      const row = db.prepare(`
+        SELECT e.id as empresa_id, e.cnpj, e.nome, e.nome_fantasia, e.ambiente, e.regime_tributario,
+               COALESCE(eu.papel, ?) as papel
+        FROM empresas e
+        LEFT JOIN empresa_users eu ON eu.empresa_id = e.id AND eu.user_id = ? AND eu.ativo = 1
+        WHERE e.id = ? AND e.ativo = 1
+      `).get(isSuperAdmin ? "admin" : null, u.id, empresaAtivaId);
+      empresaAtiva = row || null;
+    }
+  } catch (e) { /* tabela ainda não existe em DB muito antigo */ }
   return {
     id: u.id,
     username: u.username,
@@ -303,8 +383,20 @@ function userPublic(u) {
     role: u.role,
     avatar_path: u.avatar_path,
     avatar_url: u.avatar_path ? `/api/${u.avatar_path}` : null,
+    cargo: u.cargo || "",
+    area_atuacao: u.area_atuacao || "",
+    bio: u.bio || "",
+    linkedin_url: u.linkedin_url || "",
+    instagram_url: u.instagram_url || "",
+    website_url: u.website_url || "",
+    telefone: u.telefone || "",
+    preferencias: (() => { try { return JSON.parse(u.preferencias || "{}"); } catch { return {}; } })(),
     primeiro_login: !!u.primeiro_login,
     ultimo_login: u.ultimo_login,
+    is_super_admin: isSuperAdmin,
+    memberships,
+    empresa_ativa_id: empresaAtivaId,
+    empresa_ativa: empresaAtiva,
   };
 }
 

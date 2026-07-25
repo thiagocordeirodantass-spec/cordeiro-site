@@ -10,6 +10,7 @@ import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import os from "os";
 import { db } from "../db/index.js";
 import { XML_DIR_PATH, parseXml, saveDocument, getXmlPathByRow } from "../services/documents.service.js";
 import { requireRole } from "../middleware/requireRole.js";
@@ -22,18 +23,42 @@ const __dirname = pathMod.dirname(__filename);
 const DATA_DIR = pathMod.resolve(__dirname, "..", "..", "data");
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// ---- Multer com DISK storage para suportar milhares de arquivos sem estourar RAM
+// Escreve cada upload em arquivo temporário (os.tmpdir) e libera memória imediatamente.
+// fileSize: 20MB por arquivo. files/parts: até 10.000 arquivos por requisição.
+// IMPORTANTE: sem "parts" explícito, o busboy corta em 200 parts (default).
+const TMP_DIR = path.join(os.tmpdir(), "cordeiro-uploads");
+try { fs.mkdirSync(TMP_DIR, { recursive: true }); } catch (e) { /* ok */ }
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, TMP_DIR),
+    filename: (_req, file, cb) => {
+      const safe = (file.originalname || "upload.xml").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`);
+    },
+  }),
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+    files: 10000,
+    parts: 10000,
+    fieldSize: 5 * 1024 * 1024,
+  },
+});
 
 // ---- Healthcheck
 router.get("/_health", (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 // ---- Estatísticas
-router.get("/_stats", (_req, res) => {
-  const total = db.prepare("SELECT COUNT(*) as c FROM documents").get().c;
-  const nfe = db.prepare("SELECT COUNT(*) as c FROM documents WHERE kind = 'NFE'").get().c;
-  const cte = db.prepare("SELECT COUNT(*) as c FROM documents WHERE kind = 'CTE'").get().c;
-  const canc = db.prepare("SELECT COUNT(*) as c FROM documents WHERE status = 'cancelado'").get().c;
-  const valorTotal = db.prepare("SELECT COALESCE(SUM(CAST(valor_total AS REAL)), 0) as v FROM documents").get().v;
+router.get("/_stats", (req, res) => {
+  const tf = req.tenantFilter;
+  const wh = tf ? `WHERE ${tf.where}` : "";
+  const p = tf ? [tf.param] : [];
+  const total = db.prepare(`SELECT COUNT(*) as c FROM documents ${wh}`).get(...p).c;
+  const nfe = db.prepare(`SELECT COUNT(*) as c FROM documents ${wh ? wh + " AND" : "WHERE"} kind = 'NFE'`).get(...p).c;
+  const cte = db.prepare(`SELECT COUNT(*) as c FROM documents ${wh ? wh + " AND" : "WHERE"} kind = 'CTE'`).get(...p).c;
+  const canc = db.prepare(`SELECT COUNT(*) as c FROM documents ${wh ? wh + " AND" : "WHERE"} status = 'cancelado'`).get(...p).c;
+  const valorTotal = db.prepare(`SELECT COALESCE(SUM(CAST(valor_total AS REAL)), 0) as v FROM documents ${wh}`).get(...p).v;
   res.json({ total, nfe, cte, cancelados: canc, valorTotal });
 });
 
@@ -56,6 +81,12 @@ router.get("/", (req, res) => {
   } = req.query;
   const where = [];
   const params = [];
+  // Multi-tenancy: aplica filtro de empresa SEMPRE que houver tenant ativo
+  // (super-admin sem empresa ativa vê tudo)
+  if (req.tenantFilter) {
+    where.push(req.tenantFilter.where);
+    params.push(req.tenantFilter.param);
+  }
   if (kind) { where.push("kind = ?"); params.push(String(kind).toUpperCase()); }
   if (status) { where.push("status = ?"); params.push(status); }
   if (source) { where.push("source = ?"); params.push(String(source)); }
@@ -93,22 +124,31 @@ router.get("/", (req, res) => {
   }
   if (chaveAcesso) { where.push("chave LIKE ?"); params.push(`%${chaveAcesso}%`); }
   if (cancelados === "1" || cancelados === "true") { where.push("cancelado = 1"); }
+  else if (cancelados === "0" || cancelados === "false") { where.push("COALESCE(cancelado, 0) = 0"); }
   if (dataCancelamentoFrom) { where.push("date(data_cancelamento) >= date(?)"); params.push(dataCancelamentoFrom); }
   if (dataCancelamentoTo) { where.push("date(data_cancelamento) <= date(?)"); params.push(dataCancelamentoTo); }
   if (registrada === "1" || registrada === "true") { where.push("registrada_erp = 1"); }
+  else if (registrada === "0" || registrada === "false") { where.push("COALESCE(registrada_erp, 0) = 0"); }
   if (dataRegistroFrom) { where.push("date(data_registro_erp) >= date(?)"); params.push(dataRegistroFrom); }
   if (dataRegistroTo) { where.push("date(data_registro_erp) <= date(?)"); params.push(dataRegistroTo); }
   if (registrosInvalidos === "1" || registrosInvalidos === "true") { where.push("registro_invalido = 1"); }
+  else if (registrosInvalidos === "0" || registrosInvalidos === "false") { where.push("COALESCE(registro_invalido, 0) = 0"); }
   if (invalidado === "1" || invalidado === "true") { where.push("invalidado = 1"); }
+  else if (invalidado === "0" || invalidado === "false") { where.push("COALESCE(invalidado, 0) = 0"); }
   if (assinaturaInvalida === "1" || assinaturaInvalida === "true") { where.push("assinatura_invalida = 1"); }
+  else if (assinaturaInvalida === "0" || assinaturaInvalida === "false") { where.push("COALESCE(assinatura_invalida, 0) = 0"); }
   if (schemaInvalido === "1" || schemaInvalido === "true") { where.push("schema_invalido = 1"); }
+  else if (schemaInvalido === "0" || schemaInvalido === "false") { where.push("COALESCE(schema_invalido, 0) = 0"); }
   if (tipoDocumento) { where.push("tipo_documento = ?"); params.push(String(tipoDocumento)); }
   if (terceiros === "1" || terceiros === "true") { where.push("documento_terceiros = 1"); }
+  else if (terceiros === "0" || terceiros === "false") { where.push("COALESCE(documento_terceiros, 0) = 0"); }
   if (cartaCorrecao === "1" || cartaCorrecao === "true") { where.push("carta_correcao = 1"); }
+  else if (cartaCorrecao === "0" || cartaCorrecao === "false") { where.push("COALESCE(carta_correcao, 0) = 0"); }
   if (ultimaManifestacao) { where.push("ultima_manifestacao = ?"); params.push(String(ultimaManifestacao)); }
   if (dataUltimaManifestacaoFrom) { where.push("date(data_ultima_manifestacao) >= date(?)"); params.push(dataUltimaManifestacaoFrom); }
   if (dataUltimaManifestacaoTo) { where.push("date(data_ultima_manifestacao) <= date(?)"); params.push(dataUltimaManifestacaoTo); }
   if (semManifestacao === "1" || semManifestacao === "true") { where.push("sem_manifestacao = 1"); }
+  else if (semManifestacao === "0" || semManifestacao === "false") { where.push("COALESCE(sem_manifestacao, 0) = 0"); }
   if (dataValidacaoRegraFrom) { where.push("date(data_validacao_regra) >= date(?)"); params.push(dataValidacaoRegraFrom); }
   if (dataValidacaoRegraTo) { where.push("date(data_validacao_regra) <= date(?)"); params.push(dataValidacaoRegraTo); }
   if (regraValidacao) { where.push("regra_validacao LIKE ?"); params.push(`%${regraValidacao}%`); }
@@ -129,7 +169,7 @@ router.get("/", (req, res) => {
            tipo_documento, documento_terceiros, carta_correcao,
            ultima_manifestacao, data_ultima_manifestacao, sem_manifestacao,
            data_validacao_regra, regra_validacao, regra_violada,
-           finalidade_emissao, tipo_operacao
+           finalidade_emissao, tipo_operacao, empresa_id
     FROM documents
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY datetime(data_emissao) DESC, id DESC
@@ -142,7 +182,10 @@ router.get("/", (req, res) => {
 // ---- Detalhe
 router.get("/:id", (req, res) => {
   const id = Number(req.params.id);
-  const row = db.prepare("SELECT * FROM documents WHERE id = ? OR chave = ?").get(id, String(req.params.id));
+  const tf = req.tenantFilter;
+  const wh = tf ? ` AND ${tf.where}` : "";
+  const p = tf ? [id, String(req.params.id), tf.param] : [id, String(req.params.id)];
+  const row = db.prepare(`SELECT * FROM documents WHERE (id = ? OR chave = ?)${wh}`).get(...p);
   if (!row) return res.status(404).json({ error: "Nao encontrado" });
   let xml = null;
   try { xml = fs.readFileSync(getXmlPathByRow(row), "utf-8"); } catch (e) { xml = null; }
@@ -151,8 +194,10 @@ router.get("/:id", (req, res) => {
 
 // ---- Download XML
 router.get("/:id/xml", (req, res) => {
-  const row = db.prepare("SELECT xml_path, chave FROM documents WHERE id = ? OR chave = ?")
-    .get(Number(req.params.id) || 0, String(req.params.id));
+  const tf = req.tenantFilter;
+  const wh = tf ? ` AND ${tf.where}` : "";
+  const p = tf ? [Number(req.params.id) || 0, String(req.params.id), tf.param] : [Number(req.params.id) || 0, String(req.params.id)];
+  const row = db.prepare(`SELECT xml_path, chave, empresa_id FROM documents WHERE (id = ? OR chave = ?)${wh}`).get(...p);
   if (!row) return res.status(404).json({ error: "Nao encontrado" });
   const filePath = getXmlPathByRow(row);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Arquivo nao encontrado" });
@@ -163,8 +208,10 @@ router.get("/:id/xml", (req, res) => {
 
 // ---- Baixar DANFE PDF (oficial, via MeuDANFe) — por id OU chave
 router.get("/:id/pdf", async (req, res) => {
-  const row = db.prepare("SELECT * FROM documents WHERE id = ? OR chave = ?")
-    .get(Number(req.params.id) || 0, String(req.params.id));
+  const tf = req.tenantFilter;
+  const wh = tf ? ` AND ${tf.where}` : "";
+  const p = tf ? [Number(req.params.id) || 0, String(req.params.id), tf.param] : [Number(req.params.id) || 0, String(req.params.id)];
+  const row = db.prepare(`SELECT * FROM documents WHERE (id = ? OR chave = ?)${wh}`).get(...p);
   if (!row) return res.status(404).json({ error: "Documento nao encontrado" });
   let xmlText;
   try { xmlText = fs.readFileSync(getXmlPathByRow(row), "utf-8"); } catch (e) {
@@ -189,6 +236,7 @@ router.get("/numero/:numero", (req, res) => {
   const where = ["numero = ?"];
   const params = [String(numero)];
   if (kind) { where.push("kind = ?"); params.push(String(kind).toUpperCase()); }
+  if (req.tenantFilter) { where.push(req.tenantFilter.where); params.push(req.tenantFilter.param); }
   res.json(db.prepare(
     `SELECT id, kind, modelo, chave, numero, serie, data_emissao,
             remetente_nome, destinatario_nome, valor_total, status
@@ -198,34 +246,64 @@ router.get("/numero/:numero", (req, res) => {
 
 // ---- Importar via JSON
 router.post("/import", requireRole("admin", "operador"), (req, res) => {
-  const { xml, kind, source, fileName } = req.body || {};
+  const { xml, kind, source, fileName, empresaId } = req.body || {};
   if (!xml) return res.status(400).json({ error: "xml nao fornecido" });
-  const result = saveDocument({ xmlText: xml, kind, source: source || "paste", fileName });
+  // resolve empresa: body > ativa; só permite mudar se super-admin
+  let eId = req.tenantId || null;
+  if (empresaId != null && empresaId !== "" && req.isSuperAdmin) {
+    eId = Number(empresaId);
+  }
+  const result = saveDocument({ xmlText: xml, kind, source: source || "paste", fileName, empresaId: eId });
   if (!result.ok) return res.status(400).json(result);
   res.json(result);
 });
 
 // ---- Importar via upload (vários arquivos)
-router.post("/upload", requireRole("admin", "operador"), upload.array("files", 50), (req, res) => {
+// Usa multer com diskStorage (ver declaração acima) e processa cada arquivo
+// lendo do disco e apagando imediatamente para liberar memória.
+router.post("/upload", requireRole("admin", "operador"), upload.array("files", 10000), (req, res) => {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: "Nenhum arquivo enviado" });
-  const results = files.map((f) => {
-    const xmlText = f.buffer.toString("utf-8");
-    return { fileName: f.originalname, ...saveDocument({ xmlText, source: "upload", fileName: f.originalname }) };
-  });
-  res.json({ processed: results });
+  const results = [];
+  const tmpFiles = [];
+  try {
+    for (const f of files) {
+      tmpFiles.push(f.path);
+      let xmlText = "";
+      try {
+        xmlText = fs.readFileSync(f.path, "utf-8");
+      } catch (e) {
+        results.push({ fileName: f.originalname, ok: false, error: "Falha ao ler arquivo: " + e.message });
+        continue;
+      }
+      const r = saveDocument({ xmlText, source: "upload", fileName: f.originalname, empresaId: req.tenantId || null });
+      results.push({ fileName: f.originalname, ...r });
+      // Libera o XML do result para não acumular em memória na resposta
+      delete r.xml;
+    }
+    res.json({ processed: results });
+  } catch (e) {
+    res.status(500).json({ error: "Erro ao processar upload: " + e.message });
+  } finally {
+    // Apaga os arquivos temporários imediatamente para liberar disco
+    for (const p of tmpFiles) {
+      try { fs.unlinkSync(p); } catch (e) { /* ok */ }
+    }
+  }
 });
 
 // ---- Remover (com backup automático antes de excluir)
 router.delete("/:id", requireRole("admin", "operador"), (req, res) => {
   const id = Number(req.params.id);
-  const row = db.prepare("SELECT xml_path, chave FROM documents WHERE id = ?").get(id);
+  const tf = req.tenantFilter;
+  const wh = tf ? ` AND ${tf.where}` : "";
+  const p = tf ? [id, tf.param] : [id];
+  const row = db.prepare(`SELECT xml_path, chave FROM documents WHERE id = ?${wh}`).get(...p);
   if (!row) return res.status(404).json({ error: "Nao encontrado" });
   // Apaga o registro (a FK do banco nao tem cascade, mas documents.id nao é referenciado)
   const info = db.prepare("DELETE FROM documents WHERE id = ?").run(id);
   if (info.changes === 0) return res.status(404).json({ error: "Nao encontrado" });
   // Apaga o XML em disco, mas só se nenhum outro registro usa o mesmo arquivo
-  // (defesa contra arquivos compartilhados)
   const stillUsed = db.prepare("SELECT COUNT(*) as c FROM documents WHERE xml_path = ?").get(row.xml_path).c;
   if (stillUsed === 0) {
     try { fs.unlinkSync(path.join(XML_DIR_PATH, row.xml_path)); } catch (e) { /* arquivo ja sumiu */ }

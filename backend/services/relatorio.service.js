@@ -269,22 +269,31 @@ export function filtrosToWhere(query) {
   }
   if (chaveAcesso) { where.push("chave LIKE ?"); params.push(`%${chaveAcesso}%`); }
   if (cancelados === "1" || cancelados === "true") { where.push("cancelado = 1"); }
+  else if (cancelados === "0" || cancelados === "false") { where.push("COALESCE(cancelado, 0) = 0"); }
   if (dataCancelamentoFrom) { where.push("date(data_cancelamento) >= date(?)"); params.push(dataCancelamentoFrom); }
   if (dataCancelamentoTo) { where.push("date(data_cancelamento) <= date(?)"); params.push(dataCancelamentoTo); }
   if (registrada === "1" || registrada === "true") { where.push("registrada_erp = 1"); }
+  else if (registrada === "0" || registrada === "false") { where.push("COALESCE(registrada_erp, 0) = 0"); }
   if (dataRegistroFrom) { where.push("date(data_registro_erp) >= date(?)"); params.push(dataRegistroFrom); }
   if (dataRegistroTo) { where.push("date(data_registro_erp) <= date(?)"); params.push(dataRegistroTo); }
   if (registrosInvalidos === "1" || registrosInvalidos === "true") { where.push("registro_invalido = 1"); }
+  else if (registrosInvalidos === "0" || registrosInvalidos === "false") { where.push("COALESCE(registro_invalido, 0) = 0"); }
   if (invalidado === "1" || invalidado === "true") { where.push("invalidado = 1"); }
+  else if (invalidado === "0" || invalidado === "false") { where.push("COALESCE(invalidado, 0) = 0"); }
   if (assinaturaInvalida === "1" || assinaturaInvalida === "true") { where.push("assinatura_invalida = 1"); }
+  else if (assinaturaInvalida === "0" || assinaturaInvalida === "false") { where.push("COALESCE(assinatura_invalida, 0) = 0"); }
   if (schemaInvalido === "1" || schemaInvalido === "true") { where.push("schema_invalido = 1"); }
+  else if (schemaInvalido === "0" || schemaInvalido === "false") { where.push("COALESCE(schema_invalido, 0) = 0"); }
   if (tipoDocumento) { where.push("tipo_documento = ?"); params.push(String(tipoDocumento)); }
   if (terceiros === "1" || terceiros === "true") { where.push("documento_terceiros = 1"); }
+  else if (terceiros === "0" || terceiros === "false") { where.push("COALESCE(documento_terceiros, 0) = 0"); }
   if (cartaCorrecao === "1" || cartaCorrecao === "true") { where.push("carta_correcao = 1"); }
+  else if (cartaCorrecao === "0" || cartaCorrecao === "false") { where.push("COALESCE(carta_correcao, 0) = 0"); }
   if (ultimaManifestacao) { where.push("ultima_manifestacao = ?"); params.push(String(ultimaManifestacao)); }
   if (dataUltimaManifestacaoFrom) { where.push("date(data_ultima_manifestacao) >= date(?)"); params.push(dataUltimaManifestacaoFrom); }
   if (dataUltimaManifestacaoTo) { where.push("date(data_ultima_manifestacao) <= date(?)"); params.push(dataUltimaManifestacaoTo); }
   if (semManifestacao === "1" || semManifestacao === "true") { where.push("sem_manifestacao = 1"); }
+  else if (semManifestacao === "0" || semManifestacao === "false") { where.push("COALESCE(sem_manifestacao, 0) = 0"); }
   if (dataValidacaoRegraFrom) { where.push("date(data_validacao_regra) >= date(?)"); params.push(dataValidacaoRegraFrom); }
   if (dataValidacaoRegraTo) { where.push("date(data_validacao_regra) <= date(?)"); params.push(dataValidacaoRegraTo); }
   if (regraValidacao) { where.push("regra_validacao LIKE ?"); params.push(`%${regraValidacao}%`); }
@@ -294,8 +303,12 @@ export function filtrosToWhere(query) {
   return { where, params };
 }
 
-export function buscarDocs(query = {}, { limit = 5000 } = {}) {
+export function buscarDocs(query = {}, { limit = 5000, tenantFilter = null } = {}) {
   const { where, params } = filtrosToWhere(query);
+  if (tenantFilter) {
+    where.unshift(tenantFilter.where);
+    params.unshift(tenantFilter.param);
+  }
   const sql = `
     SELECT * FROM documents
     ${where.length ? "WHERE " + where.join(" AND ") : ""}

@@ -84,3 +84,11 @@ export function devBanner() {
   div.innerHTML = '<span class="dev-pill">em desenvolvimento</span> <span>O sistema está em fase de testes — use com atenção. Em caso de dúvidas, contate o administrador.</span>';
   return div;
 }
+
+// Banner "Sistema de consulta" — informa que o sistema NÃO transmite NF-e/CT-e à SEFAZ
+export function consultaBanner() {
+  const div = document.createElement("div");
+  div.className = "consulta-banner";
+  div.innerHTML = '<span class="consulta-pill">somente consulta</span> <span>Este sistema <strong>apenas consulta, importa e armazena</strong> documentos fiscais. <strong>Não assina XML</strong> e <strong>não transmite à SEFAZ</strong>. Para emitir NF-e/CT-e use seu ERP emissor.</span>';
+  return div;
+}

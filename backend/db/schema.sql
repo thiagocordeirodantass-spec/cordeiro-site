@@ -107,6 +107,39 @@ CREATE INDEX IF NOT EXISTS idx_historico_user ON relatorio_historico(user_id);
 CREATE INDEX IF NOT EXISTS idx_historico_data ON relatorio_historico(created_at);
 
 -- =============================================================================
+--  v3 — Multi-tenancy: empresas e vínculo N:N com usuários
+-- =============================================================================
+
+-- Cadastro de empresas / ambientes fiscais
+CREATE TABLE IF NOT EXISTS empresas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cnpj TEXT UNIQUE,                   -- 14 dígitos, sem máscara
+  nome TEXT NOT NULL,
+  nome_fantasia TEXT,
+  ie TEXT,                            -- inscrição estadual
+  regime_tributario TEXT,             -- 'simples' | 'presumido' | 'real' | 'mei' | null
+  ambiente TEXT NOT NULL DEFAULT 'homologacao',  -- 'homologacao' | 'producao'
+  ativo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_empresas_cnpj ON empresas(cnpj);
+CREATE INDEX IF NOT EXISTS idx_empresas_ativo ON empresas(ativo);
+
+-- Vínculo N:N usuário × empresa, com papel por empresa
+CREATE TABLE IF NOT EXISTS empresa_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  papel TEXT NOT NULL CHECK(papel IN ('admin','operador','visualizador')),
+  ativo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(empresa_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_eu_empresa ON empresa_users(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_eu_user ON empresa_users(user_id);
+
+-- =============================================================================
 --  v2.1 — verificação de email, foto de perfil
 -- =============================================================================
 
@@ -152,3 +185,23 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
 CREATE INDEX IF NOT EXISTS idx_feedback_data ON feedback(created_at);
+
+CREATE TABLE IF NOT EXISTS assistant_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_user ON assistant_messages(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS client_certificates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fingerprint256 TEXT UNIQUE NOT NULL,
+  subject TEXT,
+  issuer TEXT,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_client_cert_user ON client_certificates(user_id);

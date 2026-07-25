@@ -59,6 +59,130 @@ function stamp() {
   return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
 }
 
+function textoUtf8(value) {
+  let text = String(value ?? "");
+  // Corrige rótulos legados que foram gravados como UTF-8 interpretado em Latin-1.
+  for (let i = 0; i < 2 && /Ã|Â|â/.test(text); i++) {
+    const fixed = Buffer.from(text, "latin1").toString("utf8");
+    if (!fixed || fixed.includes("\uFFFD")) break;
+    text = fixed;
+  }
+  return text;
+}
+
+function flattenFiscal(value, prefix = "", output = {}, options = {}) {
+  if (value == null) return output;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      flattenFiscal(item, `${prefix}[${index + 1}]`, output, options),
+    );
+    return output;
+  }
+  if (typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (options.skipDet && key === "det") continue;
+      const path = prefix ? `${prefix}.${key}` : key;
+      flattenFiscal(child, path, output, options);
+    }
+    return output;
+  }
+  output[prefix] = value;
+  return output;
+}
+
+function reportLabel(pathName) {
+  return textoUtf8(
+    pathName
+      .replace(/^XML\.(nfeProc|cteProc)\./, "")
+      .replace(/^XML\.(NFe|CTe)\./, "")
+      .replace(/\._@/g, " ")
+      .replace(/@_/g, "")
+      .replace(/\./g, " › "),
+  );
+}
+
+// Relatório fiscal integral: uma única planilha, com todas as tags do XML.
+// NF-e com vários itens gera uma linha para cada produto e repete os dados da nota.
+function gerarRelatorioUnificado(docs) {
+  const fixedHeaders = [
+    "Documento › Tipo",
+    "Documento › Número da nota fiscal",
+    "Documento › Série",
+    "Documento › Chave de acesso",
+    "Documento › Data de emissão",
+    "Documento › Status",
+    "Documento › Origem",
+  ];
+  const objects = [];
+  const xmlHeaders = new Set();
+  for (const d of docs) {
+    const base = {
+      "Documento › Tipo": d.kind || "",
+      "Documento › Número da nota fiscal": semSufixoZero(d.numero),
+      "Documento › Série": semSufixoZero(d.serie),
+      "Documento › Chave de acesso": d.chave || "",
+      "Documento › Data de emissão": formatDatePdf(d.data_emissao),
+      "Documento › Status": d.status || "",
+      "Documento › Origem": d.source || "",
+    };
+    try {
+      const xml = fs.readFileSync(getXmlPathByRow(d), "utf-8");
+      const parsed = parseXml(xml) || {};
+      const infNFe = parsed?.nfeProc?.NFe?.infNFe || parsed?.NFe?.infNFe;
+      let details = infNFe?.det || [];
+      if (!Array.isArray(details)) details = details ? [details] : [];
+      const common = {};
+      flattenFiscal(parsed, "XML", common, { skipDet: Boolean(infNFe) });
+      const commonLabeled = Object.fromEntries(
+        Object.entries(common).map(([key, value]) => [
+          reportLabel(key),
+          value,
+        ]),
+      );
+      if (!details.length) details = [null];
+      details.forEach((detail, index) => {
+        const item = {};
+        if (detail) flattenFiscal(detail, "Produto", item);
+        const row = {
+          ...base,
+          ...commonLabeled,
+          "Produto › Linha": detail ? index + 1 : "",
+          ...item,
+        };
+        Object.keys(row).forEach((key) => {
+          if (!fixedHeaders.includes(key)) xmlHeaders.add(key);
+        });
+        objects.push(row);
+      });
+    } catch {
+      objects.push(base);
+    }
+  }
+  const headers = [...fixedHeaders, ...xmlHeaders];
+  const numericCols = headers
+    .map((header, index) => {
+      const values = objects
+        .map((row) => row[header])
+        .filter((value) => value !== "" && value != null);
+      return values.length && values.every((value) => typeof value === "number")
+        ? index
+        : -1;
+    })
+    .filter((index) => index >= 0);
+  const rows = objects.map((row) =>
+    dataRow(headers.map((header) => row[header] ?? ""), numericCols),
+  );
+  return gerarXlsx([{
+    name: "Documentos e Produtos",
+    colWidths: headers.map((header) =>
+      /descrição|xProd|xNome|infCpl/i.test(header) ? 34 :
+      /chave|Id$|CNPJ|CPF/i.test(header) ? 24 : 16,
+    ),
+    freezeHeader: true,
+    rows: [headerRow(headers), ...rows],
+  }]);
+}
+
 // =============================================================================
 //  GET /api/relatorio/campos
 //  Lista todas as colunas disponíveis para uso em /api/relatorio/{xlsx,csv,pdf}?campos=
@@ -66,7 +190,7 @@ function stamp() {
 router.get("/campos", (_req, res) => {
   const campos = Object.entries(COLUNAS_DISPONIVEIS).map(([key, def]) => ({
     key,
-    label: def.label,
+    label: textoUtf8(def.label),
     width: def.width || 12,
     numeric: !!def.numeric,
   }));
@@ -92,14 +216,27 @@ router.get("/templates-modulos", (_req, res) => {
 // =============================================================================
 router.get("/xlsx", (req, res) => {
   try {
-    const docs = buscarDocs(req.query);
+    const docs = buscarDocs(req.query, { tenantFilter: req.tenantFilter });
+    // O relatório padrão é sempre unificado. Personalização por `campos`
+    // continua disponível quando o usuário selecionar colunas específicas.
+    if (!req.query.campos) {
+      const buffer = gerarRelatorioUnificado(docs);
+      const filename = `relatorio-unificado-${stamp()}.xlsx`;
+      audit.registrar({
+        userId: req.user.id, username: req.user.username, formato: "xlsx",
+        filtros: req.query, totalDocs: docs.length, tamanhoBytes: buffer.length,
+      });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(buffer);
+    }
     let buffer;
     let filename;
 
     if (req.query.campos) {
       const campos = String(req.query.campos).split(",").map((c) => c.trim()).filter((c) => CAMPOS_PERMITIDOS.includes(c));
       if (!campos.length) return res.status(400).json({ error: "Nenhuma coluna valida informada em 'campos'" });
-      const labels = campos.map((c) => COLUNAS_DISPONIVEIS[c].label);
+      const labels = campos.map((c) => textoUtf8(COLUNAS_DISPONIVEIS[c].label));
       const numericCols = campos.map((c, i) => (COLUNAS_DISPONIVEIS[c].numeric ? i : -1)).filter((i) => i >= 0);
       const rows = docs.map((d) => dataRow(formatRow(d, campos), numericCols));
       buffer = gerarXlsx([{
@@ -134,29 +271,110 @@ router.get("/xlsx", (req, res) => {
       }];
 
       if (incluirItens) {
-        const itensRows = [];
+        // ---- Coleta todos os itens de todas as NF-e ----
+        // Cada item: { docNumero, docChave, cProd, xProd, NCM, CFOP, uCom, qCom, vUnCom, vProd }
+        const allItens = [];
         for (const d of nfes) {
           try {
             const xmlText = fs.readFileSync(getXmlPathByRow(d), "utf-8");
             const parsed = parseXml(xmlText);
             if (!parsed) continue;
-            // extrai itens usando documents.service indiretamente
             const infNFe = parsed.nfeProc?.NFe?.infNFe || parsed.NFe?.infNFe;
             if (!infNFe) continue;
             let det = infNFe.det; if (det && !Array.isArray(det)) det = [det];
             for (const it of (det || [])) {
               const p = it.prod || {};
-              itensRows.push(dataRow(
-                [d.numero || "", d.chave || "", p.xProd || "", p.NCM || "", p.CFOP || "",
-                 p.uCom || "", Number(p.qCom) || 0, Number(p.vUnCom) || 0, Number(p.vProd) || 0],
-                [6, 7, 8]
-              ));
+              allItens.push({
+                docNumero: d.numero || "",
+                docChave: d.chave || "",
+                docData: d.data_emissao || "",
+                docEmit: d.remetente_nome || d.emitente_razao_social || "",
+                cProd: p.cProd || "",
+                xProd: p.xProd || "",
+                NCM: p.NCM || "",
+                CFOP: p.CFOP || "",
+                uCom: p.uCom || "",
+                qCom: Number(p.qCom) || 0,
+                vUnCom: Number(p.vUnCom) || 0,
+                vProd: Number(p.vProd) || 0,
+              });
             }
           } catch (e) {}
         }
+
+        // ---- Aba 1: Itens por NF-e (uma linha por item, com cProd) ----
+        const itensRows = allItens.map((it) => dataRow(
+          [it.docNumero, it.docChave, it.cProd, it.xProd, it.NCM, it.CFOP,
+           it.uCom, it.qCom, it.vUnCom, it.vProd],
+          [7, 8, 9]
+        ));
         sheets.push({
-          name: "Itens NF-e", colWidths: [10, 26, 30, 12, 10, 8, 12, 14, 14], freezeHeader: true,
-          rows: [headerRow(["Número NF-e", "Chave", "Produto", "NCM", "CFOP", "Unid.", "Qtd.", "Vlr. Unit.", "Vlr. Total"]), ...itensRows],
+          name: "Itens NF-e", colWidths: [10, 26, 16, 30, 12, 10, 8, 12, 14, 14], freezeHeader: true,
+          rows: [headerRow(["Nº NF-e", "Chave", "Cód. Produto", "Descrição", "NCM", "CFOP", "Un.", "Qtd.", "Vlr. Unit.", "Vlr. Total"]), ...itensRows],
+        });
+
+        // ---- Aba 2: Resumo por produto (agrupado por cProd + xProd) ----
+        const porProduto = new Map();
+        for (const it of allItens) {
+          const key = `${it.cProd}::${it.xProd}`;
+          if (!porProduto.has(key)) {
+            porProduto.set(key, { cProd: it.cProd, xProd: it.xProd, qtd: 0, valor: 0, nfs: new Set() });
+          }
+          const r = porProduto.get(key);
+          r.qtd += it.qCom;
+          r.valor += it.vProd;
+          r.nfs.add(it.docChave);
+        }
+        const prodRows = Array.from(porProduto.values())
+          .sort((a, b) => b.valor - a.valor)
+          .map((r) => dataRow(
+            [r.cProd, r.xProd, r.qtd, r.valor, r.nfs.size],
+            [2, 3, 4]
+          ));
+        const prodTotal = Array.from(porProduto.values()).reduce((s, r) => s + r.valor, 0);
+        sheets.push({
+          name: "Por Produto", colWidths: [16, 40, 12, 16, 12], freezeHeader: true,
+          rows: [
+            headerRow(["Cód. Produto", "Descrição", "Qtd. Total", "Valor Total", "Nº NF-es"]),
+            ...prodRows,
+            dataRow(["", "TOTAL", "", prodTotal, "", ""], [3]),
+          ],
+        });
+
+        // ---- Aba 3: Resumo por CFOP ----
+        const porCfop = new Map();
+        for (const it of allItens) {
+          if (!it.CFOP) continue;
+          if (!porCfop.has(it.CFOP)) porCfop.set(it.CFOP, { cfop: it.CFOP, qtd: 0, valor: 0, itens: 0 });
+          const r = porCfop.get(it.CFOP);
+          r.qtd += it.qCom;
+          r.valor += it.vProd;
+          r.itens += 1;
+        }
+        const cfopRows = Array.from(porCfop.values())
+          .sort((a, b) => b.valor - a.valor)
+          .map((r) => dataRow([r.cfop, r.itens, r.qtd, r.valor], [2, 3]));
+        sheets.push({
+          name: "Por CFOP", colWidths: [10, 12, 14, 18], freezeHeader: true,
+          rows: [headerRow(["CFOP", "Itens", "Qtd. Total", "Valor Total"]), ...cfopRows],
+        });
+
+        // ---- Aba 4: Resumo por NCM ----
+        const porNcm = new Map();
+        for (const it of allItens) {
+          if (!it.NCM) continue;
+          if (!porNcm.has(it.NCM)) porNcm.set(it.NCM, { ncm: it.NCM, qtd: 0, valor: 0, itens: 0 });
+          const r = porNcm.get(it.NCM);
+          r.qtd += it.qCom;
+          r.valor += it.vProd;
+          r.itens += 1;
+        }
+        const ncmRows = Array.from(porNcm.values())
+          .sort((a, b) => b.valor - a.valor)
+          .map((r) => dataRow([r.ncm, r.itens, r.qtd, r.valor], [2, 3]));
+        sheets.push({
+          name: "Por NCM", colWidths: [12, 12, 14, 18], freezeHeader: true,
+          rows: [headerRow(["NCM", "Itens", "Qtd. Total", "Valor Total"]), ...ncmRows],
         });
       }
 
@@ -179,11 +397,11 @@ router.get("/xlsx", (req, res) => {
 // =============================================================================
 router.get("/csv", (req, res) => {
   try {
-    const docs = buscarDocs(req.query);
+    const docs = buscarDocs(req.query, { tenantFilter: req.tenantFilter });
     const campos = (req.query.campos ? String(req.query.campos).split(",").map((c) => c.trim()).filter((c) => CAMPOS_PERMITIDOS.includes(c))
       : CAMPOS_PERMITIDOS);
     const columns = campos.map((c) => ({
-      key: c, label: COLUNAS_DISPONIVEIS[c].label, numeric: !!COLUNAS_DISPONIVEIS[c].numeric,
+      key: c, label: textoUtf8(COLUNAS_DISPONIVEIS[c].label), numeric: !!COLUNAS_DISPONIVEIS[c].numeric,
       get: COLUNAS_DISPONIVEIS[c].get,
     }));
     const csv = buildCsv(columns, docs);
@@ -203,11 +421,11 @@ router.get("/csv", (req, res) => {
 // =============================================================================
 router.get("/pdf", (req, res) => {
   try {
-    const docs = buscarDocs(req.query);
+    const docs = buscarDocs(req.query, { tenantFilter: req.tenantFilter });
     const campos = (req.query.campos ? String(req.query.campos).split(",").map((c) => c.trim()).filter((c) => CAMPOS_PERMITIDOS.includes(c))
       : CAMPOS_PERMITIDOS);
     const columns = campos.map((c) => ({
-      key: c, label: COLUNAS_DISPONIVEIS[c].label, width: COLUNAS_DISPONIVEIS[c].width || 12,
+      key: c, label: textoUtf8(COLUNAS_DISPONIVEIS[c].label), width: COLUNAS_DISPONIVEIS[c].width || 12,
     }));
     const rows = docs.map((d) => formatRow(d, campos).map((v) => v == null ? "-" : String(v)));
     const r = resumo(docs);
@@ -234,7 +452,7 @@ router.get("/pdf", (req, res) => {
 // =============================================================================
 router.get("/lote", (req, res) => {
   try {
-    const docs = buscarDocs(req.query);
+    const docs = buscarDocs(req.query, { tenantFilter: req.tenantFilter });
     if (!docs.length) return res.status(404).json({ error: "Nenhum documento encontrado com esses filtros" });
 
     const formato = req.query.formato || "xml_pdf";

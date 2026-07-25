@@ -2,9 +2,65 @@
 //  pages/meudanfe.js — Consulta MeuDANFe (front-end interativo com confirmação)
 //  -----------------------------------------------------------------------------
 //  Layout moderno com 3 botões grandes e modal de confirmação antes de cada ação.
+//  Integração com o site real do MeuDANFe (https://meudanfe.com.br):
+//    - Carrega o widget Cloudflare Turnstile no index.html
+//    - Cada modal de confirmação injeta um cf-turnstile
+//    - O token do Turnstile é enviado no body das requisições POST
 // =============================================================================
 import { api, toast, el, showModal } from "../assets/app.js";
 import { CORDEIRO_SVG } from "../assets/cordeiro.js";
+
+// ---- Helpers Turnstile (Cloudflare) ----
+// A sitekey e' carregada do backend (config salva pelo usuario) e fica
+// disponivel em `cfg.turnstileSiteKey`. Se nao estiver configurada,
+// as acoes que exigem captcha exibem uma mensagem orientando o usuario
+// a cadastrar o site no Cloudflare Turnstile.
+let TURNSTILE_SITEKEY = "";
+
+function waitForTurnstile(timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    if (window.turnstile && typeof window.turnstile.render === "function") return resolve(window.turnstile);
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      if (window.turnstile && typeof window.turnstile.render === "function") {
+        clearInterval(iv);
+        resolve(window.turnstile);
+      } else if (Date.now() - t0 > timeoutMs) {
+        clearInterval(iv);
+        reject(new Error("Widget Turnstile nao carregou (verifique a internet)"));
+      }
+    }, 100);
+  });
+}
+
+async function renderTurnstile(container) {
+  if (!TURNSTILE_SITEKEY) {
+    container.innerHTML = `<div class="md-turnstile-warn">⚠️ Sitekey do Turnstile nao configurada. Cole-a no card <strong>Configuracao do Turnstile</strong> acima. A sitekey e' gratuita: cadastre seu dominio em <a href="https://www.cloudflare.com/products/turnstile/" target="_blank" rel="noopener">cloudflare.com/products/turnstile</a> e cole a chave publica.</div>`;
+    return null;
+  }
+  const ts = await waitForTurnstile();
+  // Limpa renderizacoes anteriores
+  if (container._widgetId != null) {
+    try { ts.remove(container._widgetId); } catch (e) {}
+    container.innerHTML = "";
+  }
+  try {
+    container._widgetId = ts.render(container, { sitekey: TURNSTILE_SITEKEY });
+  } catch (e) {
+    container.innerHTML = `<div class="md-turnstile-warn">❌ Falha ao renderizar Turnstile: ${e.message}. Verifique se a sitekey esta correta e se o dominio atual esta cadastrado no Cloudflare.</div>`;
+    return null;
+  }
+  return container._widgetId;
+}
+
+function getTurnstileToken(container) {
+  if (!container || !window.turnstile) return null;
+  try {
+    return window.turnstile.getResponse(container._widgetId) || null;
+  } catch (e) {
+    return null;
+  }
+}
 
 export async function render(root) {
   // --- Header ---
@@ -18,6 +74,8 @@ export async function render(root) {
   // Carrega config (mascarada) para mostrar status
   let cfg = { apiKeyConfigured: false };
   try { cfg = await api("/api/meudanfe/config"); } catch (e) {}
+  // Carrega a sitekey do Turnstile salva no backend
+  TURNSTILE_SITEKEY = cfg.turnstileSiteKey || "";
 
   const wrap = el("div", { class: "md-wrap" });
   root.appendChild(wrap);
@@ -34,6 +92,60 @@ export async function render(root) {
     ),
   );
   wrap.appendChild(hero);
+
+  // ============================================================
+  // CARD 0 — Configuracao do Turnstile (Cloudflare)
+  // ============================================================
+  const tsInput = el("input", {
+    class: "md-input mono",
+    placeholder: "0x4AAAAAAC... (sitekey publica do Cloudflare Turnstile)",
+    value: TURNSTILE_SITEKEY || "",
+  });
+  const tsStatus = el("div", { class: "md-status" });
+  const tsTestContainer = el("div", { class: "cf-turnstile", style: "margin-top:8px; min-height: 30px" });
+  if (TURNSTILE_SITEKEY) {
+    tsStatus.className = "md-status md-status--ok";
+    tsStatus.textContent = "✓ Sitekey configurada (o widget sera exibido nos proximos modais)";
+  } else {
+    tsStatus.className = "md-status md-status--warn";
+    tsStatus.textContent = "⚠ Sitekey nao configurada. Cadastre seu dominio em cloudflare.com/products/turnstile (gratuito) e cole a chave publica aqui.";
+  }
+  const btnSalvarTs = el("button", { class: "md-btn md-btn--primary" },
+    el("span", { class: "md-btn__icon" }, "💾"),
+    el("span", { class: "md-btn__text" }, el("strong", {}, "Salvar sitekey")),
+  );
+  btnSalvarTs.onclick = async () => {
+    try {
+      const r = await api("/api/meudanfe/config", {
+        method: "POST",
+        body: { turnstileSiteKey: tsInput.value.trim() },
+      });
+      TURNSTILE_SITEKEY = r.turnstileSiteKey || "";
+      tsStatus.className = TURNSTILE_SITEKEY ? "md-status md-status--ok" : "md-status md-status--warn";
+      tsStatus.textContent = TURNSTILE_SITEKEY
+        ? "✓ Sitekey salva. Abra qualquer modal para testar o widget."
+        : "Sitekey removida. O widget nao sera exibido ate voce colar uma nova chave.";
+      toast(TURNSTILE_SITEKEY ? "✓ Sitekey salva" : "Sitekey removida");
+    } catch (e) { toast("Erro ao salvar: " + e.message, "err"); }
+  };
+  wrap.appendChild(el("div", { class: "card" },
+    el("div", { class: "card__head" }, el("h2", {}, "0️⃣ Configuração do Turnstile (anti-bot)")),
+    el("div", { class: "card__body" },
+      el("p", { class: "md-hint" },
+        "O site do MeuDANFe exige um captcha do Cloudflare Turnstile. ",
+        "A sitekey deles só funciona no domínio deles — você precisa cadastrar o SEU domínio ",
+        el("strong", {}, "(ex: seu-app.com.br)"),
+        " no Cloudflare Turnstile (grátis em ",
+        el("a", { href: "https://www.cloudflare.com/products/turnstile/", target: "_blank", rel: "noopener" }, "cloudflare.com/products/turnstile"),
+        ") e colar a chave pública aqui."
+      ),
+      el("div", { class: "md-field" },
+        el("label", { class: "md-label" }, "Sitekey pública do Turnstile"),
+        tsInput,
+      ),
+      el("div", { style: "margin-top:10px" }, btnSalvarTs, tsStatus),
+    ),
+  ));
 
   // ============================================================
   // CARD 1 — Consulta por chave
@@ -89,10 +201,14 @@ export async function render(root) {
     const d = chaveInput.value.replace(/\D/g, "");
     return d.length === 44 ? d : null;
   }
-  function showConfirmModal({ title, msg, icon, color, action }) {
+  function showConfirmModal({ title, msg, icon, color, action, bodyExtras = [] }) {
     const chave = getChave();
     if (!chave) { chaveStatus.className = "md-status md-status--err"; chaveStatus.textContent = "⚠ A chave precisa ter 44 dígitos."; return; }
     chaveStatus.className = "md-status"; chaveStatus.textContent = "";
+
+    // Container do Turnstile (criado no DOM, renderizado depois)
+    const turnstileContainer = el("div", { class: "cf-turnstile md-turnstile", style: "margin-top:12px" });
+
     showModal({
       title: title,
       body: el("div", { class: "md-confirm" },
@@ -103,16 +219,30 @@ export async function render(root) {
             el("span", { class: "md-confirm__chave-label" }, "Chave de acesso:"),
             el("code", {}, chave),
           ),
+          ...(bodyExtras.some((e) => e.kind === "turnstile") ? [turnstileContainer] : []),
         ),
       ),
       wide: false,
       footer: [
         el("button", { class: "btn", onClick: () => document.querySelector(".modal")?.remove() }, "Cancelar"),
         el("button", { class: "btn btn--primary", onClick: async () => {
+          const token = getTurnstileToken(turnstileContainer);
+          if (bodyExtras.some((e) => e.kind === "turnstile") && !token) {
+            toast("Resolva o captcha antes de continuar", "err");
+            return;
+          }
           document.querySelector(".modal")?.remove();
-          await action(chave);
+          await action(chave, { turnstileToken: token, turnstileContainer });
         }}, "✓ Confirmar e executar"),
       ],
+      onOpen: async () => {
+        if (bodyExtras.some((e) => e.kind === "turnstile")) {
+          try { await renderTurnstile(turnstileContainer); }
+          catch (e) {
+            toast("Captcha indisponível: " + e.message, "err");
+          }
+        }
+      },
     });
   }
 
@@ -122,10 +252,18 @@ export async function render(root) {
     msg: "Vamos consultar esta nota fiscal na SEFAZ via MeuDANFe. Nenhum arquivo será baixado — você verá os dados principais (emitente, destinatário, valor, status).",
     icon: "🔍",
     color: "#0e7c66",
-    action: async (chave) => {
+    bodyExtras: [{ kind: "turnstile" }],
+    action: async (chave, { turnstileContainer } = {}) => {
       chaveStatus.className = "md-status"; chaveStatus.textContent = "Consultando na SEFAZ…";
       try {
-        const r = await fetch("/api/meudanfe/chave/" + chave + "/resumo", { credentials: "same-origin" });
+        const turnstileToken = getTurnstileToken(turnstileContainer);
+        if (!turnstileToken) throw new Error("Resolva o captcha antes de continuar.");
+        const r = await fetch("/api/meudanfe/chave/" + chave + "/resumo", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ turnstileToken }),
+        });
         const txt = await r.text();
         let j; try { j = JSON.parse(txt); } catch { j = { error: txt }; }
         if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
@@ -146,10 +284,18 @@ export async function render(root) {
     msg: "Vamos consultar a NF-e e gerar o DANFE em PDF para download. O arquivo será salvo na sua pasta de downloads.",
     icon: "📥",
     color: "#7c3aed",
-    action: async (chave) => {
+    bodyExtras: [{ kind: "turnstile" }],
+    action: async (chave, { turnstileContainer } = {}) => {
       chaveStatus.className = "md-status"; chaveStatus.textContent = "Buscando XML e gerando PDF…";
       try {
-        const r = await fetch("/api/meudanfe/chave/" + chave + "/pdf", { credentials: "same-origin" });
+        const turnstileToken = getTurnstileToken(turnstileContainer);
+        if (!turnstileToken) throw new Error("Resolva o captcha antes de continuar.");
+        const r = await fetch("/api/meudanfe/chave/" + chave + "/pdf", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ turnstileToken }),
+        });
         if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || "HTTP " + r.status); }
         const blob = await r.blob();
         downloadBlob(blob, `danfe-${chave}.pdf`);
@@ -169,10 +315,18 @@ export async function render(root) {
     msg: "Vamos consultar a NF-e e baixar o XML bruto. O arquivo será salvo na sua pasta de downloads.",
     icon: "📄",
     color: "#0d9488",
-    action: async (chave) => {
+    bodyExtras: [{ kind: "turnstile" }],
+    action: async (chave, { turnstileContainer } = {}) => {
       chaveStatus.className = "md-status"; chaveStatus.textContent = "Buscando XML…";
       try {
-        const r = await fetch("/api/meudanfe/chave/" + chave + "/xml", { credentials: "same-origin" });
+        const turnstileToken = getTurnstileToken(turnstileContainer);
+        if (!turnstileToken) throw new Error("Resolva o captcha antes de continuar.");
+        const r = await fetch("/api/meudanfe/chave/" + chave + "/xml", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ turnstileToken }),
+        });
         if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || "HTTP " + r.status); }
         const blob = await r.blob();
         downloadBlob(blob, `${chave}.xml`);
@@ -360,26 +514,40 @@ export async function render(root) {
   btnLote.onclick = () => {
     const arr = chavesLote.value.split(/\r?\n/).map((s) => s.replace(/\D/g, "")).filter((s) => s.length === 44);
     if (!arr.length) { statLote.className = "md-status md-status--err"; statLote.textContent = "Cole ao menos uma chave de 44 dígitos."; return; }
+    // Captcha do Turnstile (vai ser solicitado a cada chave, entao
+    // o modal de confirmacao pede o PRIMEIRO token; o backend
+    // reusa o mesmo pid de sessao).
+    const turnstileContainer = el("div", { class: "cf-turnstile md-turnstile", style: "margin-top:12px" });
     showModal({
       title: "🚀 Confirmar envio em lote",
       body: el("div", { class: "md-confirm" },
         el("div", { class: "md-confirm__icon", style: "background:#0e7c6620; color:#0e7c66" }, "🚀"),
         el("div", {},
-          el("p", { class: "md-confirm__msg" }, `Vamos processar ${arr.length} NF-e em paralelo. Cada uma consultada na SEFAZ e salva como XML.`),
+          el("p", { class: "md-confirm__msg" },
+            `Vamos processar ${arr.length} NF-e. Cada uma consultada no MeuDANFe e `,
+            el("strong", {}, "importada automaticamente no sistema"),
+            " (aparece em Documentos). O captcha sera solicitado para a primeira chave."
+          ),
           el("div", { class: "md-confirm__chave" },
             el("span", { class: "md-confirm__chave-label" }, "Total de chaves:"),
             el("code", {}, String(arr.length)),
           ),
+          turnstileContainer,
         ),
       ),
       footer: [
         el("button", { class: "btn", onClick: () => document.querySelector(".modal")?.remove() }, "Cancelar"),
         el("button", { class: "btn btn--primary", onClick: async () => {
+          const token = getTurnstileToken(turnstileContainer);
+          if (!token) { toast("Resolva o captcha antes de continuar", "err"); return; }
           document.querySelector(".modal")?.remove();
           statLote.className = "md-status"; statLote.textContent = `Processando ${arr.length} chaves…`;
           progressLote.innerHTML = "";
-          let ok = 0, err = 0;
-          await Promise.allSettled(arr.map(async (chave) => {
+          let imported = 0, alreadyImported = 0, err = 0;
+          // Processa em serie para reusar o mesmo token Turnstile (que expira apos 1 uso)
+          // e nao estourar o rate limit do MeuDANFe. Para muitas chaves,
+          // sera necessario resolver captcha novamente — o backend avisara.
+          for (const chave of arr) {
             const linha = el("div", { class: "md-lote__line" },
               el("span", { class: "md-lote__icon" }, "⏳"),
               el("span", { class: "md-lote__chave" }, chave),
@@ -387,23 +555,40 @@ export async function render(root) {
             );
             progressLote.appendChild(linha);
             try {
-              const r = await fetch("/api/meudanfe/chave/" + chave + "/xml", { credentials: "same-origin" });
-              if (!r.ok) throw new Error("HTTP " + r.status);
-              ok++;
-              linha.querySelector(".md-lote__icon").textContent = "✓";
-              linha.querySelector(".md-lote__status").textContent = "OK";
-              linha.classList.add("md-lote__line--ok");
+              const r = await fetch("/api/meudanfe/chave/" + chave + "/importar", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ turnstileToken: token }),
+              });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+              if (j.duplicate) {
+                alreadyImported++;
+                linha.querySelector(".md-lote__icon").textContent = "↻";
+                linha.querySelector(".md-lote__status").textContent = "ja importada (#" + j.id + ")";
+                linha.classList.add("md-lote__line--ok");
+              } else {
+                imported++;
+                linha.querySelector(".md-lote__icon").textContent = "✓";
+                linha.querySelector(".md-lote__status").textContent = "importada (#" + j.id + ")";
+                linha.classList.add("md-lote__line--ok");
+              }
             } catch (e) {
               err++;
               linha.querySelector(".md-lote__icon").textContent = "✗";
               linha.querySelector(".md-lote__status").textContent = e.message;
               linha.classList.add("md-lote__line--err");
             }
-          }));
-          statLote.className = ok ? "md-status md-status--ok" : "md-status md-status--err";
-          statLote.textContent = `Concluído: ${ok} OK, ${err} erros.`;
+          }
+          statLote.className = "md-status md-status--ok";
+          statLote.textContent = `Concluido: ${imported} importadas, ${alreadyImported} ja existentes, ${err} erros.`;
         }}, `✓ Confirmar e processar ${arr.length} chaves`),
       ],
+      onOpen: async () => {
+        try { await renderTurnstile(turnstileContainer); }
+        catch (e) { toast("Captcha indisponivel: " + e.message, "err"); }
+      },
     });
   };
   wrap.appendChild(el("div", { class: "card" },
@@ -444,6 +629,63 @@ function showResumoModal(chave, data) {
     ["Status", data.status || "—"],
     ["Protocolo", data.protocolo || "—"],
   ];
+
+  // ---- Modal de confirmacao do Turnstile (reaproveita showConfirmModal-like inline) ----
+  async function abrirModalImportar() {
+    // Container do Turnstile
+    const turnstileContainer = el("div", { class: "cf-turnstile md-turnstile", style: "margin-top:12px" });
+    const importStatus = el("div", { class: "md-status", style: "margin-top:8px" });
+    showModal({
+      title: "📥 Importar XML para o sistema",
+      body: el("div", { class: "md-confirm" },
+        el("div", { class: "md-confirm__icon", style: "background:#0e7c6620; color:#0e7c66" }, "📥"),
+        el("div", {},
+          el("p", { class: "md-confirm__msg" },
+            "O MeuDANFe sera consultado para baixar o XML desta chave e ele sera importado no sistema ",
+            el("strong", {}, "automaticamente"),
+            " (aparece em Documentos)."),
+          el("div", { class: "md-confirm__chave" },
+            el("span", { class: "md-confirm__chave-label" }, "Chave de acesso:"),
+            el("code", {}, chave),
+          ),
+          turnstileContainer,
+          importStatus,
+        ),
+      ),
+      wide: false,
+      footer: [
+        el("button", { class: "btn", onClick: () => document.querySelector(".modal")?.remove() }, "Cancelar"),
+        el("button", { class: "btn btn--primary", onClick: async () => {
+          const token = getTurnstileToken(turnstileContainer);
+          if (!token) { toast("Resolva o captcha antes de continuar", "err"); return; }
+          document.querySelector(".modal")?.remove();
+          importStatus.className = "md-status"; importStatus.textContent = "Importando XML…";
+          try {
+            const r = await fetch("/api/meudanfe/chave/" + chave + "/importar", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ turnstileToken: token }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+            if (j.duplicate) {
+              toast("↻ Esta chave ja estava importada no sistema (id #" + j.id + ")");
+            } else {
+              toast("✓ XML importado com sucesso (id #" + j.id + ")");
+            }
+          } catch (e) {
+            toast("Falha ao importar: " + e.message, "err");
+          }
+        }}, "✓ Importar agora"),
+      ],
+      onOpen: async () => {
+        try { await renderTurnstile(turnstileContainer); }
+        catch (e) { toast("Captcha indisponivel: " + e.message, "err"); }
+      },
+    });
+  }
+
   showModal({
     title: "📋 Dados da NF-e",
     body: el("div", {},
@@ -467,11 +709,56 @@ function showResumoModal(chave, data) {
     footer: [
       el("button", { class: "btn", onClick: () => document.querySelector(".modal")?.remove() }, "Fechar"),
       el("button", { class: "btn", onClick: () => window.open(`https://meudanfe.com.br/?chave=${chave}`, "_blank") }, "🔍 Abrir no MeuDANFe"),
+      el("button", { class: "btn", onClick: () => abrirModalImportar() }, "📥 Importar para o sistema"),
       el("button", { class: "btn btn--primary", onClick: async () => {
         document.querySelector(".modal")?.remove();
-        const r = await fetch("/api/meudanfe/chave/" + chave + "/pdf", { credentials: "same-origin" });
-        if (r.ok) { const b = await r.blob(); downloadBlob(b, `danfe-${chave}.pdf`); }
+        // Reaproveita a rota /pdf (POST) — usuario precisara resolver o captcha de novo
+        showCaptchaAndRequestPdf(chave);
       }}, "📥 Baixar PDF"),
     ],
+  });
+}
+
+// Abre um modal com Turnstile e faz download do PDF ao confirmar
+async function showCaptchaAndRequestPdf(chave) {
+  const turnstileContainer = el("div", { class: "cf-turnstile md-turnstile", style: "margin-top:12px" });
+  showModal({
+    title: "📥 Baixar DANFE (PDF)",
+    body: el("div", { class: "md-confirm" },
+      el("div", { class: "md-confirm__icon", style: "background:#7c3aed20; color:#7c3aed" }, "📥"),
+      el("div", {},
+        el("p", { class: "md-confirm__msg" }, "Resolva o captcha para baixar o DANFE em PDF."),
+        el("div", { class: "md-confirm__chave" },
+          el("span", { class: "md-confirm__chave-label" }, "Chave de acesso:"),
+          el("code", {}, chave),
+        ),
+        turnstileContainer,
+      ),
+    ),
+    wide: false,
+    footer: [
+      el("button", { class: "btn", onClick: () => document.querySelector(".modal")?.remove() }, "Cancelar"),
+      el("button", { class: "btn btn--primary", onClick: async () => {
+        const token = getTurnstileToken(turnstileContainer);
+        if (!token) { toast("Resolva o captcha antes de continuar", "err"); return; }
+        document.querySelector(".modal")?.remove();
+        try {
+          const r = await fetch("/api/meudanfe/chave/" + chave + "/pdf", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ turnstileToken: token }),
+          });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || "HTTP " + r.status); }
+          const blob = await r.blob();
+          downloadBlob(blob, `danfe-${chave}.pdf`);
+          toast("✓ Download do PDF iniciado.");
+        } catch (e) { toast("Erro: " + e.message, "err"); }
+      }}, "✓ Baixar PDF"),
+    ],
+    onOpen: async () => {
+      try { await renderTurnstile(turnstileContainer); }
+      catch (e) { toast("Captcha indisponivel: " + e.message, "err"); }
+    },
   });
 }

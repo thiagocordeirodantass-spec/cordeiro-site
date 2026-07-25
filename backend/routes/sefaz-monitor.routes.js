@@ -1,135 +1,133 @@
 // =============================================================================
 //  routes/sefaz-monitor.routes.js
 //  -----------------------------------------------------------------------------
-//  Monitor de status dos servidores da SEFAZ (NF-e e CT-e).
-//  Faz um HEAD request com timeout para cada endpoint autorizador conhecido
-//  e retorna latência + status online/offline.
+//  Monitor de status dos servidores da SEFAZ (NF-e, NFC-e, CT-e, MDF-e).
+//  Consome a public-api do Monitor SEFAZ da WebmaniaBR:
+//    https://monitorsefaz.webmaniabr.com/v3/components.json
+//    https://monitorsefaz.webmaniabr.com/v3/summary.json
+//  (API pública, sem autenticação, formato Atlassian/Statuspage v3).
 //
-//  Os URLs vêm de uma tabela estática (não muda). Para atualizar, edite abaixo.
+//  Mantém o shape JSON que o frontend já consome, exibindo TODOS os
+//  4 grupos (NFe, NFCe, CT-e, MDF-e) e cada estado/ambiente como um card.
 // =============================================================================
 import { Router } from "express";
-import https from "node:https";
-import dns from "node:dns/promises";
 
 const router = Router();
 
-// ---- Tabela de UFs com URL do webservice de status (NF-e) ----
-// Fonte: NT 2025.002 / Portal Nacional da NF-e
-// O endpoint "NFeStatusServico" aceita um POST mínimo; aqui usamos HEAD
-// apenas para checar se o servidor responde (sem montar XML).
-const UFS = [
-  { uf: "AC", host: "nfe.svrs.rs.gov.br" },
-  { uf: "AL", host: "nfe.svrs.rs.gov.br" },
-  { uf: "AM", host: "nfe.svrs.rs.gov.br" },
-  { uf: "AP", host: "nfe.svrs.rs.gov.br" },
-  { uf: "BA", host: "nfe.svba.ba.gov.br" },
-  { uf: "CE", host: "nfe.svce.ce.gov.br" },
-  { uf: "DF", host: "nfe.svdf.df.gov.br" },
-  { uf: "ES", host: "nfe.sves.es.gov.br" },
-  { uf: "GO", host: "nfe.svgo.go.gov.br" },
-  { uf: "MA", host: "nfe.svma.ma.gov.br" },
-  { uf: "MG", host: "nfe.svrs.rs.gov.br" },
-  { uf: "MS", host: "nfe.svms.ms.gov.br" },
-  { uf: "MT", host: "nfe.svmt.mt.gov.br" },
-  { uf: "PA", host: "nfe.svpa.pa.gov.br" },
-  { uf: "PB", host: "nfe.svpb.pb.gov.br" },
-  { uf: "PE", host: "nfe.svpe.pe.gov.br" },
-  { uf: "PI", host: "nfe.svpi.pi.gov.br" },
-  { uf: "PR", host: "nfe.svpr.pr.gov.br" },
-  { uf: "RJ", host: "nfe.svrj.rj.gov.br" },
-  { uf: "RN", host: "nfe.svrn.rn.gov.br" },
-  { uf: "RO", host: "nfe.svro.ro.gov.br" },
-  { uf: "RR", host: "nfe.svrr.rr.gov.br" },
-  { uf: "RS", host: "nfe.svrs.rs.gov.br" },
-  { uf: "SC", host: "nfe.svsc.sc.gov.br" },
-  { uf: "SE", host: "nfe.svse.se.gov.br" },
-  { uf: "SP", host: "nfe.svsp.fazenda.sp.gov.br" },
-  { uf: "TO", host: "nfe.svto.to.gov.br" },
-];
+const BASE_URL = "https://monitorsefaz.webmaniabr.com";
+const CACHE_TTL_MS = 30 * 1000; // 30s — frontend faz auto-refresh a cada 60s
+const FETCH_TIMEOUT_MS = 5000;
 
-// Ambiente SVC-AN e SVC-RS (Sefaz Virtual de Contingência)
-const SVC = [
-  { uf: "SVC-AN", host: "nfe.svc-an.fazenda.gov.br" },
-  { uf: "SVC-RS", host: "nfe.svc-rs.fazenda.gov.br" },
-];
+let cache = null;             // última resposta em formato "ufs" (já mapeado)
+let cacheAt = 0;              // timestamp do cache (Date.now())
+let inflight = null;          // promise de fetch em andamento (dedupe)
 
-// ---- Checa um host com timeout ----
-function checkHost(host, timeoutMs = 5000) {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    // Tenta resolver DNS primeiro (mais barato que o request)
-    dns.lookup(host)
-      .then(() => {
-        const req = https.request(
-          {
-            host,
-            port: 443,
-            method: "HEAD",
-            path: "/",
-            timeout: timeoutMs,
-            headers: { "User-Agent": "CordeiroFiscalMonitor/1.0" },
-          },
-          (res) => {
-            const latency = Date.now() - started;
-            // Qualquer resposta (mesmo 4xx) significa que o servidor está de pé.
-            // Erros de SSL/connection refused = offline.
-            res.resume();
-            resolve({ ok: true, latency, status: res.statusCode });
-          }
-        );
-        req.on("timeout", () => {
-          req.destroy();
-          resolve({ ok: false, latency: Date.now() - started, error: "timeout" });
-        });
-        req.on("error", (e) => {
-          resolve({ ok: false, latency: Date.now() - started, error: e.code || e.message });
-        });
-        req.end();
-      })
-      .catch((e) => {
-        resolve({ ok: false, latency: Date.now() - started, error: "dns:" + (e.code || e.message) });
-      });
-  });
+// ---- Helpers HTTP ----
+function fetchJson(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "CordeiroFiscalMonitor/1.0" } })
+    .then((r) => {
+      clearTimeout(t);
+      if (!r.ok) throw new Error("Monitor SEFAZ respondeu HTTP " + r.status);
+      return r.json();
+    })
+    .catch((e) => {
+      clearTimeout(t);
+      throw e;
+    });
 }
 
-// ---- GET /api/sefaz/monitor ----
-// Resposta:
+// ---- Mapeamento de status da public-api para o contrato do frontend ----
+function mapStatus(component) {
+  // O frontend usa: ok=true (verde), error="timeout" (amarelo), error="offline" (vermelho)
+  // Mantemos o ternário: u.error === "timeout" -> classe amarela "Lento".
+  const s = (component.status || "").toUpperCase();
+  if (s === "OPERATIONAL") return { ok: true, error: null, statusCode: 200 };
+  if (s === "DEGRADED" || s === "UNDER_MAINTENANCE") {
+    return { ok: true, error: "timeout", statusCode: 200 };
+  }
+  // PARTIAL_OUTAGE, MAJOR_OUTAGE, INVESTIGATING e qualquer outro
+  return { ok: false, error: "offline", statusCode: 503 };
+}
+
+function componentsToUfs(components) {
+  const out = [];
+  for (const c of components || []) {
+    if (!c.group) continue; // ignora grupos-pai (que não têm group)
+    const env = c.group.name || "";
+    const mapped = mapStatus(c);
+    out.push({
+      uf: c.name,
+      host: null,
+      ok: mapped.ok,
+      latency: 0, // a public-api não mede latência
+      status: mapped.statusCode,
+      error: mapped.error,
+      env,
+    });
+  }
+  return out;
+}
+
+async function loadFresh() {
+  const json = await fetchJson(`${BASE_URL}/v3/components.json`);
+  return componentsToUfs(json.components);
+}
+
+async function getUfs() {
+  const now = Date.now();
+  if (cache && (now - cacheAt) < CACHE_TTL_MS) return { ufs: cache, stale: false };
+  if (inflight) return inflight.then(() => ({ ufs: cache || [], stale: false }));
+
+  inflight = loadFresh()
+    .then((ufs) => {
+      cache = ufs;
+      cacheAt = Date.now();
+      return { ufs, stale: false };
+    })
+    .catch((e) => {
+      // Em falha: se temos cache anterior (mesmo vencido), devolvemos como stale.
+      // Senão, propagamos o erro (rota retorna 502).
+      if (cache) return { ufs: cache, stale: true, error: e.message };
+      throw e;
+    })
+    .finally(() => { inflight = null; });
+
+  return inflight;
+}
+
+// ---- GET /api/sefaz-monitor ----
+// Resposta (mantém o shape que o frontend já consome):
 //   {
 //     checkedAt: ISO,
-//     total: 28,
-//     online: 26, offline: 2,
-//     latencyAvg: 412,
+//     total: N,
+//     online: N,
+//     offline: M,
+//     latencyAvg: null,
+//     stale: boolean,           // (campo extra; ignorado pelo frontend)
+//     source: "webmaniabr",     // (campo extra; ignorado pelo frontend)
 //     ufs: [{ uf, host, ok, latency, status, error, env }]
 //   }
 router.get("/", async (_req, res) => {
-  const checks = await Promise.all([
-    ...UFS.map((u) => checkHost(u.host).then((r) => ({ ...u, ...r, env: "Produção" }))),
-    ...SVC.map((u) => checkHost(u.host).then((r) => ({ ...u, ...r, env: "SVC" }))),
-  ]);
-
-  const online = checks.filter((c) => c.ok).length;
-  const offline = checks.length - online;
-  const okChecks = checks.filter((c) => c.ok && c.latency > 0);
-  const latencyAvg = okChecks.length
-    ? Math.round(okChecks.reduce((s, c) => s + c.latency, 0) / okChecks.length)
-    : null;
-
-  res.json({
-    checkedAt: new Date().toISOString(),
-    total: checks.length,
-    online,
-    offline,
-    latencyAvg,
-    ufs: checks.map((c) => ({
-      uf: c.uf,
-      host: c.host,
-      ok: c.ok,
-      latency: c.ok ? c.latency : null,
-      status: c.status || null,
-      error: c.error || null,
-      env: c.env,
-    })),
-  });
+  try {
+    const { ufs, stale = false, error: fetchError } = await getUfs();
+    const online = ufs.filter((u) => u.ok).length;
+    const offline = ufs.length - online;
+    res.json({
+      checkedAt: new Date().toISOString(),
+      total: ufs.length,
+      online,
+      offline,
+      latencyAvg: null, // a public-api não mede latência
+      stale,
+      source: "webmaniabr",
+      ufs,
+      ...(fetchError ? { fetchError } : {}),
+    });
+  } catch (e) {
+    res.status(502).json({ error: "Falha ao consultar Monitor SEFAZ: " + e.message });
+  }
 });
 
 export default router;

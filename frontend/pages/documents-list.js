@@ -1,15 +1,95 @@
 // =============================================================================
 //  pages/documents-list.js — lista com filtros
 // =============================================================================
-import { api, apiDownload, fmtMoney, fmtDate, statusBadge, showModal, toast, el } from "../assets/app.js";
+import { api, apiDownload, fmtMoney, fmtDate, statusBadge, showModal, toast, el, navigate } from "../assets/app.js";
 
 let cache = [];
+let selected = new Set(); // ids selecionados para bulk actions
+
+function podeExcluir() {
+  const u = window.__CORDEIRO_USER__;
+  return u && (u.role === "admin" || u.role === "operador");
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll(".doc-check").forEach((cb) => {
+    cb.checked = checked;
+    const id = cb.dataset.id;
+    if (!id) return;
+    if (checked) selected.add(id); else selected.delete(id);
+  });
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById("bulk-bar");
+  const count = document.getElementById("bulk-count");
+  if (!bar || !count) return;
+  if (selected.size > 0) {
+    bar.classList.add("is-visible");
+    count.textContent = `${selected.size} ${selected.size === 1 ? "selecionado" : "selecionados"}`;
+  } else {
+    bar.classList.remove("is-visible");
+  }
+}
+
+function clearSelection() {
+  selected.clear();
+  document.querySelectorAll(".doc-check").forEach((cb) => { cb.checked = false; });
+  const sa = document.querySelector('thead input[type="checkbox"]');
+  if (sa) sa.checked = false;
+  updateBulkBar();
+}
+
+async function bulkAction(action) {
+  const ids = [...selected];
+  if (!ids.length) { toast("Nada selecionado", "err"); return; }
+  if (action === "delete") {
+    if (!confirm(`Excluir ${ids.length} documento(s)? Esta ação não pode ser desfeita.`)) return;
+    try {
+      for (const id of ids) {
+        await api(`/api/docs/${id}`, { method: "DELETE" });
+      }
+      toast(`✓ ${ids.length} documento(s) excluído(s)`);
+      clearSelection();
+      // Recarrega a tabela
+      const refresh = document.querySelector('[onclick], button');
+      // tenta achar botão "Atualizar" — fallback para reload
+      const table = document.getElementById("docs-tbody");
+      if (table) {
+        ids.forEach((id) => {
+          const tr = table.querySelector(`[data-doc-id="${id}"]`);
+          if (tr) tr.remove();
+        });
+      }
+    } catch (e) { toast(e.message, "err"); }
+    return;
+  }
+  if (action === "download-xml" || action === "download-pdf" || action === "download-xml_pdf") {
+    const fmt = action === "download-xml" ? "xml" : action === "download-pdf" ? "pdf" : "xml_pdf";
+    const qs = new URLSearchParams();
+    ids.forEach((id) => qs.append("id", id));
+    qs.set("formato", fmt);
+    apiDownload(`/api/relatorio/lote?${qs.toString()}`, `lote-${fmt}.zip`);
+    return;
+  }
+  if (action === "export") {
+    const qs = new URLSearchParams();
+    ids.forEach((id) => qs.append("id", id));
+    apiDownload(`/api/relatorio/xlsx?${qs.toString()}`, "selecionados.xlsx");
+    return;
+  }
+}
 
 export async function render(root) {
   root.appendChild(el("div", { class: "topbar" },
-    el("div", { class: "crumbs" }, el("strong", {}, "Documentos")),
+    el("div", { class: "crumbs" },
+      el("span", {}, "Documentos"),
+      el("span", { class: "sep" }, "›"),
+      el("strong", {}, "Todos"),
+    ),
     el("div", { class: "topbar__actions" },
-      el("button", { class: "btn", onClick: load }, "Atualizar"),
+      el("span", { class: "mod-tag", id: "docs-count" }, "—"),
     ),
   ));
 
@@ -202,6 +282,52 @@ export async function render(root) {
   const tableHost = el("div", { class: "sisco-table-wrap" });
   root.appendChild(tableHost);
 
+  // ---- Toolbar SiscoFiscal (botões grandes) ----
+  const toolbar = el("div", { class: "toolbar slide-down" },
+    el("div", { class: "toolbar__group" },
+      el("button", { class: "toolbar__btn toolbar__btn--primary", onClick: () => navigate("import") },
+        el("span", {}, "📥"), el("span", {}, "Incluir XML"),
+      ),
+      el("button", { class: "toolbar__btn", onClick: () => navigate("sefaz-download") },
+        el("span", {}, "🔒"), el("span", {}, "Sincronizar SEFAZ"),
+      ),
+      el("button", { class: "toolbar__btn", onClick: () => navigate("portal-nacional") },
+        el("span", {}, "🌐"), el("span", {}, "Portal Nacional"),
+      ),
+    ),
+    el("div", { class: "toolbar__divider" }),
+    el("div", { class: "toolbar__group" },
+      el("button", { class: "toolbar__btn toolbar__btn--success", onClick: () => downloadRelatorio("xlsx") },
+        el("span", {}, "📊"), el("span", {}, "XLSX"),
+      ),
+      el("button", { class: "toolbar__btn toolbar__btn--success", onClick: () => downloadRelatorio("csv") },
+        el("span", {}, "📋"), el("span", {}, "CSV"),
+      ),
+      el("button", { class: "toolbar__btn toolbar__btn--success", onClick: () => downloadRelatorio("pdf") },
+        el("span", {}, "📕"), el("span", {}, "PDF"),
+      ),
+      el("button", { class: "toolbar__btn", onClick: () => downloadLote("xml_pdf") },
+        el("span", {}, "📦"), el("span", {}, "ZIP"),
+      ),
+    ),
+    el("div", { class: "toolbar__spacer" }),
+    el("div", { class: "toolbar__group" },
+      el("button", { class: "toolbar__btn toolbar__btn--ghost", onClick: load, title: "Atualizar lista" }, "🔄 Atualizar"),
+    ),
+  );
+  root.insertBefore(toolbar, tableHost);
+
+  // ---- Bulk action bar (aparece quando há seleção) ----
+  const bulkBar = el("div", { class: "bulk-bar", id: "bulk-bar" },
+    el("span", { class: "bulk-bar__count", id: "bulk-count" }, "0 selecionados"),
+    el("button", { class: "bulk-bar__btn", onClick: () => bulkAction("download-xml") }, "📄 Baixar XMLs"),
+    el("button", { class: "bulk-bar__btn", onClick: () => bulkAction("download-pdf") }, "📑 Baixar PDFs"),
+    el("button", { class: "bulk-bar__btn", onClick: () => bulkAction("export") }, "📊 Exportar relatório"),
+    podeExcluir() ? el("button", { class: "bulk-bar__btn bulk-bar__btn--danger", onClick: () => bulkAction("delete") }, "🗑️ Excluir") : null,
+    el("button", { class: "bulk-bar__clear", onClick: () => clearSelection() }, "✕ Limpar seleção"),
+  );
+  root.insertBefore(bulkBar, tableHost);
+
   // ---- KPIs (atualizados a cada load) ----
   const kpiCount = el("div", { class: "sisco-kpi" });
   const kpiAutorizadas = el("div", { class: "sisco-kpi" });
@@ -209,6 +335,36 @@ export async function render(root) {
   const kpiValor = el("div", { class: "sisco-kpi" });
   // KPIs vão ANTES da tabela
   root.insertBefore(el("div", { class: "sisco-kpis" }, kpiCount, kpiAutorizadas, kpiPendentes, kpiValor), tableHost);
+
+  // ---- Função de atualização dos KPIs (escopo local de render) ----
+  function paintKpis(rows) {
+    const count = rows.length;
+    const aut = rows.filter((r) => r.status === "autorizado").length;
+    const pen = rows.filter((r) => !r.status || r.status === "pendente" || r.status === "rejeitado" || r.status === "denegado").length;
+    const valor = rows
+      .filter((r) => r.status === "autorizado")
+      .reduce((s, r) => s + (Number(r.valor_total) || 0), 0);
+
+    kpiCount.innerHTML = "";
+    kpiCount.appendChild(el("div", { class: "sisco-kpi__label" }, "Total de Documentos"));
+    kpiCount.appendChild(el("div", { class: "sisco-kpi__value" }, String(count)));
+    kpiCount.appendChild(el("div", { class: "sisco-kpi__hint" }, "filtro atual"));
+
+    kpiAutorizadas.innerHTML = "";
+    kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__label" }, "Autorizadas"));
+    kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--green" }, String(aut)));
+    kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__hint" }, aut > 0 ? `${Math.round((aut/count)*100)}% do total` : "—"));
+
+    kpiPendentes.innerHTML = "";
+    kpiPendentes.appendChild(el("div", { class: "sisco-kpi__label" }, "Pendentes / Rejeitadas"));
+    kpiPendentes.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--yellow" }, String(pen)));
+    kpiPendentes.appendChild(el("div", { class: "sisco-kpi__hint" }, "requer ação"));
+
+    kpiValor.innerHTML = "";
+    kpiValor.appendChild(el("div", { class: "sisco-kpi__label" }, "Valor Total (Autorizadas)"));
+    kpiValor.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--blue" }, fmtMoney(valor)));
+    kpiValor.appendChild(el("div", { class: "sisco-kpi__hint" }, "soma do filtro"));
+  }
 
   // ---- Botões de download em lote (item 8 da lista de requisitos) ----
   // Acionam os endpoints /api/relatorio/lote e /api/relatorio/xlsx com os
@@ -329,38 +485,11 @@ export async function render(root) {
       cache = rows;
       paintKpis(rows);
       renderTable(tableHost, rows);
+      // Limpa seleção ao recarregar a lista
+      clearSelection();
     } catch (e) { toast(e.message, "err"); }
   }
   await load();
-}
-
-function paintKpis(rows) {
-  const count = rows.length;
-  const aut = rows.filter((r) => r.status === "autorizado").length;
-  const pen = rows.filter((r) => !r.status || r.status === "pendente" || r.status === "rejeitado" || r.status === "denegado").length;
-  const valor = rows
-    .filter((r) => r.status === "autorizado")
-    .reduce((s, r) => s + (Number(r.valor_total) || 0), 0);
-
-  kpiCount.innerHTML = "";
-  kpiCount.appendChild(el("div", { class: "sisco-kpi__label" }, "Total de Documentos"));
-  kpiCount.appendChild(el("div", { class: "sisco-kpi__value" }, String(count)));
-  kpiCount.appendChild(el("div", { class: "sisco-kpi__hint" }, "filtro atual"));
-
-  kpiAutorizadas.innerHTML = "";
-  kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__label" }, "Autorizadas"));
-  kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--green" }, String(aut)));
-  kpiAutorizadas.appendChild(el("div", { class: "sisco-kpi__hint" }, aut > 0 ? `${Math.round((aut/count)*100)}% do total` : "—");
-
-  kpiPendentes.innerHTML = "";
-  kpiPendentes.appendChild(el("div", { class: "sisco-kpi__label" }, "Pendentes / Rejeitadas"));
-  kpiPendentes.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--yellow" }, String(pen)));
-  kpiPendentes.appendChild(el("div", { class: "sisco-kpi__hint" }, "requer ação");
-
-  kpiValor.innerHTML = "";
-  kpiValor.appendChild(el("div", { class: "sisco-kpi__label" }, "Valor Total (Autorizadas)"));
-  kpiValor.appendChild(el("div", { class: "sisco-kpi__value sisco-kpi__value--blue" }, fmtMoney(valor)));
-  kpiValor.appendChild(el("div", { class: "sisco-kpi__hint" }, "soma do filtro");
 }
 
 function renderTable(host, rows) {
@@ -369,48 +498,97 @@ function renderTable(host, rows) {
   const totalValor = rows.reduce((s, r) => s + (Number(r.valor_total) || 0), 0);
   const aut = rows.filter((r) => r.status === "autorizado").length;
   const canc = rows.filter((r) => r.status === "cancelado").length;
+  const totalLabel = rows.length ? `${rows.length} ${rows.length === 1 ? "documento" : "documentos"}` : "Nenhum documento";
 
-  host.appendChild(el("div", { class: "sisco-table-head" },
-    el("h2", {}, `Documentos Fiscais${rows.length ? ` (${rows.length})` : ""}`),
+  // atualiza a contagem no topbar
+  const countEl = document.getElementById("docs-count");
+  if (countEl) countEl.textContent = totalLabel;
+
+  host.appendChild(el("div", { style: "padding:14px 18px; display:flex; align-items:center; justify-content:space-between; background:linear-gradient(180deg, #fafaf7 0%, #fff 100%); border-bottom:1px solid var(--line)" },
+    el("div", {},
+      el("strong", { style: "font-size:14px" }, "Documentos Fiscais"),
+      el("span", { style: "margin-left:8px; font-size:12px; color:var(--muted)" }, `(${rows.length})`),
+    ),
+    el("div", { style: "display:flex; gap:12px; font-size:11.5px; color:var(--muted)" },
+      el("span", {}, "✓ Autorizadas: ", el("strong", { style: "color:var(--success)" }, String(aut))),
+      el("span", {}, "✕ Canceladas: ", el("strong", { style: "color:var(--error)" }, String(canc))),
+      el("span", {}, "💰 Total: ", el("strong", { style: "color:var(--ink)" }, fmtMoney(totalValor))),
+    ),
   ));
 
   if (!rows.length) {
-    host.appendChild(el("div", { style: "padding:30px; text-align:center; color:var(--sisco-text-muted)" },
-      "Nenhum documento encontrado com os filtros atuais."));
+    host.appendChild(el("div", { style: "padding:50px 30px; text-align:center; color:var(--muted)" },
+      el("div", { style: "font-size:36px; margin-bottom:8px; opacity:0.4" }, "📄"),
+      el("div", {}, "Nenhum documento encontrado com os filtros atuais."),
+      el("div", { style: "margin-top:12px" },
+        el("button", { class: "toolbar__btn toolbar__btn--primary", onClick: () => navigate("import") },
+          el("span", {}, "📥"), el("span", {}, "Incluir primeiro XML"),
+        ),
+      ),
+    ));
     return;
   }
 
+  // ---- Header com checkbox "selecionar todos" ----
+  const selectAll = el("input", { type: "checkbox", title: "Selecionar todos", onChange: (e) => toggleSelectAll(e.target.checked) });
+  const user = window.__CORDEIRO_USER__;
+  const isSuper = user?.is_super_admin;
+  const empresaAtivaId = window.__CORDEIRO_EMPRESA__?.id || window.__CORDEIRO_EMPRESA__?.empresa_id;
+
+  // Cabeçalho dinâmico: se super-admin, mostra coluna "Empresa"
+  const ths = [
+    el("th", { class: "col-check" }, selectAll),
+    el("th", {}, "Tipo"),
+    el("th", {}, "Nº / Série"),
+    el("th", {}, "Chave"),
+    el("th", {}, "Emissão"),
+    el("th", {}, "UF"),
+  ];
+  if (isSuper) ths.push(el("th", {}, "Empresa"));
+  ths.push(
+    el("th", {}, "Emitente"),
+    el("th", {}, "Destinatário"),
+    el("th", { style: "text-align:right" }, "Valor"),
+    el("th", {}, "Status"),
+    el("th", { style: "text-align:right" }, "Ações"),
+  );
+
   const t = el("table", { class: "sisco-table" },
-    el("thead", {}, el("tr", {},
-      el("th", {}, "Tipo"),
-      el("th", {}, "Nº / Série"),
-      el("th", {}, "Chave de Acesso"),
-      el("th", {}, "Emissão"),
-      el("th", {}, "UF"),
-      el("th", {}, "Emitente / Razão Social"),
-      el("th", {}, "Destinatário"),
-      el("th", { class: "num" }, "Valor"),
-      el("th", {}, "Status"),
-      el("th", {}, "Ações"),
-    )),
-    el("tbody", {}, ...rows.map((r) => row(r))),
+    el("thead", {}, el("tr", {}, ...ths)),
+    el("tbody", { id: "docs-tbody" }, ...rows.map((r) => row(r, { isSuper, empresaAtivaId }))),
   );
   host.appendChild(t);
 
-  // ---- Footer com totais ----
-  host.appendChild(el("div", { class: "sisco-table-footer" },
-    el("div", { class: "totals" },
-      el("div", {}, "Total: ", el("strong", {}, String(rows.length))),
-      el("div", {}, "Autorizadas: ", el("strong", { style: "color:var(--sisco-green)" }, String(aut))),
-      el("div", {}, "Canceladas: ", el("strong", { style: "color:var(--sisco-red)" }, String(canc))),
-      el("div", {}, "Valor total: ", el("strong", { style: "color:var(--sisco-navy)" }, fmtMoney(totalValor))),
-    ),
-    el("div", {}, "Atualizado: ", new Date().toLocaleTimeString("pt-BR")),
-  ));
+  // Diagnóstico: se filtrou por empresa mas há documentos de outras
+  if (isSuper) {
+    const outras = rows.filter((r) => r.empresa_id && r.empresa_id !== empresaAtivaId);
+    if (outras.length) {
+      host.appendChild(el("div", { class: "import-status", style: "margin:8px 0; background:#fef3c7; color:#78350f" },
+        `ℹ️ ${outras.length} documento(s) desta lista pertence(m) a outras empresas (não a ativa).`,
+      ));
+    }
+  }
 }
 
-function row(r) {
-  const tr = el("tr", { "data-doc-id": r.id },
+function row(r, opts = {}) {
+  const checkbox = el("input", {
+    type: "checkbox",
+    class: "doc-check",
+    "data-id": String(r.id),
+    onChange: (e) => {
+      const id = String(r.id);
+      if (e.target.checked) selected.add(id);
+      else selected.delete(id);
+      updateBulkBar();
+    },
+  });
+  if (selected.has(String(r.id))) checkbox.checked = true;
+  // Marca tr se for de outra empresa (apenas super-admin)
+  const isOther = opts.isSuper && r.empresa_id && r.empresa_id !== opts.empresaAtivaId;
+  const trAttrs = { "data-doc-id": r.id };
+  if (isOther) trAttrs.style = "background:#fff8e1";
+  const tr = el("tr", trAttrs,
+    el("td", { class: "col-check" }, checkbox),
     el("td", {},
       el("span", { class: "sisco-badge " + siscoBadgeKind(r.kind) }, r.kind === "NFE" ? "NF-e" : r.kind === "CTE" ? "CT-e" : r.kind || "-"),
     ),
@@ -421,30 +599,32 @@ function row(r) {
     el("td", { class: "chave" }, (r.chave || "—").replace(/^(\d{4}).*?(\d{4})$/, "$1…$2")),
     el("td", {}, fmtDate(r.data_emissao)),
     el("td", {}, `${r.uf_emitente || "—"}/${r.uf_destino || "—"}`),
-    el("td", {},
-      el("div", {}, r.emitente_razao_social || r.remetente_nome || "—"),
-      r.emitente_cnpj ? el("div", { style: "font-size:11px; color:var(--sisco-text-muted); font-family:ui-monospace,monospace" }, r.emitente_cnpj) : null,
-    ),
-    el("td", {}, r.destinatario_nome || r.destinatario_tomador_nome || "—"),
-    el("td", { class: "num" }, fmtMoney(r.valor_total)),
-    el("td", { html: siscoStatusBadge(r.status) }),
-    el("td", { class: "row-actions" },
-      el("button", { onClick: () => showDetail(r) }, "Detalhes"),
-      " ",
-      el("button", { onClick: () => downloadPdf(r) }, "PDF"),
-      " ",
-      el("button", { onClick: () => downloadXml(r) }, "XML"),
-      r.chave ? " " + el("button", { onClick: () => consultarSefaz(r) }, "🔍 SEFAZ") : "",
-      " ",
-      podeExcluir() ? el("button", { class: "btn--danger", onClick: () => excluirDocumento(r) }, "🗑") : null,
-    ),
   );
+  if (opts.isSuper) {
+    tr.appendChild(el("td", {},
+      el("span", { class: "sisco-badge " + (isOther ? "sisco-badge--gray" : "sisco-badge--green") },
+        isOther ? `#${r.empresa_id} (outra)` : `#${r.empresa_id} ativa`,
+      ),
+    ));
+  }
+  tr.appendChild(el("td", {},
+    el("div", {}, r.emitente_razao_social || r.remetente_nome || "—"),
+    r.emitente_cnpj ? el("div", { style: "font-size:11px; color:var(--sisco-text-muted); font-family:ui-monospace,monospace" }, r.emitente_cnpj) : null,
+  ));
+  tr.appendChild(el("td", {}, r.destinatario_nome || r.destinatario_tomador_nome || "—"));
+  tr.appendChild(el("td", { class: "num" }, fmtMoney(r.valor_total)));
+  tr.appendChild(el("td", { html: siscoStatusBadge(r.status) }));
+  tr.appendChild(el("td", { class: "row-actions" },
+    el("button", { onClick: () => showDetail(r) }, "Detalhes"),
+    " ",
+    el("button", { onClick: () => downloadPdf(r) }, "PDF"),
+    " ",
+    el("button", { onClick: () => downloadXml(r) }, "XML"),
+    r.chave ? " " + el("button", { onClick: () => consultarSefaz(r) }, "🔍 SEFAZ") : "",
+    " ",
+    podeExcluir() ? el("button", { class: "btn--danger", onClick: () => excluirDocumento(r) }, "🗑") : null,
+  ));
   return tr;
-}
-
-function podeExcluir() {
-  const u = window.__CORDEIRO_USER__;
-  return u && (u.role === "admin" || u.role === "operador");
 }
 
 async function excluirDocumento(r) {

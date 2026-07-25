@@ -6,6 +6,8 @@
 // =============================================================================
 import { fileURLToPath } from "url";
 import path from "path";
+import fs from "fs";
+import https from "https";
 import { createApp } from "./app.js";
 import { runSeed } from "./db/seed.js";
 
@@ -47,12 +49,28 @@ import("./db/index.js").then(({ db }) => {
 });
 
 const app = createApp();
+const mtlsEnabled = Boolean(
+  process.env.MTLS_KEY_PATH &&
+  process.env.MTLS_CERT_PATH &&
+  process.env.MTLS_CA_PATH
+);
+const server = mtlsEnabled
+  ? https.createServer({
+      key: fs.readFileSync(process.env.MTLS_KEY_PATH),
+      cert: fs.readFileSync(process.env.MTLS_CERT_PATH),
+      ca: fs.readFileSync(process.env.MTLS_CA_PATH),
+      requestCert: true,
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
+    }, app)
+  : app;
 
-app.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log("");
   console.log("=================================================================");
   console.log(`  CT-e / NF-e Consulta - Backend rodando`);
-  console.log(`  http://localhost:${PORT}`);
+  console.log(`  ${mtlsEnabled ? "https" : "http"}://localhost:${PORT}`);
+  console.log(`  Autenticacao mTLS: ${mtlsEnabled ? "ATIVA" : "inativa (configure MTLS_KEY_PATH, MTLS_CERT_PATH e MTLS_CA_PATH)"}`);
   console.log(`  http://192.168.1.2:${PORT}`);
   console.log("=================================================================");
   console.log("  Endpoints principais (autenticacao por cookie de sessao):");
@@ -79,8 +97,11 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log("    GET  /api/chave/validar/:chave");
   console.log("    POST /api/generate/{nfe,cte}");
   console.log("=================================================================");
-  console.log("  Aviso: este backend NAO assina XML e NAO transmite a SEFAZ.");
-  console.log("  Use um emissor homologado (ACBr, NFePHP) e importe o XML processado.");
+  console.log("  SISTEMA DE CONSULTA — NAO TRANSMITE A SEFAZ");
+  console.log("  Este backend apenas consulta, importa e armazena NF-e/CT-e.");
+  console.log("  Nao assina XML e nao faz envio para a SEFAZ. Para emitir");
+  console.log("  documentos fiscais use um ERP emissor homologado (ACBr, etc.)");
+  console.log("  e importe o XML processado por aqui.");
   console.log("=================================================================");
   console.log("");
 });

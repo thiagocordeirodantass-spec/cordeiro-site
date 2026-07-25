@@ -40,6 +40,13 @@ function ensureColumn(table, column, type) {
 }
 try { ensureColumn("documents", "xml_data", "TEXT"); } catch (e) { console.error("[migration] ensureColumn xml_data falhou:", e.message); }
 try { ensureColumn("users", "avatar_path", "TEXT"); } catch (e) { console.error("[migration] ensureColumn avatar_path falhou:", e.message); }
+for (const [column, type] of [
+  ["cargo", "TEXT"], ["area_atuacao", "TEXT"], ["bio", "TEXT"],
+  ["linkedin_url", "TEXT"], ["instagram_url", "TEXT"], ["website_url", "TEXT"],
+  ["telefone", "TEXT"], ["preferencias", "TEXT"]
+]) {
+  try { ensureColumn("users", column, type); } catch (e) { console.error(`[migration] perfil ${column} falhou:`, e.message); }
+}
 
 // v2.3 — campos enriquecidos para filtros de Documentos (item 9 da lista de requisitos)
 const NEW_DOC_COLS = [
@@ -68,6 +75,11 @@ const NEW_DOC_COLS = [
   ["regra_violada", "TEXT"],
   ["finalidade_emissao", "TEXT"],
   ["tipo_operacao", "TEXT"],
+  // v2.4 — papel do documento em relação à empresa ativa (Item #7: NFs destinadas)
+  //   'emitida'    → a empresa ativa é o REMETENTE/EMITENTE
+  //   'destinada'  → a empresa ativa é o DESTINATÁRIO/TOMADOR
+  //   'desconhecida' → não foi possível determinar (empresa ativa != emitente e != destinatário)
+  ["papel", "TEXT"],
 ];
 for (const [col, type] of NEW_DOC_COLS) {
   try { ensureColumn("documents", col, type); } catch (e) { console.error(`[migration] ensureColumn ${col} falhou:`, e.message); }
@@ -86,5 +98,11 @@ const NEW_DOC_INDEXES = [
 for (const [name, spec] of NEW_DOC_INDEXES) {
   try { db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${spec}`); } catch (e) { console.error(`[migration] index ${name} falhou:`, e.message); }
 }
+
+// v3 — Multi-tenancy
+try { ensureColumn("documents", "empresa_id", "INTEGER"); } catch (e) { console.error("[migration] ensureColumn empresa_id falhou:", e.message); }
+try { ensureColumn("users", "last_empresa_id", "INTEGER"); } catch (e) { console.error("[migration] ensureColumn last_empresa_id falhou:", e.message); }
+try { ensureColumn("sessions", "empresa_ativa_id", "INTEGER"); } catch (e) { console.error("[migration] ensureColumn empresa_ativa_id falhou:", e.message); }
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_docs_empresa ON documents(empresa_id)"); } catch (e) { console.error("[migration] idx_docs_empresa falhou:", e.message); }
 
 export default db;

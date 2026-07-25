@@ -10,6 +10,7 @@ import { readSession, requireAuth } from "./middleware/auth.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import usersRoutes from "./routes/users.routes.js";
+import empresasRoutes from "./routes/empresas.routes.js";
 import docsRoutes from "./routes/docs.routes.js";
 import consultaRoutes from "./routes/consulta.routes.js";
 import pdfRoutes from "./routes/pdf.routes.js";
@@ -21,10 +22,15 @@ import relatoriosRoutes from "./routes/relatorios.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import newsRoutes from "./routes/news.routes.js";
 import feedbackRoutes from "./routes/feedback.routes.js";
+import assistantRoutes from "./routes/assistant.routes.js";
+import messagesRoutes from "./routes/messages.routes.js";
+import certidoesRoutes from "./routes/certidoes.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const FRONTEND_DIR = path.resolve(__dirname, "..", "frontend");
+// A interface React compilada é a experiência principal. A versão anterior
+// permanece preservada em /frontend para permitir retorno seguro se necessário.
+const FRONTEND_DIR = path.resolve(__dirname, "..", "frontend-modern", "dist");
 const DATA_DIR = path.resolve(__dirname, "..", "data");
 
 export function createApp() {
@@ -54,6 +60,7 @@ export function createApp() {
 
   // Demais rotas protegidas
   app.use("/api/users", usersRoutes);
+  app.use("/api/empresas", empresasRoutes);
   app.use("/api/docs", docsRoutes);
   app.use("/api/consulta", consultaRoutes);
   app.use("/api/pdf", pdfRoutes);
@@ -64,6 +71,9 @@ export function createApp() {
   app.use("/api/relatorio", relatoriosRoutes);
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/feedback", feedbackRoutes);
+  app.use("/api/assistant", assistantRoutes);
+  app.use("/api/messages", messagesRoutes);
+  app.use("/api/certidoes", certidoesRoutes);
 
   // 404 para APIs inexistentes
   app.use((req, res, next) => {
