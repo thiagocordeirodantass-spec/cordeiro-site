@@ -173,7 +173,7 @@ router.get("/", (req, res) => {
            (SELECT COALESCE(u.nome,u.username) FROM users u WHERE u.id=documents.created_by) AS created_by_name
     FROM documents
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
-    ORDER BY datetime(data_emissao) DESC, id DESC
+    ORDER BY datetime(created_at) DESC, id DESC
     LIMIT ? OFFSET ?
   `;
   const safeLimit=Math.min(100,Math.max(10,Number(limit)||25));

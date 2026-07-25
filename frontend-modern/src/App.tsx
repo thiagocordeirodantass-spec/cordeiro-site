@@ -75,6 +75,15 @@ const brl = (v: any) =>
     currency: "BRL",
   });
 const date = (v: any) => (v ? new Date(v).toLocaleDateString("pt-BR") : "—");
+const sourceInfo=(value?:string)=>{
+  const key=String(value||"system").toLowerCase();
+  if(key==="upload")return {label:"Importação manual",tone:"manual"};
+  if(key==="paste")return {label:"Inclusão manual",tone:"manual"};
+  if(key.includes("mtls-auto"))return {label:"SEFAZ automática",tone:"automatic"};
+  if(key.includes("sefaz"))return {label:"Consulta por chave",tone:"sefaz"};
+  if(key.includes("meudanfe"))return {label:"MeuDANFE",tone:"external"};
+  return {label:"Sistema",tone:"system"};
+};
 
 function Brand() {
   return (
@@ -761,17 +770,6 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <FileDown /> Baixar XMLs
           </button>
           <button
-            className="secondary"
-            onClick={() =>
-              download(
-                `/api/relatorio/lote?formato=pdf&${exportParams}`,
-                "documentos-pdf.zip",
-              )
-            }
-          >
-            <FileText /> Baixar PDFs
-          </button>
-          <button
             className="primary"
             onClick={() =>
               download(
@@ -788,7 +786,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             filters={filters}
             onChange={setFilter}
             onClear={() => setFilters({})}
-            description="A listagem, os XMLs, PDFs e o relatório da tela respeitam estes filtros."
+            description="A listagem, os XMLs oficiais e o relatório respeitam estes filtros."
           />
         )}
         <div className="toolbar">
@@ -819,6 +817,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 <th>Emissão</th>
                 <th>Valor</th>
                 <th>Status</th>
+                <th>Origem</th>
                 <th>Incluído por</th>
                 <th>Ações</th>
               </tr>
@@ -848,6 +847,12 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
                   </td>
                   <td>
                     <span className="status">{d.status || "Autorizado"}</span>
+                  </td>
+                  <td>
+                    <span className={`source-badge ${sourceInfo(d.source).tone}`}>
+                      <i />{sourceInfo(d.source).label}
+                    </span>
+                    <small>{d.created_at?new Date(d.created_at).toLocaleString("pt-BR"):""}</small>
                   </td>
                   <td>{d.created_by_name || "Sistema / SEFAZ"}</td>
                   <td>
@@ -958,18 +963,6 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
               >
                 <X />
                 Excluir documento
-              </button>
-              <button
-                className="secondary"
-                onClick={() =>
-                  download(
-                    `/api/docs/${selected.id}/pdf`,
-                    `danfe-${selected.numero || selected.id}.pdf`,
-                  )
-                }
-              >
-                <FileText />
-                Baixar DANFE
               </button>
               <button
                 className="primary"
@@ -1132,7 +1125,6 @@ function Reports({ toast }: { toast: (s: string, e?: boolean) => void }) {
               >
                 <option value="xlsx">Excel</option>
                 <option value="csv">CSV</option>
-                <option value="pdf">PDF</option>
               </select>
             </label>
           </div>
@@ -1745,7 +1737,7 @@ function TurnstileBox({
 function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [key, setKey] = useState(""),
     [kind, setKind] = useState("nfe"),
-    [provider, setProvider] = useState("auto"),
+    [provider] = useState("sefaz"),
     [results, setResults] = useState<any[]>([]),
     [busy, setBusy] = useState(false),
     [captchaToken, setCaptchaToken] = useState(""),
@@ -2007,17 +1999,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 <option value="cte">CT-e</option>
               </select>
             </label>
-            <label>
-              Origem da consulta
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-              >
-                <option value="auto">Automático (com alternativa)</option>
-                <option value="sefaz">SEFAZ / Distribuição DF-e</option>
-                <option value="meudanfe">MeuDANFE</option>
-              </select>
-            </label>
+            <div className="query-provider"><ShieldCheck/><span><small>FONTE OFICIAL</small>
+              <b>SEFAZ · Distribuição DF-e</b></span></div>
             <label>
               Chave de acesso
               <textarea
@@ -2089,28 +2072,6 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           )}
         </Panel>
       </div>
-      <Panel title="Verificação anti-bot">
-        <div className="captcha-settings">
-          <label>
-            Sitekey pública do Cloudflare Turnstile
-            <input
-              value={sitekeyInput}
-              onChange={(e) => setSitekeyInput(e.target.value)}
-              placeholder="0x4AAAA..."
-            />
-          </label>
-          <button className="secondary" onClick={saveSitekey}>
-            <Save />
-            Salvar sitekey
-          </button>
-        </div>
-        <TurnstileBox sitekey={sitekey} onToken={setCaptchaToken} />
-        {captchaToken && (
-          <div className="captcha-ok">
-            <ShieldCheck /> CAPTCHA validado. O download está liberado.
-          </div>
-        )}
-      </Panel>
       <div className="official-note">
         <ShieldCheck />
         <div>
@@ -3323,6 +3284,19 @@ function Messenger() {
   );
 }
 
+function OnlinePresence(){
+  const [online,setOnline]=useState(1),[total,setTotal]=useState(1);
+  useEffect(()=>{
+    const load=()=>api<any>("/api/users").then(response=>{
+      const users=Array.isArray(response)?response:response.users||[];
+      setOnline(Math.max(1,users.filter((item:any)=>item.online&&item.ativo!==false&&item.ativo!==0).length));
+      setTotal(Math.max(1,users.filter((item:any)=>item.ativo!==false&&item.ativo!==0).length));
+    }).catch(()=>{setOnline(1);setTotal(1)});
+    load();const timer=window.setInterval(load,15000);return()=>window.clearInterval(timer);
+  },[]);
+  return <div className="online-presence"><i/><span><b>{online} online</b><small>{total} usuário(s) ativo(s)</small></span></div>;
+}
+
 function Admin({
   kind,
   toast,
@@ -3543,6 +3517,16 @@ function Admin({
           </article>
         </div>
       )}
+      {kind === "companies" && (
+        <div className="admin-stats company-admin-stats">
+          <article><Building2/><div><small>Matrizes cadastradas</small>
+            <b>{items.filter(item=>!item.empresa_matriz_id).length}</b></div></article>
+          <article><Network/><div><small>Filiais vinculadas</small>
+            <b>{items.filter(item=>item.empresa_matriz_id).length}</b></div></article>
+          <article><ShieldCheck/><div><small>Ambientes ativos</small>
+            <b>{items.filter(item=>item.ativo!==false&&item.ativo!==0).length}</b></div></article>
+        </div>
+      )}
       <Panel>
         {items.length && kind === "companies" ? (
           <div className="company-grid">
@@ -3603,10 +3587,10 @@ function Admin({
                       <Save /> Configurar módulos
                     </button>
                     <button className="secondary" onClick={()=>setCompanyForm({...company})}>Editar</button>
-                    <button className="secondary" onClick={()=>setCompanyForm({
+                    {branches.length>0&&<button className="secondary branch-create" onClick={()=>setCompanyForm({
                       cnpj:"",nome:"",nome_fantasia:"",ie:"",im:"",regime_tributario:company.regime_tributario||"simples",
                       ambiente:company.ambiente||"producao",empresa_matriz_id:company.id,
-                    })}>+ Cadastrar filial</button>
+                    })}><Network/> Nova filial</button>}
                     {branches.length>0&&<button className="secondary" onClick={()=>setExpandedCompanies({
                       ...expandedCompanies,[company.id]:!expandedCompanies[company.id],
                     })}>{expandedCompanies[company.id]?"Recolher filiais":`Expandir filiais (${branches.length})`}</button>}
@@ -3650,7 +3634,7 @@ function Admin({
                         .slice(0, 2)
                         .toUpperCase()}
                     </i>
-                    <span className={`status ${inactive ? "inactive" : ""}`}>
+                    <span className={`status ${inactive ? "inactive" : userItem.online ? "online" : "offline"}`}>
                       {inactive ? "Inativo" : userItem.online ? "Online" : "Offline"}
                     </span>
                   </header>
@@ -3778,14 +3762,16 @@ function Admin({
             </>}
           </div>
           <section className="module-replication">
-            <header><b>Replicar configuração deste módulo</b><small>Marque as unidades que receberão uma cópia.</small></header>
+            <header><div><span>03</span><p><b>Replicar configuração deste módulo</b><small>Marque as unidades que receberão uma cópia.</small></p></div>
+              <em>{replicateTargets.length} selecionada(s)</em></header>
             <div>{items.filter(item=>item.id!==moduleCompany.id).map(item=><label key={item.id}>
               <input type="checkbox" checked={replicateTargets.includes(Number(item.id))}
                 onChange={e=>setReplicateTargets(e.target.checked?[...replicateTargets,Number(item.id)]:
                   replicateTargets.filter(id=>id!==Number(item.id)))}/>
               {item.nome} {item.empresa_matriz_id?"· Filial":"· Matriz"}
             </label>)}</div>
-            <button className="secondary" onClick={replicateModule}>Replicar para selecionadas</button>
+            <button className="secondary" disabled={!replicateTargets.length} onClick={replicateModule}>
+              <Network/> Replicar para {replicateTargets.length||0} selecionada(s)</button>
           </section>
           <footer><button className="secondary" onClick={()=>setModuleCompany(null)}>Fechar</button>
             <button className="primary" onClick={saveModule}><Save/> Salvar este módulo</button></footer>
@@ -3920,9 +3906,11 @@ function Admin({
         <div className="modal-backdrop">
           <form className="feedback-modal user-modal" onSubmit={saveUser}>
             <header>
+              <i className="modal-hero-icon"><ShieldCheck /></i>
               <div>
-                <span className="eyebrow">ADMINISTRAÇÃO</span>
+                <span className="eyebrow">IDENTIDADE & ACESSO</span>
                 <h2>{userForm.id ? "Editar usuário" : "Novo usuário"}</h2>
+                <p>Defina a identidade, o perfil e as permissões desta pessoa.</p>
               </div>
               <button
                 type="button"
@@ -3932,6 +3920,9 @@ function Admin({
                 <X />
               </button>
             </header>
+            <div className="user-modal-body">
+            <section className="user-data-section">
+              <header><span>01</span><div><b>Dados do usuário</b><small>Informações usadas para identificação e acesso.</small></div></header>
             <div className="fields">
               <label>
                 Nome
@@ -4002,8 +3993,10 @@ function Admin({
                 </label>
               )}
             </div>
+            </section>
             <section className="user-permissions">
-              <header><b>Permissões nesta empresa</b><small>O administrador pode limitar cada ação individualmente.</small></header>
+              <header><span>02</span><div><b>Permissões nesta empresa</b><small>Controle exatamente o que este usuário poderá fazer.</small></div>
+                <em>{Object.values(userForm.permissoes||{}).filter(Boolean).length} ativas</em></header>
               {[
                 ["documentos_visualizar","Visualizar documentos"],
                 ["documentos_incluir","Incluir e importar documentos"],
@@ -4011,11 +4004,13 @@ function Admin({
                 ["cnd_editar","Cadastrar e editar certidões"],
                 ["sefaz_consultar","Consultar e importar pela SEFAZ"],
                 ["relatorios_gerar","Gerar relatórios"],
-              ].map(([key,label])=><label className="check" key={key}>
+              ].map(([key,label])=><label className="permission-tile" key={key}>
+                <i><ShieldCheck /></i><span><b>{label}</b><small>{userForm.permissoes?.[key]?"Acesso liberado":"Acesso bloqueado"}</small></span>
                 <input type="checkbox" checked={Boolean(userForm.permissoes?.[key])}
                   onChange={e=>setUserForm({...userForm,permissoes:{...userForm.permissoes,[key]:e.target.checked}})}/>
-                {label}</label>)}
+                <em /></label>)}
             </section>
+            </div>
             <footer>
               <button
                 type="button"
@@ -4140,7 +4135,7 @@ export default function App() {
         <nav>
           {groups.map(
             ([group, items]) =>
-              (group !== "Administração" || admin) && (
+              (group !== "Governança" || admin) && (
                 <section key={group}>
                   <small>{group}</small>
                   {items.map(([p, label, Icon]: any) => (
@@ -4174,6 +4169,7 @@ export default function App() {
             <Menu />
           </button>
           <div className="top-actions">
+            <OnlinePresence />
             <button onClick={() => setDark((x) => !x)}>
               {dark ? <Sun /> : <Moon />}
             </button>

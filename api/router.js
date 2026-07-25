@@ -449,7 +449,7 @@ export default async function handler(request, response) {
             LEFT JOIN users u ON u.id=d.created_by
             WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
               AND ${filters}
-            ORDER BY d.data_emissao DESC NULLS LAST,d.id DESC LIMIT $6 OFFSET $7`,
+            ORDER BY d.created_at DESC NULLS LAST,d.id DESC LIMIT $6 OFFSET $7`,
           [...values,limit,offset],
         ),pool.query(`SELECT COUNT(*)::int total FROM documents d
           WHERE ($1::bigint IS NULL OR d.empresa_id=$1) AND ${filters}`,values)]);
