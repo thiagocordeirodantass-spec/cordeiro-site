@@ -65,11 +65,12 @@ type AppNotification = {
   text: string;
   createdAt: string;
   read?: boolean;
-  kind: "success" | "error" | "news";
+  kind: "online" | "news";
 };
 function storedNotifications(): AppNotification[] {
   try {
-    return JSON.parse(localStorage.getItem("cordeiro.notifications") || "[]");
+    return JSON.parse(localStorage.getItem("cordeiro.notifications") || "[]")
+      .filter((item:AppNotification)=>item.kind==="online"||item.kind==="news");
   } catch {
     return [];
   }
@@ -598,6 +599,9 @@ function FiscalFilters({
 function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [items, setItems] = useState<any[]>([]),
     [q, setQ] = useState(""),
+    [kindFilter,setKindFilter]=useState(""),
+    [selectedIds,setSelectedIds]=useState<number[]>([]),
+    [confirmBatchDelete,setConfirmBatchDelete]=useState(false),
     [page,setPage]=useState(1),
     [total,setTotal]=useState(0),
     [pages,setPages]=useState(1),
@@ -609,7 +613,8 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [filters, setFilters] = useState<Record<string, string>>({});
   const load = useCallback(() => {
     setBusy(true);
-    const params = new URLSearchParams({limit:"25",page:String(page),q,...filters});
+    const params = new URLSearchParams({limit:"25",page:String(page),q,...filters,
+      kind:kindFilter||filters.tipoDocumento||""});
     api<any>(`/api/docs?${params}`)
       .then((r) => {
         setItems(
@@ -620,7 +625,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
       })
       .catch((e) => toast(e.message, true))
       .finally(() => setBusy(false));
-  }, [toast, filters,page,q]);
+  }, [toast, filters,page,q,kindFilter]);
   useEffect(() => {
     load();
   }, [load]);
@@ -680,6 +685,12 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
       toast((e as Error).message, true);
     }
   }
+  async function removeBatch(){
+    try{
+      const result=await api<any>("/api/docs/batch-delete",{method:"POST",body:{ids:selectedIds}});
+      setSelectedIds([]);setConfirmBatchDelete(false);toast(`${result.deleted} documento(s) e XML(s) excluído(s)`);load();
+    }catch(error){toast((error as Error).message,true)}
+  }
   return (
     <>
       <Head
@@ -696,6 +707,9 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div><small>{label}</small><strong>{value}</strong><em>Empresa ativa</em></div></article>)}</div>
       <Panel>
         <div className="document-downloads">
+          {selectedIds.length>0&&<button className="secondary danger" onClick={()=>setConfirmBatchDelete(true)}>
+            <Trash2/> Excluir selecionados ({selectedIds.length})
+          </button>}
           <button
             className="secondary"
             onClick={() => setShowFilters((v) => !v)}
@@ -747,15 +761,18 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </button>
         </div>
         <div className="doc-tabs">
-          <button className="active">Todos</button>
-          <button onClick={() => setQ("NFE")}>NF-e</button>
-          <button onClick={() => setQ("CTE")}>CT-e</button>
-          <button onClick={() => setQ("NFSE")}>NFS-e</button>
+          {[["","Todos"],["NFE","NF-e"],["CTE","CT-e"],["NFSE","NFS-e"]].map(([value,label])=>
+            <button className={kindFilter===value?"active":""} key={value} onClick={()=>{setKindFilter(value);setPage(1)}}>{label}</button>)}
         </div>
         <div className="table">
           <table>
             <thead>
               <tr>
+                <th className="select-cell"><input type="checkbox" aria-label="Selecionar página"
+                  checked={rows.length>0&&rows.every(item=>selectedIds.includes(Number(item.id)))}
+                  onChange={event=>setSelectedIds(current=>event.target.checked?
+                    [...new Set([...current,...rows.map(item=>Number(item.id))])]:
+                    current.filter(id=>!rows.some(item=>Number(item.id)===id)))}/></th>
                 <th>Documento</th>
                 <th>Emitente</th>
                 <th>Emissão</th>
@@ -769,6 +786,9 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <tbody>
               {rows.map((d, i) => (
                 <tr key={d.id || i}>
+                  <td className="select-cell"><input type="checkbox" aria-label={`Selecionar documento ${d.numero||d.id}`}
+                    checked={selectedIds.includes(Number(d.id))}
+                    onChange={event=>setSelectedIds(current=>event.target.checked?[...current,Number(d.id)]:current.filter(id=>id!==Number(d.id)))}/></td>
                   <td>
                     <b>
                       {d.kind || d.tipo || d.modelo || "NF-e"} #
@@ -930,6 +950,13 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <p>{pendingDelete.numero&&<>Nota <b>{pendingDelete.numero}</b><br/></>}Chave <b>{pendingDelete.chave||"não informada"}</b>. Esta ação remove o registro e o XML armazenado.</p>
           <div><button className="secondary" onClick={()=>setPendingDelete(null)}>Manter documento</button>
             <button className="primary danger-action" onClick={()=>remove(pendingDelete)}><Trash2/> Excluir documento</button></div>
+        </section>
+      </div>}
+      {confirmBatchDelete&&<div className="modal-backdrop deletion-backdrop" role="dialog" aria-modal="true">
+        <section className="deletion-dialog"><i><Trash2/></i><span className="eyebrow">EXCLUSÃO EM LOTE</span>
+          <h2>Excluir {selectedIds.length} documentos?</h2><p>Os registros selecionados e todos os XMLs vinculados serão removidos da empresa ativa.</p>
+          <div><button className="secondary" onClick={()=>setConfirmBatchDelete(false)}>Cancelar</button>
+            <button className="primary danger-action" onClick={removeBatch}><Trash2/> Excluir selecionados</button></div>
         </section>
       </div>}
     </>
@@ -2970,7 +2997,7 @@ function Assistant() {
           <X />
         ) : (
           <>
-            <img src="/assets/cordeiro-mascote-v2.png" alt="" />
+            <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
             <span>Ajuda</span>
           </>
         )}
@@ -2978,7 +3005,7 @@ function Assistant() {
       {open && (
         <section className="assistant">
           <header>
-            <img src="/assets/cordeiro-mascote-v2.png" alt="" />
+            <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
             <div>
               <b>Assistente Cordeiro</b>
               <small>
@@ -3025,7 +3052,7 @@ function Assistant() {
               >
                 {m.role !== "user" && (
                   <i>
-                    <img src="/assets/cordeiro-mascote-v2.png" alt="" />
+                    <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
                   </i>
                 )}
                 <span>{m.content}</span>
@@ -3034,7 +3061,7 @@ function Assistant() {
             {busy && (
               <div className="bot-message typing">
                 <i>
-                  <img src="/assets/cordeiro-mascote-v2.png" alt="" />
+                  <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
                 </i>
                 <span>
                   <b />
@@ -3099,7 +3126,7 @@ function NotificationCenter({
               items.slice(0, 30).map((item) => (
                 <article className={item.read ? "read" : ""} key={item.id}>
                   <i className={item.kind}>
-                    {item.kind === "error" ? <X /> : <ShieldCheck />}
+                    {item.kind === "online" ? <Users /> : <Bell />}
                   </i>
                   <div>
                     <b>{item.title}</b>
@@ -4051,23 +4078,39 @@ export default function App() {
     setMobileState((current) => (value ? !current : false));
   const toast = useCallback((s: string, e = false) => {
     setNote({ s, e });
-    setNotifications((current) => {
-      const next: AppNotification[] = [
-        {
-          id: Date.now(),
-          title: e ? "Ação pendente" : "Operação concluída",
-          text: s,
-          createdAt: new Date().toISOString(),
-          kind: (e ? "error" : "success") as AppNotification["kind"],
-          read: false,
-        },
-        ...current,
-      ].slice(0, 50);
-      localStorage.setItem("cordeiro.notifications", JSON.stringify(next));
-      return next;
-    });
     setTimeout(() => setNote(null), 3500);
   }, []);
+  const presenceSnapshot=useRef<Set<number>|null>(null),newsSnapshot=useRef<Set<string>|null>(null);
+  const pushPersistent=useCallback((item:Omit<AppNotification,"id"|"createdAt"|"read">)=>{
+    setNotifications(current=>{
+      const next=[{...item,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),read:false},...current]
+        .filter(entry=>entry.kind==="online"||entry.kind==="news").slice(0,50);
+      localStorage.setItem("cordeiro.notifications",JSON.stringify(next));return next;
+    });
+  },[]);
+  useEffect(()=>{
+    if(!user)return;
+    const check=async()=>{
+      try{
+        const response=await api<any>("/api/users"),users=Array.isArray(response)?response:response.users||[];
+        const online=new Set<number>(users.filter((item:any)=>item.online&&item.ativo!==false).map((item:any)=>Number(item.id)));
+        if(presenceSnapshot.current)users.filter((item:any)=>online.has(Number(item.id))&&!presenceSnapshot.current!.has(Number(item.id))&&Number(item.id)!==Number(user.id))
+          .forEach((item:any)=>pushPersistent({kind:"online",title:"Usuário online",text:`${item.nome||item.username} entrou online.`}));
+        presenceSnapshot.current=online;
+      }catch{}
+    };
+    check();const timer=window.setInterval(check,15000);return()=>window.clearInterval(timer);
+  },[user,pushPersistent]);
+  useEffect(()=>{
+    if(!user)return;
+    const check=async()=>{try{const response=await api<any>("/api/news"),items=[...(response.externos||[]),...(response.curadas||[])];
+      const ids=new Set<string>(items.map((item:any)=>String(item.id||item.url)));
+      if(newsSnapshot.current)items.filter((item:any)=>!newsSnapshot.current!.has(String(item.id||item.url)))
+        .forEach((item:any)=>pushPersistent({kind:"news",title:"Nova notícia fiscal",text:item.titulo}));
+      newsSnapshot.current=ids;
+    }catch{}};
+    check();const timer=window.setInterval(check,300000);return()=>window.clearInterval(timer);
+  },[user,pushPersistent]);
   const markAllNotificationsRead = () =>
     setNotifications((current) => {
       const next = current.map((item) => ({ ...item, read: true }));

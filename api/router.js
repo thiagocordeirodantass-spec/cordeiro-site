@@ -466,10 +466,14 @@ export default async function handler(request, response) {
       }
       const kind=route[1].toUpperCase();
       const summary=fiscalSummary(xml);
-      if(cancelled)return response.status(422).json({
-        error:"Documento cancelado: o XML completo não foi disponibilizado e nada foi importado.",
-        chave:route[2],imported:false,logReason:"cancelado_sem_xml",
-      });
+      if(cancelled){
+        const saved=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,source,created_by)
+          SELECT $1,$2,$3::text,'cancelado','sefaz-consulta',$4
+          WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)
+          RETURNING id`,[user.empresa_ativa_id,kind,route[2],user.id]);
+        return response.json({ok:true,status:"Documento cancelado registrado sem XML (cStat 653).",
+          provider:"sefaz",chave:route[2],xml:null,cancelled:true,imported:Boolean(saved.rowCount)});
+      }
       const required={
         numero:summary.numero,serie:summary.serie,data_emissao:summary.dataEmissao,
         emitente:summary.emitente,emitente_documento:summary.emitenteDoc,
@@ -506,6 +510,19 @@ export default async function handler(request, response) {
       });
     }
 
+    if(route[0]==="docs"&&route[1]==="batch-delete"&&request.method==="POST"){
+      const ids=[...new Set((request.body?.ids||[]).map(Number).filter(Number.isSafeInteger))];
+      if(!ids.length)return response.status(400).json({error:"Selecione ao menos um documento"});
+      const deleted=await pool.query(`DELETE FROM documents WHERE id=ANY($1::bigint[])
+        AND ($2::bigint IS NULL OR empresa_id=$2) RETURNING id`,[ids,user.empresa_ativa_id]);
+      return response.json({ok:true,deleted:deleted.rowCount});
+    }
+    if(route[0]==="docs"&&route[1]&&request.method==="DELETE"){
+      const deleted=await pool.query(`DELETE FROM documents WHERE id=$1
+        AND ($2::bigint IS NULL OR empresa_id=$2) RETURNING id`,[Number(route[1]),user.empresa_ativa_id]);
+      if(!deleted.rowCount)return response.status(404).json({error:"Documento não encontrado"});
+      return response.json({ok:true,deleted:1});
+    }
     if (route[0] === "docs" && request.method === "GET") {
       if(route[1]==="import-log"){
         const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.status,d.source,d.file_name,d.created_at,
@@ -522,16 +539,27 @@ export default async function handler(request, response) {
         const q=String(request.query.q||"").trim();
         const kind=String(request.query.kind||"").toUpperCase();
         const status=String(request.query.status||"");
+        const values=[user.empresa_ativa_id,kind,status,q,`%${q}%`];
+        const extra=[];
+        const addLike=(column,value)=>{if(value){values.push(`%${String(value).trim()}%`);extra.push(`${column} ILIKE $${values.length}`)}};
+        addLike("d.remetente_doc",request.query.emitenteCnpj);
+        addLike("d.remetente_nome",request.query.emitenteRazaoSocial||request.query.emitenteNomeFantasia);
+        addLike("d.destinatario_nome",request.query.destinatarioNome);
+        addLike("d.chave",request.query.chaveAcesso);
+        if(request.query.cancelados==="1"){values.push("cancelado");extra.push(`LOWER(d.status)=$${values.length}`)}
+        if(request.query.cancelados==="0")extra.push(`LOWER(COALESCE(d.status,''))<>'cancelado'`);
+        if(request.query.dataRegistroFrom){values.push(request.query.dataRegistroFrom);extra.push(`d.created_at>=$${values.length}::date`)}
+        if(request.query.dataRegistroTo){values.push(request.query.dataRegistroTo);extra.push(`d.created_at<$${values.length}::date+INTERVAL '1 day'`)}
         const filters=`($2='' OR d.kind=$2) AND ($3='' OR d.status=$3) AND
           ($4='' OR d.chave ILIKE $5 OR d.numero ILIKE $5 OR d.remetente_nome ILIKE $5 OR
-           d.destinatario_nome ILIKE $5)`;
-        const values=[user.empresa_ativa_id,kind,status,q,`%${q}%`];
+           d.remetente_doc ILIKE $5 OR d.destinatario_doc ILIKE $5 OR d.destinatario_nome ILIKE $5)
+           ${extra.length?`AND ${extra.join(" AND ")}`:""}`;
         const [result,count]=await Promise.all([pool.query(
           `SELECT d.*,COALESCE(u.nome,u.username) AS created_by_name FROM documents d
             LEFT JOIN users u ON u.id=d.created_by
             WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
               AND ${filters}
-            ORDER BY d.created_at DESC NULLS LAST,d.id DESC LIMIT $6 OFFSET $7`,
+            ORDER BY d.created_at DESC NULLS LAST,d.id DESC LIMIT $${values.length+1} OFFSET $${values.length+2}`,
           [...values,limit,offset],
         ),pool.query(`SELECT COUNT(*)::int total FROM documents d
           WHERE ($1::bigint IS NULL OR d.empresa_id=$1) AND ${filters}`,values)]);
