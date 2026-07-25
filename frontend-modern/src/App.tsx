@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  ArrowUpRight,
   Bot,
   BarChart3,
   Bell,
+  BookOpen,
   Building2,
   CloudDownload,
   FileDown,
   FileText,
   Files,
   Gauge,
+  GraduationCap,
   LayoutDashboard,
+  Lightbulb,
   Network,
   Link,
   Linkedin,
@@ -27,6 +31,7 @@ import {
   ShieldCheck,
   Sparkles,
   Sun,
+  Trash2,
   UploadCloud,
   UserRound,
   Users,
@@ -448,45 +453,38 @@ function FiscalNews() {
       )
       .finally(() => setBusy(false));
   }, []);
-  return (
-    <section className="news-section">
-      <div className="section-title">
-        <div>
-          <span className="eyebrow">RADAR FISCAL</span>
-          <h2>Notícias do mundo fiscal</h2>
-          <p>
-            Atualizações sobre tributação, NF-e, CT-e, SPED e Reforma
-            Tributária.
-          </p>
-        </div>
-      </div>
-      <div className="news-grid">
-        {busy ? (
-          <div className="panel">
-            <RefreshCw className="spin" />
-          </div>
-        ) : (
-          items.map((n, i) => (
-            <a
-              className={`news-card ${i === 0 ? "featured" : ""}`}
-              href={n.url}
-              target="_blank"
-              rel="noreferrer"
-              key={n.id || n.url || i}
-            >
-              <span>{n.tagLabel || n.fonte || "NOTÍCIA"}</span>
-              <h3>{n.titulo}</h3>
-              <p>{n.resumo}</p>
-              <footer>
-                <b>{n.fonte || "Radar Fiscal"}</b>
-                <small>{n.data ? date(n.data) : "Atualização recente"}</small>
-              </footer>
-            </a>
-          ))
-        )}
-      </div>
-    </section>
-  );
+  const lead=items[0], latest=items.slice(1,5);
+  const tips=[
+    ["Conferência inteligente","Valide chave, CNPJ, valores e protocolo antes de concluir a escrituração."],
+    ["Rotina sem duplicidade","Centralize XMLs e acompanhe a origem de cada importação no histórico."],
+    ["Prazos sob controle","Revise certidões e obrigações por empresa antes do fechamento mensal."],
+  ];
+  const courses=[
+    {title:"Formação Avançada em Conscientização Tributária",meta:"Receita Federal · 20 horas",url:"https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/acoes-e-programas/cidadania-fiscal/cidadania-fiscal-no-curriculo-escolar/formacao-docente-e-capacitacao-em-cidadania-fiscal/formacao-avancada-em-conscientizacao-tributaria"},
+    {title:"Educação Fiscal: Estado, Tributos e Sociedade",meta:"Receita Federal · Curso em vídeo",url:"https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/acoes-e-programas/cidadania-fiscal/cidadania-fiscal-no-curriculo-escolar/videos/professores/educacao-fiscal"},
+    {title:"Capacitação técnica para aplicação pedagógica",meta:"Receita Federal · Material oficial",url:"https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/acoes-e-programas/cidadania-fiscal/cidadania-fiscal-no-curriculo-escolar/formacao-docente/capacitacao-tecnica-1"},
+  ];
+  return <section className="fiscal-journal">
+    <header className="journal-heading"><div><span className="eyebrow">EDIÇÃO DIGITAL</span><h2>Notícias do mundo fiscal</h2>
+      <p>Informação prática para decisões fiscais mais seguras.</p></div><span className="journal-live"><i/> RADAR ATIVO</span></header>
+    {busy?<div className="journal-loading"><RefreshCw className="spin"/> Atualizando o radar fiscal...</div>:
+      <div className="journal-layout">
+        {lead&&<a className="journal-lead" href={lead.url} target="_blank" rel="noreferrer">
+          <div className="lead-art"><Radar/><span>DESTAQUE DA EDIÇÃO</span></div>
+          <div className="lead-copy"><span>{lead.tagLabel||lead.fonte||"ATUALIZAÇÃO"}</span><h3>{lead.titulo}</h3>
+            <p>{lead.resumo}</p><footer><b>{lead.fonte||"Radar Fiscal"}</b><small>Ler conteúdo <ArrowUpRight/></small></footer></div>
+        </a>}
+        <aside className="journal-latest"><header><span>AGORA</span><h3>Últimas atualizações</h3></header>
+          {latest.map((n,i)=><a href={n.url} target="_blank" rel="noreferrer" key={n.id||n.url||i}>
+            <b>{String(i+1).padStart(2,"0")}</b><span><small>{n.tagLabel||n.fonte||"FISCAL"}</small><strong>{n.titulo}</strong></span><ArrowUpRight/>
+          </a>)}</aside>
+      </div>}
+    <div className="editorial-block"><div className="editorial-title"><Lightbulb/><span><small>GUIA RÁPIDO</small><h3>Dicas para a rotina fiscal</h3></span></div>
+      <div className="tip-grid">{tips.map(([title,text],i)=><article key={title}><b>0{i+1}</b><h4>{title}</h4><p>{text}</p></article>)}</div></div>
+    <div className="editorial-block courses"><div className="editorial-title"><GraduationCap/><span><small>FORMAÇÃO</small><h3>Cursos e capacitações</h3></span></div>
+      <div className="course-grid">{courses.map(course=><a href={course.url} target="_blank" rel="noreferrer" key={course.title}>
+        <i><BookOpen/></i><span><small>{course.meta}</small><strong>{course.title}</strong></span><ArrowUpRight/></a>)}</div></div>
+  </section>;
 }
 const fiscalTextFilters = [
   ["emitenteCnpj", "CNPJ do emitente"],
@@ -1123,9 +1121,9 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [filter, setFilter] = useState(""),
     [cndPage,setCndPage]=useState(1),
     [form, setForm] = useState<any>(null),
+    [viewingCertificate,setViewingCertificate]=useState<any>(null),
+    [pendingDelete,setPendingDelete]=useState<any>(null),
     [cndPdf, setCndPdf] = useState<File | null>(null),
-    [uploadId, setUploadId] = useState<number | null>(null),
-    fileInput = useRef<HTMLInputElement>(null),
     smartInput = useRef<HTMLInputElement>(null);
   const load = useCallback(async () => {
     try {
@@ -1178,21 +1176,6 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       toast((error as Error).message, true);
     }
   }
-  async function uploadPdf(file?: File) {
-    if (!file || !uploadId) return;
-    const body = new FormData();
-    body.set("pdf", file);
-    try {
-      await api(`/api/certidoes/${uploadId}/pdf`, {
-        method: "POST",
-        body,
-      });
-      toast("PDF vinculado à certidão");
-      load();
-    } catch (error) {
-      toast((error as Error).message, true);
-    }
-  }
   async function recognizePdf(files?: FileList | null) {
     if (!files?.length) return;
     let imported=0;
@@ -1225,8 +1208,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     catch(error) { toast((error as Error).message,true); }
   }
   async function deleteCertificate(item:any){
-    if(!confirm(`Excluir a certidão ${typeLabel[item.tipo]||item.tipo} de ${item.empresa_nome}? O PDF original também será removido.`))return;
-    try{await api(`/api/certidoes/${item.id}`,{method:"DELETE"});toast("Certidão excluída");load()}
+    try{await api(`/api/certidoes/${item.id}`,{method:"DELETE"});setPendingDelete(null);toast(`Documento excluído: certidão ${typeLabel[item.tipo]||item.tipo} removida com sucesso`);load()}
     catch(error){toast((error as Error).message,true)}
   }
   const visible = items.filter((item) =>
@@ -1392,26 +1374,15 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
                     >
                       Editar
                     </button>
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setUploadId(item.id);
-                        setTimeout(() => fileInput.current?.click());
-                      }}
-                    >
-                      PDF
-                    </button>
                     {item.pdf_url && (
-                      <a
+                      <button
                         className="secondary"
-                        href={item.pdf_url}
-                        target="_blank"
-                        rel="noreferrer"
+                        onClick={()=>setViewingCertificate(item)}
                       >
                         Visualizar
-                      </a>
+                      </button>
                     )}
-                    <button className="secondary danger" onClick={()=>deleteCertificate(item)}><X/> Excluir</button>
+                    <button className="secondary danger" onClick={()=>setPendingDelete(item)}><Trash2/> Excluir</button>
                   </footer>
                 </article>
               );
@@ -1428,13 +1399,6 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           })}</div>
           <button className="secondary" disabled={cndPage===cndPages} onClick={()=>setCndPage(value=>value+1)}>Próxima →</button>
         </nav>}
-        <input
-          ref={fileInput}
-          hidden
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => uploadPdf(e.target.files?.[0])}
-        />
       </Panel>
       {false && cndConfig && <Panel title="Configurações e alertas por e-mail">
         <div className="cnd-settings">
@@ -1591,21 +1555,6 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 }
               />
             </label>
-            <label className="cnd-pdf-field">
-              Anexar PDF da certidão
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setCndPdf(e.target.files?.[0] || null)}
-              />
-              <small>
-                {cndPdf
-                  ? `${cndPdf.name} · ${(cndPdf.size / 1024 / 1024).toFixed(2)} MB`
-                  : form.pdf_url
-                    ? "PDF já vinculado. Selecione outro para substituir."
-                    : "Arquivo PDF de até 15 MB."}
-              </small>
-            </label>
             <footer>
               <button
                 type="button"
@@ -1624,6 +1573,26 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </form>
         </div>
       )}
+      {viewingCertificate&&<div className="modal-backdrop cnd-view-backdrop" role="dialog" aria-modal="true">
+        <section className="cnd-viewer">
+          <header><div><span className="eyebrow">DOCUMENTO FISCAL</span><h2>{typeLabel[viewingCertificate.tipo]||viewingCertificate.tipo} · {viewingCertificate.empresa_nome}</h2></div>
+            <button className="square" onClick={()=>setViewingCertificate(null)}><X/></button></header>
+          <div className="cnd-view-details">
+            <div><small>Número</small><b>{viewingCertificate.numero_certidao||"Não identificado"}</b></div>
+            <div><small>Emissão</small><b>{date(viewingCertificate.data_emissao)}</b></div>
+            <div><small>Validade</small><b>{date(viewingCertificate.data_validade)}</b></div>
+            <div><small>Situação</small><b>{viewingCertificate.status?.replaceAll("_"," ")}</b></div>
+          </div>
+          <iframe title="PDF completo da certidão" src={viewingCertificate.pdf_url}/>
+        </section>
+      </div>}
+      {pendingDelete&&<div className="modal-backdrop deletion-backdrop" role="dialog" aria-modal="true">
+        <section className="deletion-dialog"><i><Trash2/></i><span className="eyebrow">EXCLUIR DOCUMENTO</span>
+          <h2>Deseja excluir esta certidão?</h2><p>A certidão <b>{typeLabel[pendingDelete.tipo]||pendingDelete.tipo}</b> de <b>{pendingDelete.empresa_nome}</b> e seu arquivo serão removidos.</p>
+          <div><button className="secondary" onClick={()=>setPendingDelete(null)}>Manter documento</button>
+            <button className="primary danger-action" onClick={()=>deleteCertificate(pendingDelete)}><Trash2/> Excluir certidão</button></div>
+        </section>
+      </div>}
     </>
   );
 }
@@ -3241,16 +3210,15 @@ function Messenger() {
 }
 
 function OnlinePresence(){
-  const [online,setOnline]=useState(1),[total,setTotal]=useState(1);
+  const [online,setOnline]=useState(1);
   useEffect(()=>{
     const load=()=>api<any>("/api/users").then(response=>{
       const users=Array.isArray(response)?response:response.users||[];
       setOnline(Math.max(1,users.filter((item:any)=>item.online&&item.ativo!==false&&item.ativo!==0).length));
-      setTotal(Math.max(1,users.filter((item:any)=>item.ativo!==false&&item.ativo!==0).length));
-    }).catch(()=>{setOnline(1);setTotal(1)});
+    }).catch(()=>setOnline(1));
     load();const timer=window.setInterval(load,15000);return()=>window.clearInterval(timer);
   },[]);
-  return <div className="online-presence"><i/><span><b>{online} online</b><small>{total} usuário(s) ativo(s)</small></span></div>;
+  return <div className="online-presence" title="Usuários online agora"><i/><b>{online} online</b></div>;
 }
 
 function Admin({
