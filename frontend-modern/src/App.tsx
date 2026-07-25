@@ -3610,8 +3610,9 @@ function Admin({
                   key={company.id || index}
                 >
                   <header>
-                    <i>
-                      <Building2 />
+                    <i className={/intecom|intercom/i.test(`${company.nome} ${company.nome_fantasia||""}`)?"company-logo intecom":""}>
+                      {/intecom|intercom/i.test(`${company.nome} ${company.nome_fantasia||""}`)?
+                        <img src="/assets/intecom-logo.jpg" alt="Intecom"/>:<Building2 />}
                     </i>
                     <span className={`status ${inactive ? "inactive" : ""}`}>
                       {inactive ? "Inativa" : "Ativa"}
@@ -3667,7 +3668,8 @@ function Admin({
                     {branches.map(branch=>{
                       const branchInactive=branch.ativo===false||branch.ativo===0;
                       return <div className={branchInactive?"inactive":""} key={branch.id}>
-                        <i><Building2/></i>
+                        <i className={/intecom|intercom/i.test(branch.nome)?"company-logo intecom":""}>
+                          {/intecom|intercom/i.test(branch.nome)?<img src="/assets/intecom-logo.jpg" alt="Intecom"/>:<Building2/>}</i>
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
                         <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
                         <button className="secondary" onClick={()=>setCompanyForm({...branch})}>Editar</button>
