@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "formidable": "^3.5.4",
+    "node-forge": "^1.4.0",
     "pg": "^8.16.3"
   }
 }

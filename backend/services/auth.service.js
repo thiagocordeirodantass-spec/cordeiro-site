@@ -48,7 +48,7 @@ export function createSession({ userId, ip, userAgent }) {
 export function findSession(token) {
   if (!token) return null;
   const row = db.prepare(`
-    SELECT s.id as sid, s.expires_at, s.ip, s.user_agent, s.empresa_ativa_id,
+    SELECT s.id as sid, s.expires_at, s.ip, s.user_agent, s.empresa_ativa_id, s.auth_method,
            u.id as user_id, u.username, u.nome, u.email, u.role, u.ativo, u.primeiro_login,
            u.last_empresa_id
     FROM sessions s
@@ -107,6 +107,7 @@ export function findSession(token) {
       isSuperAdmin,
       memberships,
       empresaAtivaId,
+      authMethod: row.auth_method || "password",
     },
   };
 }

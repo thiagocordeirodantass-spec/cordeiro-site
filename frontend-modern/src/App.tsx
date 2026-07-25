@@ -95,8 +95,29 @@ function Login({ done }: { done: (u: User) => void }) {
     [email, setEmail] = useState(""),
     [code, setCode] = useState(""),
     [devCode, setDevCode] = useState(""),
+    [certFile, setCertFile] = useState<File | null>(null),
+    [certPassword, setCertPassword] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  async function loginWithCertificate() {
+    if (!certFile || !certPassword) {
+      setError("Selecione o certificado A1 e informe a senha");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.set("certificate", certFile);
+      body.set("password", certPassword);
+      await api("/api/auth/certificate-login", { method: "POST", body });
+      done((await api<{ user: User }>("/api/auth/me")).user);
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -255,6 +276,37 @@ function Login({ done }: { done: (u: User) => void }) {
               "Validar e entrar"
             )}
           </button>
+          {mode === "login" && (
+            <div className="certificate-login">
+              <small>ACESSO EXCLUSIVO INTECOM</small>
+              <label>
+                Certificado A1
+                <input
+                  type="file"
+                  accept=".pfx,.p12,application/x-pkcs12"
+                  onChange={(event) =>
+                    setCertFile(event.target.files?.[0] || null)
+                  }
+                />
+              </label>
+              <label>
+                Senha do certificado
+                <input
+                  type="password"
+                  value={certPassword}
+                  onChange={(event) => setCertPassword(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={loginWithCertificate}
+              >
+                <ShieldCheck /> Entrar na INTECOM com certificado
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="auth-switch"
@@ -3295,9 +3347,10 @@ function Admin({
                   <footer>
                     <button
                       className="primary"
+                      disabled={inactive}
                       onClick={() => activateCompany(company)}
                     >
-                      Acessar empresa
+                      {inactive ? "Empresa desativada" : "Acessar empresa"}
                     </button>
                     <button
                       className={inactive ? "primary" : "secondary"}

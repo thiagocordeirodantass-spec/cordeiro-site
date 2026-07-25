@@ -14,7 +14,7 @@ export default async function handler(request, response) {
 
     const sessionId = decodeURIComponent(sid);
     const session = await pool.query(
-      `SELECT s.user_id,u.role FROM sessions s
+      `SELECT s.user_id,s.auth_method,u.role FROM sessions s
        JOIN users u ON u.id=s.user_id
        WHERE s.id=$1 AND s.expires_at>NOW()`,
       [sessionId],
@@ -28,8 +28,11 @@ export default async function handler(request, response) {
     );
     if (!company.rowCount)
       return response.status(404).json({ error: "Empresa não encontrada" });
-
     const user = session.rows[0];
+    if (company.rows[0].requer_certificado && user.auth_method !== "certificate")
+      return response.status(403).json({
+        error: "A INTECOM somente pode ser acessada com certificado digital A1",
+      });
     if (user.role !== "admin") {
       const membership = await pool.query(
         `SELECT 1 FROM empresa_users

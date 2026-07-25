@@ -70,6 +70,11 @@ router.delete("/:id/membros/:userId", (req, res) => {
 // ---- Mudar empresa ativa ----
 router.post("/:id/ativar", (req, res) => {
   try {
+    const empresa = svc.getEmpresaById(req.params.id);
+    if (!empresa || !empresa.ativo)
+      return res.status(404).json({ error: "Empresa não encontrada ou desativada" });
+    if (empresa.requer_certificado && req.user.authMethod !== "certificate" && req.user.authMethod !== "mtls")
+      return res.status(403).json({ error: "A INTECOM somente pode ser acessada com certificado digital A1" });
     const r = svc.ativarEmpresa(req.user, req.params.id);
     if (req.sessionToken) {
       db.prepare("UPDATE sessions SET empresa_ativa_id = ? WHERE id = ?").run(Number(req.params.id), req.sessionToken);

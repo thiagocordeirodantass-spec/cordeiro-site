@@ -60,6 +60,7 @@ export function ensureSchema() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS empresa_ativa_id BIGINT;
+      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS auth_method TEXT NOT NULL DEFAULT 'password';
       CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
       CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
       CREATE TABLE IF NOT EXISTS email_verifications (
@@ -86,6 +87,41 @@ export function ensureSchema() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE empresas ADD COLUMN IF NOT EXISTS requer_certificado BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE empresas ADD COLUMN IF NOT EXISTS empresa_matriz_id BIGINT REFERENCES empresas(id);
+      ALTER TABLE empresas ADD COLUMN IF NOT EXISTS im TEXT;
+      UPDATE empresas SET requer_certificado=TRUE WHERE cnpj='03857930000154';
+      CREATE TABLE IF NOT EXISTS empresa_alert_emails (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(empresa_id,email)
+      );
+      INSERT INTO empresas(cnpj,nome,nome_fantasia,ie,im,ambiente,ativo,requer_certificado)
+      VALUES
+        ('61779867000181','ALM LOG','ALM LOG',NULL,'4BP6493','producao',TRUE,FALSE),
+        ('11554415000123','ANG Participações','ANG Participações',NULL,'4980807','producao',TRUE,FALSE),
+        ('11613649000102','Intecom Participações','Intecom Participações',NULL,'4578023','producao',TRUE,FALSE),
+        ('03857930000154','INTECOM SERVICOS DE LOGISTICA LTDA','Intecom Serviços','206256630112','4512683','producao',TRUE,TRUE),
+        ('10761960000128','IW Serviços','IW Serviços','206274460117','4540569','producao',TRUE,FALSE),
+        ('12142391000168','SP Empreendimentos','SP Empreendimentos',NULL,'4625238','producao',TRUE,FALSE)
+      ON CONFLICT(cnpj) DO UPDATE SET nome=EXCLUDED.nome,nome_fantasia=EXCLUDED.nome_fantasia,
+        ie=EXCLUDED.ie,im=EXCLUDED.im,requer_certificado=EXCLUDED.requer_certificado;
+      INSERT INTO empresas(cnpj,nome,nome_fantasia,ie,im,ambiente,ativo,empresa_matriz_id)
+      SELECT v.cnpj,v.nome,v.nome,v.ie,v.im,'producao',TRUE,m.id
+      FROM empresas m CROSS JOIN (VALUES
+        ('03857930000901','Intecom Betim','0032136030191','1644650011'),
+        ('03857930000740','Intecom Cajamar','241097223118','15861'),
+        ('03857930001207','Intecom Conde I','164001085','20203113'),
+        ('03857930001398','Intecom Extrema','0032136030272','0017760'),
+        ('03857930001479','Intecom Itapoá','262714132','40908'),
+        ('03857930000405','Intecom Conde II','161617727','20263671')
+      ) AS v(cnpj,nome,ie,im)
+      WHERE m.cnpj='03857930000154'
+      ON CONFLICT(cnpj) DO UPDATE SET nome=EXCLUDED.nome,nome_fantasia=EXCLUDED.nome_fantasia,
+        ie=EXCLUDED.ie,im=EXCLUDED.im,empresa_matriz_id=EXCLUDED.empresa_matriz_id;
       CREATE TABLE IF NOT EXISTS empresa_users (
         empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

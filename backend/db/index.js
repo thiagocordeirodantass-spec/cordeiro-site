@@ -103,6 +103,55 @@ for (const [name, spec] of NEW_DOC_INDEXES) {
 try { ensureColumn("documents", "empresa_id", "INTEGER"); } catch (e) { console.error("[migration] ensureColumn empresa_id falhou:", e.message); }
 try { ensureColumn("users", "last_empresa_id", "INTEGER"); } catch (e) { console.error("[migration] ensureColumn last_empresa_id falhou:", e.message); }
 try { ensureColumn("sessions", "empresa_ativa_id", "INTEGER"); } catch (e) { console.error("[migration] ensureColumn empresa_ativa_id falhou:", e.message); }
+try { ensureColumn("empresas", "empresa_matriz_id", "INTEGER"); } catch (e) { console.error("[migration] empresa_matriz_id falhou:", e.message); }
+try { ensureColumn("empresas", "im", "TEXT"); } catch (e) { console.error("[migration] im falhou:", e.message); }
+try { ensureColumn("empresas", "requer_certificado", "INTEGER NOT NULL DEFAULT 0"); } catch (e) { console.error("[migration] requer_certificado falhou:", e.message); }
+try { ensureColumn("sessions", "auth_method", "TEXT NOT NULL DEFAULT 'password'"); } catch (e) { console.error("[migration] auth_method falhou:", e.message); }
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS empresa_alert_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(empresa_id,email)
+  )`);
+} catch (e) { console.error("[migration] empresa_alert_emails falhou:", e.message); }
+const EMPRESAS_PADRAO = [
+  ["61779867000181","ALM LOG","ALM LOG",null,"4BP6493"],
+  ["11554415000123","ANG Participações","ANG Participações",null,"4980807"],
+  ["11613649000102","Intecom Participações","Intecom Participações",null,"4578023"],
+  ["03857930000154","INTECOM SERVICOS DE LOGISTICA LTDA","Intecom Serviços","206256630112","4512683"],
+  ["10761960000128","IW Serviços","IW Serviços","206274460117","4540569"],
+  ["12142391000168","SP Empreendimentos","SP Empreendimentos",null,"4625238"],
+];
+for (const row of EMPRESAS_PADRAO) {
+  try {
+    db.prepare(`INSERT INTO empresas(cnpj,nome,nome_fantasia,ie,im,ambiente,ativo,requer_certificado)
+      VALUES(?,?,?,?,?,'producao',1,?) ON CONFLICT(cnpj) DO UPDATE SET
+      nome=excluded.nome,nome_fantasia=excluded.nome_fantasia,ie=excluded.ie,im=excluded.im,
+      requer_certificado=excluded.requer_certificado`).run(...row,row[0] === "03857930000154" ? 1 : 0);
+  } catch (e) { console.error("[seed] empresa falhou:", e.message); }
+}
+const matrizIntecom = db.prepare("SELECT id FROM empresas WHERE cnpj = ?").get("03857930000154");
+if (matrizIntecom) {
+  const FILIAIS_INTECOM = [
+    ["03857930000901","Intecom Betim","0032136030191","1644650011"],
+    ["03857930000740","Intecom Cajamar","241097223118","15861"],
+    ["03857930001207","Intecom Conde I","164001085","20203113"],
+    ["03857930001398","Intecom Extrema","0032136030272","0017760"],
+    ["03857930001479","Intecom Itapoá","262714132","40908"],
+    ["03857930000405","Intecom Conde II","161617727","20263671"],
+  ];
+  for (const row of FILIAIS_INTECOM) {
+    try {
+      db.prepare(`INSERT INTO empresas(cnpj,nome,nome_fantasia,ie,im,ambiente,ativo,empresa_matriz_id)
+        VALUES(?,?,?,?,?,'producao',1,?) ON CONFLICT(cnpj) DO UPDATE SET
+        nome=excluded.nome,nome_fantasia=excluded.nome_fantasia,ie=excluded.ie,im=excluded.im,
+        empresa_matriz_id=excluded.empresa_matriz_id`).run(...row,matrizIntecom.id);
+    } catch (e) { console.error("[seed] filial falhou:", e.message); }
+  }
+}
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_docs_empresa ON documents(empresa_id)"); } catch (e) { console.error("[migration] idx_docs_empresa falhou:", e.message); }
 
 export default db;

@@ -12,6 +12,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import forge from "node-forge";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +54,51 @@ router.post("/login", (req, res) => {
     user: userPublic(user),
     expiresAt,
   });
+});
+
+router.post("/certificate-login", uploadAvatar.single("certificate"), (req, res) => {
+  try {
+    if (!req.file || !req.body?.password)
+      return res.status(400).json({ error: "Certificado e senha são obrigatórios" });
+    const p12 = forge.pkcs12.pkcs12FromAsn1(
+      forge.asn1.fromDer(req.file.buffer.toString("binary")),
+      false,
+      String(req.body.password),
+    );
+    let certificate = null;
+    let hasKey = false;
+    for (const content of p12.safeContents) {
+      for (const bag of content.safeBags) {
+        if (bag.cert) certificate = bag.cert;
+        if (bag.key) hasKey = true;
+      }
+    }
+    if (!certificate || !hasKey)
+      return res.status(401).json({ error: "Certificado A1 inválido" });
+    const subject = certificate.subject.attributes.map((item) => item.value).join(" ");
+    if (!subject.includes("03857930000154"))
+      return res.status(403).json({ error: "Certificado não autorizado para a INTECOM" });
+    const empresa = db.prepare(
+      "SELECT * FROM empresas WHERE cnpj = ? AND ativo = 1",
+    ).get("03857930000154");
+    if (!empresa)
+      return res.status(403).json({ error: "Empresa INTECOM desativada" });
+    const user = db.prepare(
+      "SELECT * FROM users WHERE role = 'admin' AND ativo = 1 ORDER BY id LIMIT 1",
+    ).get();
+    if (!user)
+      return res.status(403).json({ error: "Administrador não configurado" });
+    const { id, expiresAt } = createSession({
+      userId: user.id, ip: req.ip, userAgent: req.headers["user-agent"] || null,
+    });
+    db.prepare(
+      "UPDATE sessions SET empresa_ativa_id = ?, auth_method = 'certificate' WHERE id = ?",
+    ).run(empresa.id, id);
+    setSessionCookie(res, id);
+    return res.json({ ok: true, user: userPublic({ ...user, empresaAtivaId: empresa.id }), expiresAt });
+  } catch {
+    return res.status(401).json({ error: "Certificado ou senha inválidos" });
+  }
 });
 
 router.post("/logout", (req, res) => {
