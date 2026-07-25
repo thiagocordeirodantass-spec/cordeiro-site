@@ -686,6 +686,17 @@ export default async function handler(request, response) {
         base_icms:xmlValue(xmlBlock(xml,"ICMSTot"),"vBC"),valor_icms:xmlValue(xmlBlock(xml,"ICMSTot"),"vICMS"),
         valor_ipi:xmlValue(xmlBlock(xml,"ICMSTot"),"vIPI"),valor_pis:xmlValue(xmlBlock(xml,"ICMSTot"),"vPIS"),
         valor_cofins:xmlValue(xmlBlock(xml,"ICMSTot"),"vCOFINS"),origem:sourceInfoServer(row.source),
+        codigo_servico:xmlValue(xml,"cTribNac")||xmlValue(xml,"ItemListaServico")||xmlValue(xml,"CodigoTributacaoMunicipio"),
+        descricao_servico:xmlValue(xml,"xDescServ")||xmlValue(xml,"Discriminacao"),
+        municipio_prestacao:xmlValue(xml,"cLocPrestacao")||xmlValue(xml,"CodigoMunicipio"),
+        valor_servico:xmlValue(xml,"vServ")||xmlValue(xml,"ValorServicos"),
+        aliquota_iss:xmlValue(xml,"pAliq")||xmlValue(xml,"Aliquota"),
+        valor_iss:xmlValue(xml,"vISSQN")||xmlValue(xml,"ValorIss"),
+        iss_retido:xmlValue(xml,"ISSRetido")||xmlValue(xml,"tpRetISSQN"),
+        valor_deducoes:xmlValue(xml,"ValorDeducoes"),base_calculo_servico:xmlValue(xml,"BaseCalculo"),
+        valor_inss:xmlValue(xml,"ValorInss"),valor_ir:xmlValue(xml,"ValorIr"),
+        valor_csll:xmlValue(xml,"ValorCsll"),valor_cbs:xmlValue(xml,"vCBS"),
+        valor_ibs_uf:xmlValue(xml,"vIBSUF"),valor_ibs_municipal:xmlValue(xml,"vIBSMun"),
         incluido_por:row.created_by_name,incluido_em:row.created_at,
         arquivo:row.file_name||`${row.chave||"documento"}.xml`,
         };
@@ -710,6 +721,7 @@ export default async function handler(request, response) {
       });
       const model=String(request.query.modelo||"completo").toLowerCase();
       if(model==="nfe")reportRows=reportRows.filter(row=>row.tipo==="NFE");
+      if(model==="nfse")reportRows=reportRows.filter(row=>row.tipo==="NFSE");
       if(model==="cte")reportRows=reportRows.filter(row=>row.tipo==="CTE");
       if(model==="cancelados")reportRows=reportRows.filter(row=>String(row.status).toLowerCase()==="cancelado");
       if(model==="manual")reportRows=reportRows.filter(row=>/manual/i.test(row.origem));
@@ -723,6 +735,9 @@ export default async function handler(request, response) {
         produto_descricao:"",ncm:"",cest:"",cfop:"",unidade:"",quantidade:"",valor_unitario:"",
         valor_produto:"",ean:"",origem_mercadoria:"",cst_csosn:"",base_icms_item:"",
         aliquota_icms:"",icms_item:"",ipi_item:"",pis_item:"",cofins_item:"",
+        codigo_servico:"",descricao_servico:"",municipio_prestacao:"",valor_servico:"",
+        aliquota_iss:"",valor_iss:"",iss_retido:"",valor_deducoes:"",base_calculo_servico:"",
+        valor_inss:"",valor_ir:"",valor_csll:"",valor_cbs:"",valor_ibs_uf:"",valor_ibs_municipal:"",
       });
       if (route[1] === "csv") {
         const escape = (value) => `"${String(value ?? "").replaceAll('"','""')}"`;

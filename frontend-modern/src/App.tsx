@@ -614,7 +614,9 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const stats=data.stats||{};
   return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
     text="NF-e, NFS-e e CT-e emitidos pelo CNPJ da empresa ativa, organizados automaticamente."
-    action={<button className="primary" onClick={()=>load(true)} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Atualizar agora</button>}/>
+    action={<div className="issued-actions"><button className="secondary" onClick={()=>download("/api/relatorio/xlsx?modelo=nfse","nfse-emitidas.xlsx")}><FileDown/> NFS-e Excel</button>
+      <button className="secondary" onClick={()=>download("/api/relatorio/csv?modelo=nfse","nfse-emitidas.csv")}><FileDown/> CSV</button>
+      <button className="primary" onClick={()=>load(true)} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Atualizar agora</button></div>}/>
     <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
       <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
       <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
@@ -3765,8 +3767,10 @@ function Admin({
             <button className="square" onClick={()=>setModuleCompany(null)}><X/></button>
           </header>
           <nav className="module-tabs">
-            {[["cnd","Certidões"],["sefaz","SEFAZ"],["documentos","Documentos"],["alertas","Alertas"]].map(([id,label])=>
-              <button className={moduleTab===id?"active":""} onClick={()=>setModuleTab(id)} key={id}>{label}</button>)}
+            {[["cnd","Certidões",ShieldCheck],["sefaz","SEFAZ",Network],["documentos","Documentos",Files],["alertas","Alertas",Bell]].map(([id,label,Icon]:any)=>
+              <button className={moduleTab===id?"active":""} onClick={()=>setModuleTab(id)} key={id}>
+                <i><Icon/></i><span><b>{label}</b><small>{id==="cnd"?"Validade e avisos":id==="sefaz"?"Consulta e importação":id==="documentos"?"XML e armazenamento":"E-mails automáticos"}</small></span>
+              </button>)}
           </nav>
           <div className="module-config">
             {moduleTab==="cnd"&&<>
@@ -3836,8 +3840,9 @@ function Admin({
             <button className="secondary" disabled={!replicateTargets.length} onClick={replicateModule}>
               <Network/> Replicar para {replicateTargets.length||0} selecionada(s)</button>
           </section>
-          <footer><button className="secondary" onClick={()=>setModuleCompany(null)}>Fechar</button>
-            <button className="primary" onClick={saveModule}><Save/> Salvar este módulo</button></footer>
+          <footer><span><ShieldCheck/><small>Alterações aplicadas somente após salvar.</small></span>
+            <div><button className="secondary" onClick={()=>setModuleCompany(null)}><X/> Fechar sem salvar</button>
+              <button className="primary" onClick={saveModule}><Save/> Salvar configuração</button></div></footer>
         </section>
       </div>}
       {companyForm && kind === "companies" && (
