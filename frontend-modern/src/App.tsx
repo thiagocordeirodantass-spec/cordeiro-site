@@ -7,6 +7,7 @@ import {
   Bell,
   BookOpen,
   Building2,
+  ChevronDown,
   CloudDownload,
   FileDown,
   FileText,
@@ -606,16 +607,19 @@ function FiscalFilters({
 }
 
 function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
-  const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),[busy,setBusy]=useState(true);
-  const load=useCallback((notify=false)=>{setBusy(true);api<any>(`/api/docs/issued${kind?`?kind=${kind}`:""}`)
+  const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
+    [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true);
+  const issuedParams=new URLSearchParams({month,...(kind?{kind}:{})});
+  const load=useCallback((notify=false)=>{setBusy(true);api<any>(`/api/docs/issued?${issuedParams}`)
     .then(result=>{setData(result);if(notify)toast(`${result.items?.length||0} documento(s) emitido(s) atualizado(s)`)})
-    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,toast]);
+    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,toast]);
   useEffect(()=>{load();const timer=window.setInterval(()=>load(false),30000);return()=>window.clearInterval(timer)},[load]);
   const stats=data.stats||{};
   return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
     text="NF-e, NFS-e e CT-e emitidos pelo CNPJ da empresa ativa, organizados automaticamente."
-    action={<div className="issued-actions"><button className="secondary" onClick={()=>download("/api/relatorio/xlsx?modelo=nfse","nfse-emitidas.xlsx")}><FileDown/> NFS-e Excel</button>
-      <button className="secondary" onClick={()=>download("/api/relatorio/csv?modelo=nfse","nfse-emitidas.csv")}><FileDown/> CSV</button>
+    action={<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
+      <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.xlsx`)}><FileDown/> NFS-e Excel</button>
+      <button className="secondary" onClick={()=>download(`/api/relatorio/csv?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.csv`)}><FileDown/> CSV</button>
       <button className="primary" onClick={()=>load(true)} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Atualizar agora</button></div>}/>
     <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
       <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
@@ -624,7 +628,7 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
       .map(([label,value,Icon]:any)=><article key={label}><i><Icon/></i><span><small>{label}</small><b>{value}</b></span></article>)}</div>
     <Panel><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
       <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}>{label}</button>)}</div>
-      <small>Atualização automática a cada 30 segundos</small></div>
+      <small>Competência {month.split("-").reverse().join("/")} · atualização automática a cada 30 segundos</small></div>
       <div className="table"><table><thead><tr><th>Documento</th><th>Destinatário</th><th>Emissão</th><th>Valor</th><th>Status</th><th>Origem</th><th>XML</th></tr></thead>
         <tbody>{(data.items||[]).map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
           <td>{item.destinatario_nome||"Não identificado"}<small>{item.destinatario_doc||""}</small></td><td>{date(item.data_emissao)}</td>
@@ -3375,6 +3379,7 @@ function Admin({
     [moduleTab, setModuleTab] = useState("cnd"),
     [expandedCompanies,setExpandedCompanies]=useState<Record<number,boolean>>({}),
     [replicateTargets,setReplicateTargets]=useState<number[]>([]),
+    [replicationOpen,setReplicationOpen]=useState(false),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3423,6 +3428,7 @@ function Admin({
     try{
       const data=await api<any>(`/api/empresas/${company.id}/modulos`);
       setModuleCompany(company); setModuleData(data); setModuleTab("cnd");
+      setReplicationOpen(false); setReplicateTargets([]);
     }catch(error){toast((error as Error).message,true)}
   }
   async function saveModule(){
@@ -3610,10 +3616,7 @@ function Admin({
                   key={company.id || index}
                 >
                   <header>
-                    <i className={/intecom|intercom/i.test(`${company.nome} ${company.nome_fantasia||""}`)?"company-logo intecom":""}>
-                      {/intecom|intercom/i.test(`${company.nome} ${company.nome_fantasia||""}`)?
-                        <img src="/assets/intecom-logo.jpg" alt="Intecom"/>:<Building2 />}
-                    </i>
+                    <i><Building2 /></i>
                     <span className={`status ${inactive ? "inactive" : ""}`}>
                       {inactive ? "Inativa" : "Ativa"}
                     </span>
@@ -3668,8 +3671,7 @@ function Admin({
                     {branches.map(branch=>{
                       const branchInactive=branch.ativo===false||branch.ativo===0;
                       return <div className={branchInactive?"inactive":""} key={branch.id}>
-                        <i className={/intecom|intercom/i.test(branch.nome)?"company-logo intecom":""}>
-                          {/intecom|intercom/i.test(branch.nome)?<img src="/assets/intecom-logo.jpg" alt="Intecom"/>:<Building2/>}</i>
+                        <i><Building2/></i>
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
                         <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
                         <button className="secondary" onClick={()=>setCompanyForm({...branch})}>Editar</button>
@@ -3833,18 +3835,23 @@ function Admin({
             </>}
           </div>
           <section className="module-replication">
-            <header><div><span>03</span><p><b>Replicar configuração deste módulo</b><small>Marque as unidades que receberão uma cópia.</small></p></div>
-              <div className="replication-actions"><em>{replicateTargets.length} selecionada(s)</em>
+            <header><button className="replication-toggle" type="button" aria-expanded={replicationOpen}
+              onClick={()=>setReplicationOpen(value=>!value)}>
+              <span>03</span><p><b>Replicar configuração deste módulo</b>
+                <small>{replicationOpen?"Marque as unidades que receberão uma cópia.":"Opcional · clique para escolher as unidades."}</small></p>
+              <ChevronDown className={replicationOpen?"open":""}/>
+            </button>
+              {replicationOpen&&<div className="replication-actions"><em>{replicateTargets.length} selecionada(s)</em>
                 <button onClick={()=>setReplicateTargets(items.filter(item=>item.id!==moduleCompany.id).map(item=>Number(item.id)))}>Selecionar todas</button>
-                <button disabled={!replicateTargets.length} onClick={()=>setReplicateTargets([])}>Limpar</button></div></header>
-            <div>{items.filter(item=>item.id!==moduleCompany.id).map(item=><label key={item.id}>
+                <button disabled={!replicateTargets.length} onClick={()=>setReplicateTargets([])}>Limpar</button></div>}</header>
+            {replicationOpen&&<><div>{items.filter(item=>item.id!==moduleCompany.id).map(item=><label key={item.id}>
               <input type="checkbox" checked={replicateTargets.includes(Number(item.id))}
                 onChange={e=>setReplicateTargets(e.target.checked?[...replicateTargets,Number(item.id)]:
                   replicateTargets.filter(id=>id!==Number(item.id)))}/>
               <i><Building2/></i><span><b>{item.nome}</b><small>{item.empresa_matriz_id?"Filial":"Matriz"}</small></span><em/>
             </label>)}</div>
             <button className="secondary" disabled={!replicateTargets.length} onClick={replicateModule}>
-              <Network/><span><b>Replicar configuração</b><small>Aplicar em {replicateTargets.length||0} unidade(s) selecionada(s)</small></span></button>
+              <Network/><span><b>Replicar configuração</b><small>Aplicar em {replicateTargets.length||0} unidade(s) selecionada(s)</small></span></button></>}
           </section>
           <footer><span><ShieldCheck/><small>Alterações aplicadas somente após salvar.</small></span>
             <div><button className="secondary" onClick={()=>setModuleCompany(null)}><X/> Fechar sem salvar</button>

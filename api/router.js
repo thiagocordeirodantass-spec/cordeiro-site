@@ -558,6 +558,8 @@ export default async function handler(request, response) {
         const activeCompanyId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
         if(!activeCompanyId)return response.status(400).json({error:"Selecione uma empresa no topo do sistema"});
         const kind=String(request.query.kind||"").toUpperCase();
+        const month=/^\d{4}-\d{2}$/.test(String(request.query.month||""))?String(request.query.month):
+          new Date().toISOString().slice(0,7);
         const company=await pool.query("SELECT regexp_replace(cnpj,'\\D','','g') cnpj,nome FROM empresas WHERE id=$1 AND ativo=TRUE",
           [activeCompanyId]);
         if(!company.rowCount)return response.status(404).json({error:"Empresa ativa não encontrada"});
@@ -565,13 +567,15 @@ export default async function handler(request, response) {
           d.status,d.destinatario_nome,d.destinatario_doc,d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
           FROM documents d WHERE d.empresa_id=$1 AND ($2='' OR d.kind=$2)
           AND regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3
-          ORDER BY d.data_emissao DESC NULLS LAST,d.created_at DESC LIMIT 1000`,
-          [activeCompanyId,kind,company.rows[0].cnpj]);
+          AND COALESCE(d.data_emissao,d.created_at)::date>=($4||'-01')::date
+          AND COALESCE(d.data_emissao,d.created_at)::date<(($4||'-01')::date+INTERVAL '1 month')
+          ORDER BY d.data_emissao DESC NULLS LAST,d.created_at DESC LIMIT 10000`,
+          [activeCompanyId,kind,company.rows[0].cnpj,month]);
         const stats=result.rows.reduce((summary,row)=>{
           summary.total++;const key=String(row.kind||"").toLowerCase();
           if(Object.hasOwn(summary,key))summary[key]++;return summary;
         },{total:0,nfe:0,nfse:0,cte:0});
-        return response.json({items:result.rows,stats,company:company.rows[0],
+        return response.json({items:result.rows,stats,company:company.rows[0],month,
           connectors:{nfe:"nsu_protegido",cte:"aguardando_configuracao",nfse:"aguardando_provedor"}});
       }
       if(route[1]==="import-log"){
@@ -662,13 +666,17 @@ export default async function handler(request, response) {
     }
 
     if (route[0] === "relatorio") {
+      const reportMonth=/^\d{4}-\d{2}$/.test(String(request.query.month||""))?String(request.query.month):"";
+      const reportCompanyId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id)||null;
       const result = await pool.query(
         `SELECT d.kind,d.chave,d.numero,d.data_emissao,d.valor_total,d.status,d.remetente_nome,d.destinatario_nome,
            d.xml_data,d.source,d.file_name,d.created_at,COALESCE(u.nome,u.username,'Sistema / SEFAZ') created_by_name
            FROM documents d LEFT JOIN users u ON u.id=d.created_by
            WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
+             AND ($2='' OR (COALESCE(d.data_emissao,d.created_at)::date>=($2||'-01')::date
+               AND COALESCE(d.data_emissao,d.created_at)::date<(($2||'-01')::date+INTERVAL '1 month')))
            ORDER BY d.created_at DESC NULLS LAST`,
-        [user.empresa_ativa_id],
+        [reportCompanyId,reportMonth],
       );
       const xmlValue=(xml,name)=>String(xml||"").match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)<\\/${name}>`,"i"))?.[1]?.trim()||"";
       const xmlBlock=(xml,name)=>String(xml||"").match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,"i"))?.[1]||"";
