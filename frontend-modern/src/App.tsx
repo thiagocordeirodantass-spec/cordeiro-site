@@ -2780,6 +2780,12 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
             : "Abra um chamado e acompanhe todas as respostas da equipe."
         }
       />
+      <section className="support-hero">
+        <div><i><MessageCircle/></i><span><small>CENTRAL DE RELACIONAMENTO</small>
+          <h2>{isAdmin?"Operação de atendimento":"Como podemos ajudar hoje?"}</h2>
+          <p>Chamados organizados, histórico completo e acompanhamento em um único lugar.</p></span></div>
+        <span className="support-availability"><i/> EQUIPE DISPONÍVEL</span>
+      </section>
       <div className="support-kpis">
         {[
           ["Total", items.length],
@@ -3036,7 +3042,7 @@ function Assistant() {
           <header>
             <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
             <div>
-              <b>Assistente Cordeiro</b>
+              <b>Seu amigo fiscal</b>
               <small>
                 Online · {aiEnabled ? "IA fiscal ativada" : "ajuda fiscal"}
               </small>
