@@ -484,6 +484,7 @@ td small {
   color: var(--muted);
   margin-top: 15px;
 }
+.drop{min-height:178px!important;padding:18px!important}.drop i{width:44px!important;height:44px!important;border-radius:13px!important}.drop i svg{width:21px!important;height:21px!important}.drop h3{font-size:13px!important;margin:9px 0 1px!important}.drop p{font-size:10px!important}.drop small{margin-top:7px!important;font-size:8px!important}.drop small+small{margin-top:2px!important}.import-timeline{max-height:680px;overflow:auto;padding-right:5px}.import-timeline>article{min-height:63px}.import-log-head{position:sticky;top:0;z-index:2;padding:4px 0 10px;background:var(--panel)}
 .queue {
   margin-top: 13px;
   background: var(--surface2);

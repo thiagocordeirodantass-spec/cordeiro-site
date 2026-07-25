@@ -597,7 +597,7 @@ export default async function handler(request, response) {
           COALESCE(u.nome,u.username,'Sistema / SEFAZ') created_by_name
           FROM documents d LEFT JOIN users u ON u.id=d.created_by
           WHERE ($1::bigint IS NULL OR d.empresa_id=$1)
-          ORDER BY d.created_at DESC NULLS LAST,d.id DESC LIMIT 200`,[user.empresa_ativa_id]);
+          ORDER BY d.created_at DESC NULLS LAST,d.id DESC LIMIT 1000`,[user.empresa_ativa_id]);
         return response.json({items:result.rows,total:result.rowCount});
       }
       if (route.length === 1) {
