@@ -1768,8 +1768,9 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           const total = sync.headers.get("X-Sefaz-Total") || "0";
           const imported = sync.headers.get("X-Sefaz-Salvos") || "0";
           const lastNsu = sync.headers.get("X-Sefaz-UltNSU") || "";
+          const contentType=sync.headers.get("content-type")||"";
           const blob = await sync.blob();
-          if (blob.size > 0) {
+          if (blob.size > 0 && contentType.includes("application/zip")) {
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
