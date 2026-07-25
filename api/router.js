@@ -545,8 +545,28 @@ export default async function handler(request, response) {
         error: "Integração indisponível no ambiente serverless; somente consulta será habilitada após configurar o provedor.",
       });
 
-    if (route[0] === "sefaz-monitor")
-      return response.json({ online: 0, offline: 0, ufs: [], checkedAt: new Date().toISOString() });
+    if (route[0] === "sefaz-monitor") {
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7000);
+      try{
+        const monitorResponse=await fetch("https://monitorsefaz.webmaniabr.com/v3/components.json",{
+          signal:controller.signal,headers:{"User-Agent":"CordeiroFiscalMonitor/2.0"},
+        });
+        if(!monitorResponse.ok)throw new Error(`HTTP ${monitorResponse.status}`);
+        const monitor=await monitorResponse.json();
+        const ufs=(monitor.components||[]).filter(component=>component.group).map(component=>{
+          const status=String(component.status||"").toUpperCase();
+          const operational=status==="OPERATIONAL",degraded=["DEGRADED","UNDER_MAINTENANCE"].includes(status);
+          return {uf:component.name,env:component.group?.name||"SEFAZ",ok:operational||degraded,
+            error:degraded?"timeout":operational?null:"offline",status:operational?200:degraded?206:503,
+            description:component.description||null};
+        });
+        const online=ufs.filter(item=>item.ok).length;
+        return response.json({checkedAt:new Date().toISOString(),total:ufs.length,online,offline:ufs.length-online,
+          latencyAvg:null,source:"webmaniabr",stale:false,ufs});
+      }catch(error){
+        return response.status(502).json({error:`Falha ao consultar o monitor SEFAZ: ${error.message}`});
+      }finally{clearTimeout(timer)}
+    }
 
     if (route[0] === "relatorio") {
       const result = await pool.query(

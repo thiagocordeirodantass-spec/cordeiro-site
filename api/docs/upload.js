@@ -57,6 +57,15 @@ export default async function handler(request, response) {
       const xml = await fs.readFile(file.filepath, "utf8");
       if (!/<(?:NFe|CTe|nfeProc|cteProc|infNFe|infCte)\b/i.test(xml)) continue;
       const item = summarize(xml, file.originalFilename);
+      if(item.chave){
+        const duplicate=await pool.query(`SELECT id FROM documents WHERE chave=$1::text
+          AND empresa_id IS NOT DISTINCT FROM $2 LIMIT 1`,[item.chave,session.rows[0].empresa_ativa_id]);
+        if(duplicate.rowCount){
+          imported.push({id:duplicate.rows[0].id,chave:item.chave,file_name:item.fileName,duplicate:true,
+            status:"já_importado"});
+          continue;
+        }
+      }
       const result = await pool.query(
         `INSERT INTO documents
           (empresa_id,kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome,created_by)
@@ -70,7 +79,8 @@ export default async function handler(request, response) {
         session.rows[0].user_id,String(result.rows[0].id),JSON.stringify({chave:item.chave,arquivo:item.fileName})]);
       imported.push(result.rows[0]);
     }
-    return response.json({ ok: true, importedados: imported.length, items: imported });
+    const novos=imported.filter(item=>!item.duplicate).length,duplicados=imported.filter(item=>item.duplicate).length;
+    return response.json({ ok: true, importados:novos, duplicados, items: imported });
   } catch (error) {
     console.error("upload error", error);
     return response.status(500).json({ error: "Falha ao importar XML" });

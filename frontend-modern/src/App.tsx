@@ -962,10 +962,10 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
         const body=new FormData();
         batches[index].forEach(file=>body.append("files",file));
         const response=await api<any>("/api/docs/upload",{method:"POST",body});
-        imported+=Number(response.importados??response.items?.length??0);
+        imported+=Number(response.importados??0);
         setProgress({current:index+1,total:batches.length,imported});
       }
-      toast(`${imported} documento(s) importado(s) e disponível(is) em Documentos`);
+      toast(`${imported} novo(s) documento(s) importado(s). Chaves já existentes foram ignoradas.`);
       setFiles([]);
       loadLog();
       setTimeout(done,700);
