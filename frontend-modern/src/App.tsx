@@ -1114,6 +1114,11 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
   };
   const [items, setItems] = useState<any[]>([]),
     [stats, setStats] = useState<any>({}),
+    [companies, setCompanies] = useState<any[]>([]),
+    [cndConfig, setCndConfig] = useState<any>(null),
+    [recipients, setRecipients] = useState<any[]>([]),
+    [recipientCompany, setRecipientCompany] = useState(""),
+    [recipientEmail, setRecipientEmail] = useState(""),
     [filter, setFilter] = useState(""),
     [form, setForm] = useState<any>(null),
     [cndPdf, setCndPdf] = useState<File | null>(null),
@@ -1122,12 +1127,17 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     smartInput = useRef<HTMLInputElement>(null);
   const load = useCallback(async () => {
     try {
-      const [rows, summary] = await Promise.all([
+      const [rows, summary, companyResult, configResult] = await Promise.all([
         api<any[]>("/api/certidoes"),
         api<any>("/api/certidoes/stats"),
+        api<any>("/api/empresas"),
+        api<any>("/api/certidoes/config"),
       ]);
       setItems(rows);
       setStats(summary);
+      setCompanies(companyResult.empresas || companyResult || []);
+      setCndConfig(configResult.config);
+      setRecipients(configResult.destinatarios || []);
     } catch (error) {
       toast((error as Error).message, true);
     }
@@ -1198,6 +1208,25 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       if (smartInput.current) smartInput.current.value = "";
     }
   }
+  async function saveConfig() {
+    try {
+      const saved=await api<any>("/api/certidoes/config",{method:"PUT",body:cndConfig});
+      setCndConfig(saved); toast("Configurações de CND salvas");
+    } catch(error) { toast((error as Error).message,true); }
+  }
+  async function addRecipient(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api("/api/certidoes/destinatarios",{method:"POST",body:{
+        empresa_id:Number(recipientCompany),email:recipientEmail,
+      }});
+      setRecipientEmail(""); toast("Destinatário adicionado"); load();
+    } catch(error) { toast((error as Error).message,true); }
+  }
+  async function removeRecipient(id:number) {
+    try { await api(`/api/certidoes/destinatarios/${id}`,{method:"DELETE"}); load(); }
+    catch(error) { toast((error as Error).message,true); }
+  }
   const visible = items.filter((item) =>
     `${item.empresa_nome} ${item.tipo} ${item.numero_certidao} ${item.status}`
       .toLowerCase()
@@ -1255,6 +1284,29 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </div>
           </article>
         ))}
+      </div>
+      <div className="cnd-overview">
+        <Panel title="Vencimento próximo">
+          {items.filter((item)=>{
+            if(!item.data_validade) return false;
+            const days=Math.ceil((new Date(`${item.data_validade}T23:59:59`).getTime()-Date.now())/86400000);
+            return days>=0 && days<=Number(cndConfig?.prazo_alerta||10);
+          }).slice(0,5).map(item=><div className="cnd-overview-row" key={item.id}>
+            <b>{item.empresa_nome}</b><span>{typeLabel[item.tipo]||item.tipo}</span>
+            <small>Validade: {date(item.data_validade)}</small>
+          </div>)}
+          {!items.some((item)=>{
+            const days=item.data_validade?Math.ceil((new Date(`${item.data_validade}T23:59:59`).getTime()-Date.now())/86400000):-1;
+            return days>=0&&days<=Number(cndConfig?.prazo_alerta||10);
+          }) && <p className="muted">Nenhuma certidão próxima do vencimento</p>}
+        </Panel>
+        <Panel title="Certidões positivas">
+          {items.filter(item=>item.status==="positiva").slice(0,5).map(item=>
+            <div className="cnd-overview-row" key={item.id}><b>{item.empresa_nome}</b>
+              <span>{typeLabel[item.tipo]||item.tipo}</span><small>Validade: {date(item.data_validade)}</small>
+            </div>)}
+          {!items.some(item=>item.status==="positiva")&&<p className="muted">Nenhuma certidão positiva</p>}
+        </Panel>
       </div>
       <Panel>
         <div className="cnd-toolbar">
@@ -1370,6 +1422,49 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           onChange={(e) => uploadPdf(e.target.files?.[0])}
         />
       </Panel>
+      {cndConfig && <Panel title="Configurações e alertas por e-mail">
+        <div className="cnd-settings">
+          <section>
+            <h4>Prazo de alerta de vencimento</h4>
+            <p>Quantos dias antes do vencimento a certidão será marcada como “A Vencer”.</p>
+            <label className="inline-field"><input type="number" min="1" max="365"
+              value={cndConfig.prazo_alerta} onChange={e=>setCndConfig({...cndConfig,prazo_alerta:Number(e.target.value)})}/> dias</label>
+            <label className="check"><input type="checkbox" checked={Boolean(cndConfig.alertas_ativos)}
+              onChange={e=>setCndConfig({...cndConfig,alertas_ativos:e.target.checked})}/> Alertas por e-mail ativos</label>
+            {[
+              ["alerta_vencimento","Vencimento próximo"],
+              ["alerta_vencidas","CNDs vencidas"],
+              ["alerta_positivas","CNDs positivas"],
+            ].map(([key,label])=><label className="check" key={key}><input type="checkbox"
+              checked={Boolean(cndConfig[key])} onChange={e=>setCndConfig({...cndConfig,[key]:e.target.checked})}/>{label}</label>)}
+            <label>Caixa de saída (remetente)<input type="email" value={cndConfig.remetente||""}
+              onChange={e=>setCndConfig({...cndConfig,remetente:e.target.value})} placeholder="financeiro@empresa.com.br"/></label>
+            <button className="primary" onClick={saveConfig}><Save/> Salvar</button>
+          </section>
+          <section>
+            <h4>E-mails de destinatários</h4>
+            <form className="recipient-form" onSubmit={addRecipient}>
+              <select required value={recipientCompany} onChange={e=>setRecipientCompany(e.target.value)}>
+                <option value="">Selecione a empresa ou filial</option>
+                {companies.filter(c=>c.ativo!==false&&c.ativo!==0).map(c=>
+                  <option key={c.id} value={c.id}>{c.nome}{c.empresa_matriz_id?" (Filial)":" (Matriz)"}</option>)}
+              </select>
+              <input required type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)}
+                placeholder="e-mail do destinatário"/>
+              <button className="secondary">Adicionar</button>
+            </form>
+            <div className="recipient-list">{recipients.map(r=><div key={r.id}>
+              <span><b>{r.email}</b><small>{r.empresa_nome} {r.empresa_matriz_id?"(Filial)":"(Matriz)"} · Ativo</small></span>
+              <button className="square" onClick={()=>removeRecipient(r.id)}><X/></button>
+            </div>)}</div>
+            <p><b>{recipients.filter(r=>r.ativo).length}</b> destinatário(s) ativo(s)</p>
+            <button className="secondary" onClick={async()=>{try{const r=await api<any>("/api/certidoes/enviar-teste",{method:"POST"});toast(r.message)}
+              catch(error){toast((error as Error).message,true)}}}><Send/> Enviar teste</button>
+          </section>
+        </div>
+        <div className="cnd-info"><b>Tipos suportados:</b> Federal, Estadual, Municipal, FGTS, CNDT e Imobiliário.
+          As certidões são classificadas como válida, a vencer ou vencida conforme o prazo configurado.</div>
+      </Panel>}
       {form && (
         <div className="modal-backdrop">
           <form className="feedback-modal cnd-modal" onSubmit={save}>

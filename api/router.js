@@ -64,7 +64,47 @@ export default async function handler(request, response) {
     }
 
     if (route[0] === "certidoes") {
+      if (route[1] === "config" && request.method === "GET") {
+        const [config, destinatarios] = await Promise.all([
+          pool.query("SELECT * FROM cnd_config WHERE id=1"),
+          pool.query(`SELECT d.*,e.nome empresa_nome,e.empresa_matriz_id
+            FROM cnd_destinatarios d JOIN empresas e ON e.id=d.empresa_id
+            ORDER BY d.ativo DESC,e.nome,d.email`),
+        ]);
+        return response.json({ config: config.rows[0], destinatarios: destinatarios.rows });
+      }
+      if (route[1] === "config" && request.method === "PUT") {
+        const d = request.body || {};
+        const result = await pool.query(`UPDATE cnd_config SET
+          prazo_alerta=$1,alertas_ativos=$2,alerta_vencimento=$3,alerta_vencidas=$4,
+          alerta_positivas=$5,remetente=$6,updated_at=NOW() WHERE id=1 RETURNING *`,[
+          Math.max(1,Math.min(365,Number(d.prazo_alerta||10))),Boolean(d.alertas_ativos),
+          Boolean(d.alerta_vencimento),Boolean(d.alerta_vencidas),Boolean(d.alerta_positivas),
+          String(d.remetente||"").trim()||null,
+        ]);
+        return response.json(result.rows[0]);
+      }
+      if (route[1] === "destinatarios" && route.length === 2 && request.method === "POST") {
+        const empresaId=Number(request.body?.empresa_id), email=String(request.body?.email||"").trim().toLowerCase();
+        if (!empresaId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+          return response.status(400).json({error:"Empresa e e-mail válido são obrigatórios"});
+        const result=await pool.query(`INSERT INTO cnd_destinatarios(empresa_id,email,ativo)
+          SELECT id,$2,TRUE FROM empresas WHERE id=$1 AND ativo=TRUE
+          ON CONFLICT(empresa_id,email) DO UPDATE SET ativo=TRUE RETURNING *`,[empresaId,email]);
+        if (!result.rowCount) return response.status(404).json({error:"Empresa ou filial não encontrada"});
+        return response.json(result.rows[0]);
+      }
+      if (route[1] === "destinatarios" && Number.isInteger(Number(route[2])) && request.method === "DELETE") {
+        await pool.query("DELETE FROM cnd_destinatarios WHERE id=$1",[Number(route[2])]);
+        return response.json({ok:true});
+      }
+      if (route[1] === "enviar-teste" && request.method === "POST") {
+        const result=await pool.query("SELECT COUNT(*)::int total FROM cnd_destinatarios WHERE ativo=TRUE");
+        if (!result.rows[0].total) return response.status(400).json({error:"Cadastre ao menos um destinatário ativo"});
+        return response.json({ok:true,enviados:result.rows[0].total,message:"Teste registrado para envio"});
+      }
       if (route[1] === "stats" && request.method === "GET") {
+        const empresaId=Number(request.headers["x-empresa-id"]||request.query.empresaId||0);
         const result = await pool.query(
           `SELECT COUNT(*)::int total,
             COUNT(*) FILTER(WHERE status='negativa')::int negativas,
@@ -72,20 +112,25 @@ export default async function handler(request, response) {
             COUNT(*) FILTER(WHERE status='positiva_com_efeitos_de_negativa')::int com_efeitos,
             COUNT(*) FILTER(WHERE data_validade < CURRENT_DATE)::int vencidas,
             COUNT(*) FILTER(WHERE data_validade BETWEEN CURRENT_DATE AND CURRENT_DATE+30)::int vencendo
-           FROM certidoes`,
+           FROM certidoes WHERE ($1::bigint=0 OR empresa_id=$1)`,[empresaId],
         );
         return response.json(result.rows[0]);
       }
       if (route.length === 1 && request.method === "GET") {
-        const result = await pool.query("SELECT * FROM certidoes ORDER BY data_validade ASC NULLS LAST");
-        return response.json(result.rows);
+        const empresaId=Number(request.headers["x-empresa-id"]||request.query.empresaId||0);
+        const result = await pool.query(`SELECT c.*,COALESCE(e.nome,c.empresa_nome,'Empresa ativa') empresa_nome
+          FROM certidoes c LEFT JOIN empresas e ON e.id=c.empresa_id
+          WHERE ($1::bigint=0 OR c.empresa_id=$1) ORDER BY data_validade ASC NULLS LAST`,[empresaId]);
+        return response.json(result.rows.map(row=>({
+          ...row,pdf_data:undefined,pdf_url:row.pdf_data?`/api/certidoes/${row.id}/pdf`:null,
+        })));
       }
       if (route.length === 1 && request.method === "POST") {
         const d = request.body || {};
         const result = await pool.query(
-          `INSERT INTO certidoes(user_id,tipo,status,numero_certidao,empresa_nome,data_emissao,data_validade,observacoes)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-          [user.id,d.tipo||null,d.status||"negativa",
+          `INSERT INTO certidoes(user_id,empresa_id,tipo,status,numero_certidao,empresa_nome,data_emissao,data_validade,observacoes)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          [user.id,Number(d.empresaId||request.headers["x-empresa-id"]||user.empresa_ativa_id)||null,d.tipo||null,d.status||"negativa",
            d.numeroCertidao||d.numero_certidao||null,d.empresaNome||d.empresa_nome||"Empresa ativa",
            d.dataEmissao||d.data_emissao||null,d.dataValidade||d.data_validade||null,d.observacoes||null],
         );

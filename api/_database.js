@@ -184,6 +184,33 @@ export function ensureSchema() {
       ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS data_validade DATE;
       ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS numero_certidao TEXT;
       ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS empresa_nome TEXT;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS empresa_id BIGINT REFERENCES empresas(id) ON DELETE CASCADE;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS pdf_data BYTEA;
+      ALTER TABLE certidoes ADD COLUMN IF NOT EXISTS pdf_name TEXT;
+      CREATE TABLE IF NOT EXISTS cnd_config (
+        id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        prazo_alerta INTEGER NOT NULL DEFAULT 10,
+        alertas_ativos BOOLEAN NOT NULL DEFAULT TRUE,
+        alerta_vencimento BOOLEAN NOT NULL DEFAULT TRUE,
+        alerta_vencidas BOOLEAN NOT NULL DEFAULT TRUE,
+        alerta_positivas BOOLEAN NOT NULL DEFAULT TRUE,
+        remetente TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      INSERT INTO cnd_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING;
+      CREATE TABLE IF NOT EXISTS cnd_destinatarios (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(empresa_id,email)
+      );
+      INSERT INTO cnd_destinatarios(empresa_id,email)
+      SELECT id,v.email FROM empresas CROSS JOIN (VALUES
+        ('raul.guilherme25@gmail.com'),('thiagocordeirodantass@gmail.com')
+      ) v(email) WHERE cnpj='03857930000154'
+      ON CONFLICT(empresa_id,email) DO NOTHING;
     `);
   }
   return schemaReady;

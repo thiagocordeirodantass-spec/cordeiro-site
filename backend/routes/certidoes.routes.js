@@ -43,7 +43,32 @@ db.exec(`
     arquivado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_certidoes_empresa ON certidoes(empresa_id, data_validade);
+  CREATE TABLE IF NOT EXISTS cnd_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    prazo_alerta INTEGER NOT NULL DEFAULT 10,
+    alertas_ativos INTEGER NOT NULL DEFAULT 1,
+    alerta_vencimento INTEGER NOT NULL DEFAULT 1,
+    alerta_vencidas INTEGER NOT NULL DEFAULT 1,
+    alerta_positivas INTEGER NOT NULL DEFAULT 1,
+    remetente TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  INSERT OR IGNORE INTO cnd_config(id) VALUES(1);
+  CREATE TABLE IF NOT EXISTS cnd_destinatarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(empresa_id,email)
+  );
 `);
+const matrizCnd = db.prepare("SELECT id FROM empresas WHERE cnpj='03857930000154'").get();
+if (matrizCnd) {
+  const insertRecipient=db.prepare("INSERT OR IGNORE INTO cnd_destinatarios(empresa_id,email) VALUES(?,?)");
+  insertRecipient.run(matrizCnd.id,"raul.guilherme25@gmail.com");
+  insertRecipient.run(matrizCnd.id,"thiagocordeirodantass@gmail.com");
+}
 
 const validTypes = new Set(["federal", "estadual", "municipal", "fgts", "cndt", "imobiliario"]);
 const validStatuses = new Set(["negativa", "positiva_com_efeitos_de_negativa", "positiva"]);
@@ -124,6 +149,8 @@ router.get("/stats", (req, res) => {
     SELECT COUNT(*) total,
       SUM(CASE WHEN date(data_validade) < date('now') THEN 1 ELSE 0 END) vencidas,
       SUM(CASE WHEN date(data_validade) BETWEEN date('now') AND date('now', '+30 day') THEN 1 ELSE 0 END) vencendo,
+      SUM(CASE WHEN status = 'negativa' THEN 1 ELSE 0 END) negativas,
+      SUM(CASE WHEN status = 'positiva_com_efeitos_de_negativa' THEN 1 ELSE 0 END) com_efeitos,
       SUM(CASE WHEN status = 'positiva' THEN 1 ELSE 0 END) positivas
     FROM certidoes ${clause}
   `).get(...params);
@@ -131,8 +158,53 @@ router.get("/stats", (req, res) => {
     total: Number(row.total || 0),
     vencidas: Number(row.vencidas || 0),
     vencendo: Number(row.vencendo || 0),
+    negativas: Number(row.negativas || 0),
+    com_efeitos: Number(row.com_efeitos || 0),
     positivas: Number(row.positivas || 0),
   });
+});
+
+router.get("/config", (_req, res) => {
+  const config = db.prepare("SELECT * FROM cnd_config WHERE id=1").get();
+  const destinatarios = db.prepare(`
+    SELECT d.*, e.nome empresa_nome, e.empresa_matriz_id
+    FROM cnd_destinatarios d JOIN empresas e ON e.id=d.empresa_id
+    ORDER BY d.ativo DESC, e.nome, d.email
+  `).all();
+  res.json({ config, destinatarios });
+});
+
+router.put("/config", (req, res) => {
+  const d = req.body || {};
+  db.prepare(`UPDATE cnd_config SET prazo_alerta=?,alertas_ativos=?,alerta_vencimento=?,
+    alerta_vencidas=?,alerta_positivas=?,remetente=?,updated_at=datetime('now') WHERE id=1`)
+    .run(Math.max(1, Math.min(365, Number(d.prazo_alerta || 10))), d.alertas_ativos ? 1 : 0,
+      d.alerta_vencimento ? 1 : 0, d.alerta_vencidas ? 1 : 0, d.alerta_positivas ? 1 : 0,
+      String(d.remetente || "").trim() || null);
+  res.json(db.prepare("SELECT * FROM cnd_config WHERE id=1").get());
+});
+
+router.post("/destinatarios", (req, res) => {
+  const empresaId = Number(req.body?.empresa_id);
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!empresaId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return res.status(400).json({ error: "Empresa e e-mail válido são obrigatórios" });
+  const company = db.prepare("SELECT id FROM empresas WHERE id=? AND ativo=1").get(empresaId);
+  if (!company) return res.status(404).json({ error: "Empresa ou filial não encontrada" });
+  db.prepare(`INSERT INTO cnd_destinatarios(empresa_id,email,ativo) VALUES(?,?,1)
+    ON CONFLICT(empresa_id,email) DO UPDATE SET ativo=1`).run(empresaId,email);
+  res.json({ ok: true });
+});
+
+router.delete("/destinatarios/:id", (req, res) => {
+  db.prepare("DELETE FROM cnd_destinatarios WHERE id=?").run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+router.post("/enviar-teste", (_req, res) => {
+  const count = db.prepare("SELECT COUNT(*) total FROM cnd_destinatarios WHERE ativo=1").get().total;
+  if (!count) return res.status(400).json({ error: "Cadastre ao menos um destinatário ativo" });
+  res.json({ ok: true, enviados: Number(count), message: "Teste registrado para envio" });
 });
 
 router.post("/", (req, res) => {

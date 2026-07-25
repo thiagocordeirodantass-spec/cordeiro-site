@@ -2243,6 +2243,20 @@ input {
   gap: 8px;
   flex-wrap: wrap;
 }
+.cnd-overview,.cnd-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:20px}
+.cnd-overview .panel{margin:0}
+.cnd-overview-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.cnd-overview-row small{grid-column:1/-1;color:var(--muted)}
+.cnd-settings section{padding:18px;border:1px solid var(--line);border-radius:14px}
+.cnd-settings section>p,.cnd-info{color:var(--muted)}
+.cnd-settings label{display:grid;gap:6px;margin:12px 0}
+.cnd-settings .check,.inline-field{display:flex;align-items:center;gap:9px}
+.inline-field input{max-width:100px}
+.recipient-form{display:grid;gap:9px}.recipient-list{margin:14px 0}
+.recipient-list>div{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.recipient-list span{display:grid;gap:3px}.recipient-list small{color:var(--muted)}
+.cnd-info{margin-top:15px;padding:14px;background:var(--soft);border-radius:12px}
+@media(max-width:800px){.cnd-overview,.cnd-settings{grid-template-columns:1fr}}
 .cnd-pdf-field {
   margin-top: 12px;
   padding: 13px;
