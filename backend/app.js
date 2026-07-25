@@ -25,6 +25,7 @@ import feedbackRoutes from "./routes/feedback.routes.js";
 import assistantRoutes from "./routes/assistant.routes.js";
 import messagesRoutes from "./routes/messages.routes.js";
 import certidoesRoutes from "./routes/certidoes.routes.js";
+import activityRoutes from "./routes/activity.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +76,7 @@ export function createApp() {
   app.use("/api/assistant", assistantRoutes);
   app.use("/api/messages", messagesRoutes);
   app.use("/api/certidoes", certidoesRoutes);
+  app.use("/api/activity", activityRoutes);
 
   // 404 para APIs inexistentes
   app.use((req, res, next) => {

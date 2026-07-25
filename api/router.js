@@ -48,6 +48,15 @@ export default async function handler(request, response) {
     const user = await authenticated(request);
     if (!user) return response.status(401).json({ error: "Não autenticado" });
 
+    if(route[0]==="activity"&&request.method==="GET"){
+      const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id);
+      if(!empresaId)return response.json({items:[]});
+      const result=await pool.query(`SELECT l.*,COALESCE(u.nome,l.username,'Usuário') usuario_nome
+        FROM empresa_activity_log l LEFT JOIN users u ON u.id=l.user_id
+        WHERE l.empresa_id=$1 ORDER BY l.created_at DESC LIMIT 300`,[empresaId]);
+      return response.json({items:result.rows});
+    }
+
     if (route[0] === "assistant") {
       if (route[1] === "status")
         return response.json({ available: true, provider: "local" });

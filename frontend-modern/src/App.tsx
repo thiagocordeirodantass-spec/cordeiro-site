@@ -41,6 +41,7 @@ import { api, Company, download, setCompany, User } from "./api";
 
 type Page =
   | "dashboard"
+  | "activity"
   | "documents"
   | "import"
   | "reports"
@@ -292,7 +293,7 @@ function Login({ done }: { done: (u: User) => void }) {
   );
 }
 const groups = [
-  ["Visão geral", [["dashboard", "Dashboard", LayoutDashboard]]],
+  ["Visão geral", [["dashboard", "Dashboard", LayoutDashboard],["activity","Atividades da equipe",Activity]]],
   [
     "Documentos",
     [
@@ -357,6 +358,16 @@ function Empty() {
   );
 }
 
+function TeamActivity(){
+  const [items,setItems]=useState<any[]>([]);
+  useEffect(()=>{api<any>("/api/activity").then(r=>setItems(r.items||[])).catch(()=>{})},[]);
+  return <><Head tag="AUDITORIA COMPARTILHADA" title="Atividades da equipe"
+    text="Inclusões e alterações realizadas pelos usuários desta empresa ou filial."/>
+    <Panel>{items.length?<div className="activity-feed">{items.map(item=><article key={item.id}>
+      <i><Activity/></i><div><b>{item.usuario_nome}</b><p>{item.acao} em {item.modulo}</p>
+      <small>{new Date(item.created_at).toLocaleString("pt-BR")}{item.entidade_id?` · registro ${item.entidade_id}`:""}</small></div>
+    </article>)}</div>:<Empty/>}</Panel></>;
+}
 function Dashboard() {
   const [k, setK] = useState<any>({}),
     [months, setMonths] = useState<any[]>([]),
@@ -4024,6 +4035,7 @@ export default function App() {
         </header>
         <main>
           {page === "dashboard" && <Dashboard />}
+          {page === "activity" && <TeamActivity />}
           {page === "documents" && <Documents toast={toast} />}{" "}
           {page === "import" && <Importer toast={toast} />}{" "}
           {page === "reports" && <Reports toast={toast} />}{" "}

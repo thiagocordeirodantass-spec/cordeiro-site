@@ -10,6 +10,10 @@
       "destination": "/api/router?route=users/:path*"
     },
     {
+      "source": "/api/activity/:path*",
+      "destination": "/api/router?route=activity/:path*"
+    },
+    {
       "source": "/api/docs/:path*",
       "destination": "/api/router?route=docs/:path*"
     },
