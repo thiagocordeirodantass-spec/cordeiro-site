@@ -6,6 +6,38 @@
   "outputDirectory": "frontend-modern/dist",
   "rewrites": [
     {
+      "source": "/api/users/:path*",
+      "destination": "/api/router?route=users/:path*"
+    },
+    {
+      "source": "/api/docs/:path*",
+      "destination": "/api/router?route=docs/:path*"
+    },
+    {
+      "source": "/api/feedback/:path*",
+      "destination": "/api/router?route=feedback/:path*"
+    },
+    {
+      "source": "/api/messages/:path*",
+      "destination": "/api/router?route=messages/:path*"
+    },
+    {
+      "source": "/api/news/:path*",
+      "destination": "/api/router?route=news/:path*"
+    },
+    {
+      "source": "/api/sefaz/:path*",
+      "destination": "/api/router?route=sefaz/:path*"
+    },
+    {
+      "source": "/api/meudanfe/:path*",
+      "destination": "/api/router?route=meudanfe/:path*"
+    },
+    {
+      "source": "/api/consulta/:path*",
+      "destination": "/api/router?route=consulta/:path*"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
