@@ -13,7 +13,7 @@ async function authenticated(request) {
   const sid = token(request);
   if (!sid) return null;
   const result = await pool.query(
-    `SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id
+    `SELECT u.*,s.empresa_ativa_id FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.id=$1 AND s.expires_at>NOW() AND u.ativo=TRUE`,
     [sid],
   );
@@ -333,11 +333,17 @@ export default async function handler(request, response) {
     if (route[0] === "docs" && request.method === "GET") {
       if (route.length === 1) {
         const result = await pool.query(
-          "SELECT * FROM documents ORDER BY data_emissao DESC NULLS LAST,id DESC LIMIT 500",
+          `SELECT * FROM documents
+            WHERE ($1::bigint IS NULL OR empresa_id=$1)
+            ORDER BY data_emissao DESC NULLS LAST,id DESC LIMIT 500`,
+          [user.empresa_ativa_id],
         );
         return response.json({ items: result.rows, total: result.rowCount });
       }
-      const result = await pool.query("SELECT * FROM documents WHERE id=$1", [Number(route[1])]);
+      const result = await pool.query(
+        "SELECT * FROM documents WHERE id=$1 AND ($2::bigint IS NULL OR empresa_id=$2)",
+        [Number(route[1]),user.empresa_ativa_id],
+      );
       if (!result.rowCount) return response.status(404).json({ error: "Documento não encontrado" });
       if (route[2] === "xml") {
         if (!result.rows[0].xml_data)
@@ -361,7 +367,10 @@ export default async function handler(request, response) {
 
     if (route[0] === "relatorio") {
       const result = await pool.query(
-        "SELECT kind,chave,numero,data_emissao,valor_total,status,remetente_nome,destinatario_nome FROM documents ORDER BY data_emissao DESC NULLS LAST",
+        `SELECT kind,chave,numero,data_emissao,valor_total,status,remetente_nome,destinatario_nome
+           FROM documents WHERE ($1::bigint IS NULL OR empresa_id=$1)
+           ORDER BY data_emissao DESC NULLS LAST`,
+        [user.empresa_ativa_id],
       );
       if (route[1] === "csv") {
         const columns = ["kind","chave","numero","data_emissao","valor_total","status","remetente_nome","destinatario_nome"];

@@ -36,7 +36,7 @@ export default async function handler(request, response) {
     const sid = String(request.headers.cookie || "").match(/(?:^|;\s*)sid=([^;]+)/)?.[1];
     const session = sid
       ? await pool.query(
-          "SELECT 1 FROM sessions WHERE id=$1 AND expires_at>NOW()",
+          "SELECT empresa_ativa_id FROM sessions WHERE id=$1 AND expires_at>NOW()",
           [decodeURIComponent(sid)],
         )
       : null;
@@ -54,11 +54,11 @@ export default async function handler(request, response) {
       const item = summarize(xml, file.originalFilename);
       const result = await pool.query(
         `INSERT INTO documents
-          (kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome)
-         VALUES($1,$2,$3,$4,$5,$6,$7,'upload',$8,$9)
+          (empresa_id,kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'upload',$9,$10)
          RETURNING *`,
-        [item.kind,item.chave,item.numero,item.dataEmissao || null,item.valor,item.status,
-         xml,item.fileName,item.remetente],
+        [session.rows[0].empresa_ativa_id,item.kind,item.chave,item.numero,item.dataEmissao || null,
+         item.valor,item.status,xml,item.fileName,item.remetente],
       );
       imported.push(result.rows[0]);
     }
