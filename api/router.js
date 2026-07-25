@@ -164,8 +164,9 @@ export default async function handler(request, response) {
         return response.status(403).json({ error: "Acesso restrito" });
       if (route.length === 1 && request.method === "GET") {
         const result = await pool.query(
-          `SELECT id,username,nome,email,role,ativo,primeiro_login,ultimo_login,created_at
-             FROM users ORDER BY nome,username`,
+          `SELECT u.id,u.username,u.nome,u.email,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
+            eu.empresa_id,eu.permissoes FROM users u LEFT JOIN empresa_users eu ON eu.user_id=u.id
+            ORDER BY u.nome,u.username`,
         );
         return response.json({ users: result.rows });
       }
@@ -183,9 +184,9 @@ export default async function handler(request, response) {
         );
         if (data.empresaId)
           await pool.query(
-            `INSERT INTO empresa_users(empresa_id,user_id,papel) VALUES($1,$2,$3)
-             ON CONFLICT(empresa_id,user_id) DO UPDATE SET ativo=TRUE,papel=EXCLUDED.papel`,
-            [data.empresaId, result.rows[0].id, data.role || "operador"],
+            `INSERT INTO empresa_users(empresa_id,user_id,papel,permissoes) VALUES($1,$2,$3,$4::jsonb)
+             ON CONFLICT(empresa_id,user_id) DO UPDATE SET ativo=TRUE,papel=EXCLUDED.papel,permissoes=EXCLUDED.permissoes`,
+            [data.empresaId, result.rows[0].id, data.role || "operador",JSON.stringify(data.permissoes||{})],
           );
         return response.json({ user: result.rows[0], senhaTemporaria: password });
       }
@@ -208,7 +209,17 @@ export default async function handler(request, response) {
            WHERE id=$1 RETURNING id,username,nome,email,role,ativo,ultimo_login`,
           [id, data.nome || null, data.email || null, data.role || null, data.ativo ?? null],
         );
+        if(data.empresaId&&data.permissoes)await pool.query(
+          "UPDATE empresa_users SET permissoes=$3::jsonb WHERE empresa_id=$1 AND user_id=$2",
+          [data.empresaId,id,JSON.stringify(data.permissoes)]);
         return response.json(result.rows[0]);
+      }
+      if(route[1]==="activity"&&request.method==="GET"){
+        const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id);
+        const result=await pool.query(`SELECT l.*,COALESCE(u.nome,l.username) usuario_nome
+          FROM empresa_activity_log l LEFT JOIN users u ON u.id=l.user_id
+          WHERE l.empresa_id=$1 ORDER BY l.created_at DESC LIMIT 300`,[empresaId]);
+        return response.json({items:result.rows});
       }
     }
 

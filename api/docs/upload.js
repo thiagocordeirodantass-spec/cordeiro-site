@@ -36,12 +36,17 @@ export default async function handler(request, response) {
     const sid = String(request.headers.cookie || "").match(/(?:^|;\s*)sid=([^;]+)/)?.[1];
     const session = sid
       ? await pool.query(
-          "SELECT empresa_ativa_id FROM sessions WHERE id=$1 AND expires_at>NOW()",
+          `SELECT s.empresa_ativa_id,s.user_id,u.role,eu.permissoes FROM sessions s
+           JOIN users u ON u.id=s.user_id LEFT JOIN empresa_users eu
+             ON eu.user_id=s.user_id AND eu.empresa_id=s.empresa_ativa_id
+           WHERE s.id=$1 AND s.expires_at>NOW()`,
           [decodeURIComponent(sid)],
         )
       : null;
     if (!session?.rowCount)
       return response.status(401).json({ error: "Não autenticado" });
+    if(session.rows[0].role!=="admin"&&session.rows[0].permissoes?.documentos_incluir===false)
+      return response.status(403).json({error:"Seu acesso não permite incluir documentos nesta empresa"});
     const form = formidable({ multiples: true, maxFileSize: 20 * 1024 * 1024 });
     const [, files] = await form.parse(request);
     const candidates = Object.values(files).flat().filter(Boolean);
@@ -54,12 +59,15 @@ export default async function handler(request, response) {
       const item = summarize(xml, file.originalFilename);
       const result = await pool.query(
         `INSERT INTO documents
-          (empresa_id,kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'upload',$9,$10)
+          (empresa_id,kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome,created_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'upload',$9,$10,$11)
          RETURNING *`,
         [session.rows[0].empresa_ativa_id,item.kind,item.chave,item.numero,item.dataEmissao || null,
-         item.valor,item.status,xml,item.fileName,item.remetente],
+         item.valor,item.status,xml,item.fileName,item.remetente,session.rows[0].user_id],
       );
+      await pool.query(`INSERT INTO empresa_activity_log(empresa_id,user_id,acao,modulo,entidade_id,detalhes)
+        VALUES($1,$2,'incluiu','documentos',$3,$4::jsonb)`,[session.rows[0].empresa_ativa_id,
+        session.rows[0].user_id,String(result.rows[0].id),JSON.stringify({chave:item.chave,arquivo:item.fileName})]);
       imported.push(result.rows[0]);
     }
     return response.json({ ok: true, importedados: imported.length, items: imported });

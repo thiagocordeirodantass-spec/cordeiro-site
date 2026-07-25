@@ -46,6 +46,33 @@ router.put("/:id", (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+const moduleDefaults = {
+  cnd:{prazo_alerta:10,alerta_vencimento:true,alerta_vencidas:true,alerta_positivas:true,remetente:""},
+  sefaz:{consulta_automatica:true,importar_automaticamente:true,uf:"MG",ult_nsu:"0",somente_consulta:true},
+  documentos:{deduplicar:true,importar_xml:true,guardar_xml:true},
+  alertas:{email_ativo:true,frequencia:"diaria",hora:"08:00"},
+};
+router.get("/:id/modulos",(req,res)=>{
+  const empresa=svc.getEmpresaById(req.params.id);
+  if(!empresa)return res.status(404).json({error:"Empresa ou filial não encontrada"});
+  const modules=structuredClone(moduleDefaults);
+  for(const row of db.prepare("SELECT * FROM empresa_module_config WHERE empresa_id=?").all(empresa.id)){
+    try{modules[row.modulo]={...(modules[row.modulo]||{}),...JSON.parse(row.configuracao),ativo:Boolean(row.ativo)}}catch{}
+  }
+  const emails=db.prepare("SELECT * FROM empresa_alert_emails WHERE empresa_id=? ORDER BY email").all(empresa.id);
+  res.json({empresa,modulos:modules,emails});
+});
+router.put("/:id/modulos",(req,res)=>{
+  if(req.user?.role!=="admin")return res.status(403).json({error:"Apenas administradores podem configurar módulos"});
+  const modulo=String(req.body?.modulo||"");
+  if(!Object.hasOwn(moduleDefaults,modulo))return res.status(400).json({error:"Módulo inválido"});
+  const config={...moduleDefaults[modulo],...(req.body?.configuracao||{})};
+  db.prepare(`INSERT INTO empresa_module_config(empresa_id,modulo,configuracao,ativo)
+    VALUES(?,?,?,?) ON CONFLICT(empresa_id,modulo) DO UPDATE SET configuracao=excluded.configuracao,
+    ativo=excluded.ativo,updated_at=datetime('now')`).run(Number(req.params.id),modulo,JSON.stringify(config),req.body?.ativo===false?0:1);
+  res.json({ok:true,modulo,configuracao:config});
+});
+
 // ---- Membros ----
 router.get("/:id/membros", (req, res) => {
   try { res.json({ membros: svc.listarMembros(req.user, req.params.id) }); }

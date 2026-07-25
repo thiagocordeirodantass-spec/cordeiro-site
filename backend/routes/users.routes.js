@@ -17,12 +17,13 @@ function sanitize(row) {
 }
 
 router.get("/", (req, res) => {
-  const rows = db.prepare("SELECT * FROM users ORDER BY username").all();
-  res.json(rows.map(sanitize));
+  const rows = db.prepare(`SELECT u.*,eu.empresa_id,eu.permissoes FROM users u
+    LEFT JOIN empresa_users eu ON eu.user_id=u.id ORDER BY u.username`).all();
+  res.json(rows.map(row=>({...sanitize(row),permissoes:row.permissoes?JSON.parse(row.permissoes):{}})));
 });
 
 router.post("/", (req, res) => {
-  const { username, nome, email, role, ativo, empresaId } = req.body || {};
+  const { username, nome, email, role, ativo, empresaId, permissoes={} } = req.body || {};
   if (!username || !nome || !role) return res.status(400).json({ error: "username, nome e role são obrigatórios" });
   if (!["admin", "operador", "visualizador"].includes(role)) return res.status(400).json({ error: "role inválido" });
   if (db.prepare("SELECT 1 FROM users WHERE username = ?").get(username)) {
@@ -41,9 +42,9 @@ router.post("/", (req, res) => {
   const created = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(info.lastInsertRowid));
   if (empresaId) {
     db.prepare(`
-      INSERT INTO empresa_users (empresa_id, user_id, papel, ativo)
-      VALUES (?, ?, ?, 1)
-    `).run(Number(empresaId), Number(info.lastInsertRowid), role === "admin" ? "admin" : role);
+      INSERT INTO empresa_users (empresa_id, user_id, papel, ativo, permissoes)
+      VALUES (?, ?, ?, 1, ?)
+    `).run(Number(empresaId), Number(info.lastInsertRowid), role === "admin" ? "admin" : role,JSON.stringify(permissoes));
     db.prepare("UPDATE users SET last_empresa_id = ? WHERE id = ?")
       .run(Number(empresaId), Number(info.lastInsertRowid));
   }
@@ -54,7 +55,7 @@ router.put("/:id", (req, res) => {
   const id = Number(req.params.id);
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
   if (!row) return res.status(404).json({ error: "Usuário não encontrado" });
-  const { nome, email, role, ativo } = req.body || {};
+  const { nome, email, role, ativo, empresaId, permissoes } = req.body || {};
   if (role && !["admin", "operador", "visualizador"].includes(role)) {
     return res.status(400).json({ error: "role inválido" });
   }
@@ -73,6 +74,9 @@ router.put("/:id", (req, res) => {
     ativo == null ? null : (ativo ? 1 : 0),
     id
   );
+  if(empresaId&&permissoes)db.prepare(
+    "UPDATE empresa_users SET permissoes=? WHERE empresa_id=? AND user_id=?"
+  ).run(JSON.stringify(permissoes),Number(empresaId),id);
   res.json({ user: sanitize(db.prepare("SELECT * FROM users WHERE id = ?").get(id)) });
 });
 

@@ -68,7 +68,7 @@ export function readSession(req, _res, next) {
       `).get(String(fingerprint).toUpperCase());
       if (row) {
         const memberships = db.prepare(`
-          SELECT eu.empresa_id, eu.papel, e.cnpj, e.nome, e.nome_fantasia, e.ambiente
+          SELECT eu.empresa_id, eu.papel, eu.permissoes, e.cnpj, e.nome, e.nome_fantasia, e.ambiente
           FROM empresa_users eu JOIN empresas e ON e.id = eu.empresa_id
           WHERE eu.user_id = ? AND eu.ativo = 1 AND e.ativo = 1
         `).all(row.id);

@@ -99,6 +99,14 @@ export function ensureSchema() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(empresa_id,email)
       );
+      CREATE TABLE IF NOT EXISTS empresa_module_config (
+        empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        modulo TEXT NOT NULL,
+        configuracao JSONB NOT NULL DEFAULT '{}'::jsonb,
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY(empresa_id,modulo)
+      );
       INSERT INTO empresas(cnpj,nome,nome_fantasia,ie,im,ambiente,ativo,requer_certificado)
       VALUES
         ('61779867000181','ALM LOG','ALM LOG',NULL,'4BP6493','producao',TRUE,FALSE),
@@ -133,6 +141,16 @@ export function ensureSchema() {
         papel VARCHAR(20) NOT NULL DEFAULT 'operador',
         ativo BOOLEAN NOT NULL DEFAULT TRUE,
         PRIMARY KEY (empresa_id, user_id)
+      );
+      ALTER TABLE empresa_users ADD COLUMN IF NOT EXISTS permissoes JSONB NOT NULL DEFAULT
+        '{"documentos_visualizar":true,"documentos_incluir":true,"documentos_excluir":false,"cnd_editar":true,"sefaz_consultar":true,"relatorios_gerar":true}'::jsonb;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+      CREATE TABLE IF NOT EXISTS empresa_activity_log (
+        id BIGSERIAL PRIMARY KEY,empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+        user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,username TEXT,acao TEXT NOT NULL,
+        modulo TEXT NOT NULL,entidade_id TEXT,detalhes JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS documents (
         id BIGSERIAL PRIMARY KEY,

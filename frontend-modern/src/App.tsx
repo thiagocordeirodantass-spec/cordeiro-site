@@ -1389,7 +1389,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           onChange={(e) => uploadPdf(e.target.files?.[0])}
         />
       </Panel>
-      {cndConfig && <Panel title="Configurações e alertas por e-mail">
+      {false && cndConfig && <Panel title="Configurações e alertas por e-mail">
         <div className="cnd-settings">
           <section>
             <h4>Prazo de alerta de vencimento</h4>
@@ -3207,6 +3207,9 @@ function Admin({
   const [items, setItems] = useState<any[]>([]),
     [companyOptions, setCompanyOptions] = useState<any[]>([]),
     [companyForm, setCompanyForm] = useState<any>(null),
+    [moduleCompany, setModuleCompany] = useState<any>(null),
+    [moduleData, setModuleData] = useState<any>(null),
+    [moduleTab, setModuleTab] = useState("cnd"),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3247,6 +3250,21 @@ function Admin({
     } catch (error) {
       toast((error as Error).message, true);
     }
+  }
+  async function openModules(company:any){
+    try{
+      const data=await api<any>(`/api/empresas/${company.id}/modulos`);
+      setModuleCompany(company); setModuleData(data); setModuleTab("cnd");
+    }catch(error){toast((error as Error).message,true)}
+  }
+  async function saveModule(){
+    try{
+      await api(`/api/empresas/${moduleCompany.id}/modulos`,{method:"PUT",body:{
+        modulo:moduleTab,configuracao:moduleData.modulos[moduleTab],
+        ativo:moduleData.modulos[moduleTab].ativo!==false,
+      }});
+      toast(`Configuração de ${moduleTab.toUpperCase()} salva para ${moduleCompany.nome}`);
+    }catch(error){toast((error as Error).message,true)}
   }
   async function saveCompany(e: React.FormEvent) {
     e.preventDefault();
@@ -3326,6 +3344,10 @@ function Admin({
                   role: "operador",
                   ativo: true,
                   empresaId: "",
+                  permissoes: {
+                    documentos_visualizar:true,documentos_incluir:true,documentos_excluir:false,
+                    cnd_editar:true,sefaz_consultar:true,relatorios_gerar:true,
+                  },
                 })
               }
             >
@@ -3431,6 +3453,9 @@ function Admin({
                     >
                       {inactive ? "Reativar empresa" : "Desativar empresa"}
                     </button>
+                    <button className="secondary" onClick={()=>openModules(company)}>
+                      <Save /> Configurar módulos
+                    </button>
                   </footer>
                   {branches.length>0&&<section className="company-branches">
                     <header><b>Filiais</b><span>{branches.length} unidade(s)</span></header>
@@ -3441,6 +3466,7 @@ function Admin({
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
                         <button className="secondary" disabled={branchInactive}
                           onClick={()=>activateCompany(branch)}>{branchInactive?"Desativada":"Acessar filial"}</button>
+                        <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
                       </div>;
                     })}
                   </section>}
@@ -3501,6 +3527,11 @@ function Admin({
                         setUserForm({
                           ...userItem,
                           ativo: Boolean(userItem.ativo),
+                          empresaId:userItem.empresa_id||"",
+                          permissoes:userItem.permissoes||{
+                            documentos_visualizar:true,documentos_incluir:true,documentos_excluir:false,
+                            cnd_editar:true,sefaz_consultar:true,relatorios_gerar:true,
+                          },
                         })
                       }
                     >
@@ -3527,6 +3558,61 @@ function Admin({
           <Empty />
         )}
       </Panel>
+      {moduleCompany&&moduleData&&<div className="modal-backdrop">
+        <section className="feedback-modal module-modal">
+          <header><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
+            <h2>{moduleCompany.nome}</h2><p>CNPJ {moduleCompany.cnpj}</p></div>
+            <button className="square" onClick={()=>setModuleCompany(null)}><X/></button>
+          </header>
+          <nav className="module-tabs">
+            {[["cnd","Certidões"],["sefaz","SEFAZ"],["documentos","Documentos"],["alertas","Alertas"]].map(([id,label])=>
+              <button className={moduleTab===id?"active":""} onClick={()=>setModuleTab(id)} key={id}>{label}</button>)}
+          </nav>
+          <div className="module-config">
+            {moduleTab==="cnd"&&<>
+              <h3>Certidões e regularidade fiscal</h3>
+              <label>Prazo para alerta de vencimento<input type="number" min="1" max="365"
+                value={moduleData.modulos.cnd.prazo_alerta}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,prazo_alerta:Number(e.target.value)}}})}/></label>
+              {[["alerta_vencimento","Alertar vencimento próximo"],["alerta_vencidas","Alertar certidões vencidas"],["alerta_positivas","Alertar certidões positivas"]].map(([key,label])=>
+                <label className="check" key={key}><input type="checkbox" checked={Boolean(moduleData.modulos.cnd[key])}
+                  onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,[key]:e.target.checked}}})}/>{label}</label>)}
+              <label>Remetente dos alertas<input type="email" value={moduleData.modulos.cnd.remetente||""}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,cnd:{...moduleData.modulos.cnd,remetente:e.target.value}}})}/></label>
+            </>}
+            {moduleTab==="sefaz"&&<>
+              <h3>Consulta SEFAZ</h3>
+              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.consulta_automatica)}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,consulta_automatica:e.target.checked}}})}/>Consulta automática habilitada</label>
+              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.importar_automaticamente)}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,importar_automaticamente:e.target.checked}}})}/>Importar documentos automaticamente</label>
+              <label>UF autora<input maxLength={2} value={moduleData.modulos.sefaz.uf}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,uf:e.target.value.toUpperCase()}}})}/></label>
+              <div className="secure-note"><ShieldCheck/> Somente consulta. Emissão, cancelamento e eventos permanecem bloqueados.</div>
+            </>}
+            {moduleTab==="documentos"&&<>
+              <h3>Armazenamento de documentos</h3>
+              {[["deduplicar","Impedir documentos duplicados"],["importar_xml","Importação de XML habilitada"],["guardar_xml","Guardar XML original"]].map(([key,label])=>
+                <label className="check" key={key}><input type="checkbox" checked={Boolean(moduleData.modulos.documentos[key])}
+                  onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,documentos:{...moduleData.modulos.documentos,[key]:e.target.checked}}})}/>{label}</label>)}
+            </>}
+            {moduleTab==="alertas"&&<>
+              <h3>Comunicações automáticas</h3>
+              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.alertas.email_ativo)}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,email_ativo:e.target.checked}}})}/>Disparo de e-mails ativo</label>
+              <label>Frequência<select value={moduleData.modulos.alertas.frequencia}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,frequencia:e.target.value}}})}>
+                <option value="diaria">Diária</option><option value="semanal">Semanal</option></select></label>
+              <label>Horário<input type="time" value={moduleData.modulos.alertas.hora}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,hora:e.target.value}}})}/></label>
+              <div className="module-email-list"><b>Destinatários vinculados</b>
+                {moduleData.emails.length?moduleData.emails.map((item:any)=><span key={item.id}>{item.email}</span>):<small>Nenhum e-mail cadastrado para esta unidade.</small>}</div>
+            </>}
+          </div>
+          <footer><button className="secondary" onClick={()=>setModuleCompany(null)}>Fechar</button>
+            <button className="primary" onClick={saveModule}><Save/> Salvar este módulo</button></footer>
+        </section>
+      </div>}
       {companyForm && kind === "companies" && (
         <div className="modal-backdrop">
           <form className="feedback-modal company-modal" onSubmit={saveCompany}>
@@ -3733,6 +3819,20 @@ function Admin({
                 </label>
               )}
             </div>
+            <section className="user-permissions">
+              <header><b>Permissões nesta empresa</b><small>O administrador pode limitar cada ação individualmente.</small></header>
+              {[
+                ["documentos_visualizar","Visualizar documentos"],
+                ["documentos_incluir","Incluir e importar documentos"],
+                ["documentos_excluir","Excluir documentos"],
+                ["cnd_editar","Cadastrar e editar certidões"],
+                ["sefaz_consultar","Consultar e importar pela SEFAZ"],
+                ["relatorios_gerar","Gerar relatórios"],
+              ].map(([key,label])=><label className="check" key={key}>
+                <input type="checkbox" checked={Boolean(userForm.permissoes?.[key])}
+                  onChange={e=>setUserForm({...userForm,permissoes:{...userForm.permissoes,[key]:e.target.checked}})}/>
+                {label}</label>)}
+            </section>
             <footer>
               <button
                 type="button"

@@ -107,6 +107,15 @@ try { ensureColumn("empresas", "empresa_matriz_id", "INTEGER"); } catch (e) { co
 try { ensureColumn("empresas", "im", "TEXT"); } catch (e) { console.error("[migration] im falhou:", e.message); }
 try { ensureColumn("empresas", "requer_certificado", "INTEGER NOT NULL DEFAULT 0"); } catch (e) { console.error("[migration] requer_certificado falhou:", e.message); }
 try { ensureColumn("sessions", "auth_method", "TEXT NOT NULL DEFAULT 'password'"); } catch (e) { console.error("[migration] auth_method falhou:", e.message); }
+try { ensureColumn("empresa_users", "permissoes", `TEXT NOT NULL DEFAULT '{"documentos_visualizar":true,"documentos_incluir":true,"documentos_excluir":false,"cnd_editar":true,"sefaz_consultar":true,"relatorios_gerar":true}'`); } catch (e) { console.error("[migration] permissoes falhou:", e.message); }
+try { ensureColumn("documents", "created_by", "INTEGER REFERENCES users(id)"); } catch (e) { console.error("[migration] documents.created_by falhou:", e.message); }
+try { ensureColumn("documents", "updated_by", "INTEGER REFERENCES users(id)"); } catch (e) { console.error("[migration] documents.updated_by falhou:", e.message); }
+try { db.exec(`CREATE TABLE IF NOT EXISTS empresa_activity_log(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,username TEXT,acao TEXT NOT NULL,
+  modulo TEXT NOT NULL,entidade_id TEXT,detalhes TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT(datetime('now'))
+)`); } catch (e) { console.error("[migration] activity log falhou:", e.message); }
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS empresa_alert_emails (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,6 +126,16 @@ try {
     UNIQUE(empresa_id,email)
   )`);
 } catch (e) { console.error("[migration] empresa_alert_emails falhou:", e.message); }
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS empresa_module_config (
+    empresa_id INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    modulo TEXT NOT NULL,
+    configuracao TEXT NOT NULL DEFAULT '{}',
+    ativo INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(empresa_id,modulo)
+  )`);
+} catch (e) { console.error("[migration] empresa_module_config falhou:", e.message); }
 const EMPRESAS_PADRAO = [
   ["61779867000181","ALM LOG","ALM LOG",null,"4BP6493"],
   ["11554415000123","ANG Participações","ANG Participações",null,"4980807"],
