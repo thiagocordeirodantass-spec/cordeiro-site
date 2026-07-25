@@ -88,9 +88,7 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log("    GET  /api/relatorio/{xlsx,csv,pdf,lote}  ?campos=chave,emitCNPJ,vNF,...");
   console.log("    CRUD /api/relatorio/templates");
   console.log("    GET  /api/relatorio/historico");
-  console.log("    POST /api/sefaz/cert/lote  (cert A1, por chave)");
-  console.log("    POST /api/sefaz/cert/periodo  (cert A1, por NSU)");
-  console.log("    GET/POST /api/sefaz/provedor/config  POST /api/sefaz/provedor/lote");
+  console.log("    Integração direta com a SEFAZ: DESATIVADA");
   console.log("    GET/POST /api/meudanfe/config");
   console.log("    POST /api/meudanfe/xml-para-pdf   GET /api/meudanfe/chave/:chave/{xml,pdf}");
   console.log("    GET  /api/consulta/nfe/:chave    GET /api/consulta/cte/:chave");

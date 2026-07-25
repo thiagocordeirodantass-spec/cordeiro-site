@@ -282,7 +282,6 @@ const groups = [
       ["certificates", "Certidões CND", ShieldCheck],
     ],
   ],
-  ["Operações", [["integrations", "SEFAZ e integrações", CloudDownload]]],
   [
     "Administração",
     [

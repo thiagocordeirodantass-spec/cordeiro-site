@@ -15,7 +15,6 @@ import docsRoutes from "./routes/docs.routes.js";
 import consultaRoutes from "./routes/consulta.routes.js";
 import pdfRoutes from "./routes/pdf.routes.js";
 import generateRoutes from "./routes/generate.routes.js";
-import sefazRoutes from "./routes/sefaz.routes.js";
 import sefazMonitorRoutes from "./routes/sefaz-monitor.routes.js";
 import meudanfeRoutes from "./routes/meudanfe.routes.js";
 import relatoriosRoutes from "./routes/relatorios.routes.js";
@@ -65,7 +64,13 @@ export function createApp() {
   app.use("/api/consulta", consultaRoutes);
   app.use("/api/pdf", pdfRoutes);
   app.use("/api/generate", generateRoutes);
-  app.use("/api/sefaz", sefazRoutes);
+  // Integração direta com a SEFAZ deliberadamente desativada.
+  // Não monte rotas que enviem SOAP, chaves, certificados ou consultas ao fisco.
+  app.all("/api/sefaz/*", (_req, res) => {
+    res.status(410).json({
+      error: "Integração direta com a SEFAZ desativada neste sistema.",
+    });
+  });
   app.use("/api/sefaz-monitor", sefazMonitorRoutes);
   app.use("/api/meudanfe", meudanfeRoutes);
   app.use("/api/relatorio", relatoriosRoutes);
