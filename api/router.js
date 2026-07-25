@@ -466,6 +466,21 @@ export default async function handler(request, response) {
       }
       const kind=route[1].toUpperCase();
       const summary=fiscalSummary(xml);
+      if(cancelled)return response.status(422).json({
+        error:"Documento cancelado: o XML completo não foi disponibilizado e nada foi importado.",
+        chave:route[2],imported:false,logReason:"cancelado_sem_xml",
+      });
+      const required={
+        numero:summary.numero,serie:summary.serie,data_emissao:summary.dataEmissao,
+        emitente:summary.emitente,emitente_documento:summary.emitenteDoc,
+        destinatario:summary.destinatario,destinatario_documento:summary.destinatarioDoc,
+        protocolo:summary.protocolo,
+      };
+      const missing=Object.entries(required).filter(([,value])=>value==null||String(value).trim()==="").map(([field])=>field);
+      if(!xml||missing.length)return response.status(422).json({
+        error:`XML incompleto; não importado. Campos ausentes: ${missing.join(", ")||"conteúdo XML"}.`,
+        chave:route[2],imported:false,missing,logReason:"xml_incompleto",
+      });
       await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
         SELECT $1,$2,$3::text,$4,$5,'sefaz-consulta',$6,$7
         WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,

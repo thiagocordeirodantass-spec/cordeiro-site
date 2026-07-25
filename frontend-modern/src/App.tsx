@@ -604,6 +604,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [stats,setStats]=useState<any>({}),
     [busy, setBusy] = useState(true),
     [selected, setSelected] = useState<any>(null),
+    [pendingDelete,setPendingDelete]=useState<any>(null),
     [showFilters, setShowFilters] = useState(false),
     [filters, setFilters] = useState<Record<string, string>>({});
   const load = useCallback(() => {
@@ -668,12 +669,12 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
       toast((e as Error).message, true);
     }
   }
-  async function remove(id: number) {
-    if (!confirm("Excluir este documento e seu XML?")) return;
+  async function remove(item: any) {
     try {
-      await api(`/api/docs/${id}`, { method: "DELETE" });
+      await api(`/api/docs/${item.id}`, { method: "DELETE" });
       setSelected(null);
-      toast("Documento excluído");
+      setPendingDelete(null);
+      toast(`Documento excluído com sucesso · ${item.numero?`nota ${item.numero}`:`chave ${String(item.chave||"").slice(0,8)}…`}`);
       load();
     } catch (e) {
       toast((e as Error).message, true);
@@ -822,7 +823,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
                       <button
                         className="square danger"
                         title="Excluir"
-                        onClick={() => remove(d.id)}
+                        onClick={() => setPendingDelete(d)}
                       >
                         <X />
                       </button>
@@ -902,7 +903,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <footer>
               <button
                 className="danger-button"
-                onClick={() => remove(selected.id)}
+                onClick={() => setPendingDelete(selected)}
               >
                 <X />
                 Excluir documento
@@ -923,6 +924,14 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </section>
         </div>
       )}
+      {pendingDelete&&<div className="modal-backdrop deletion-backdrop" role="dialog" aria-modal="true">
+        <section className="deletion-dialog"><i><Trash2/></i><span className="eyebrow">EXCLUIR DOCUMENTO FISCAL</span>
+          <h2>Remover documento e XML?</h2>
+          <p>{pendingDelete.numero&&<>Nota <b>{pendingDelete.numero}</b><br/></>}Chave <b>{pendingDelete.chave||"não informada"}</b>. Esta ação remove o registro e o XML armazenado.</p>
+          <div><button className="secondary" onClick={()=>setPendingDelete(null)}>Manter documento</button>
+            <button className="primary danger-action" onClick={()=>remove(pendingDelete)}><Trash2/> Excluir documento</button></div>
+        </section>
+      </div>}
     </>
   );
 }
@@ -1669,6 +1678,25 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [sitekey, setSitekey] = useState("0x4AAAAAAD9QFuEXmAjhoAuE"),
     [sitekeyInput, setSitekeyInput] = useState("0x4AAAAAAD9QFuEXmAjhoAuE");
   const keyInput = useRef<HTMLTextAreaElement>(null);
+  async function importKeySpreadsheet(file?:File){
+    if(!file)return;
+    try{
+      let cells:any[]=[];
+      if(/\.xlsx?$/i.test(file.name)){
+        const {default:readXlsxFile,readSheetNames}=await import("read-excel-file");
+        const sheets=await readSheetNames(file);
+        for(const sheet of sheets){
+          const rows=await readXlsxFile(file,{sheet});
+          cells.push(...rows.flat());
+        }
+      }else cells=(await file.text()).split(/[\n\r;,]+/);
+      const found=[...new Set(cells.flatMap(value=>String(value??"").match(/\d{44}/g)||[]))];
+      if(!found.length)throw new Error("Nenhuma chave de 44 dígitos foi encontrada na planilha");
+      setKey(found.join("\n"));
+      setResults([]);
+      toast(`${found.length} chave(s) carregada(s) da planilha. Clique em Consultar e importar.`);
+    }catch(error){toast((error as Error).message,true)}
+  }
   const openConnector = (target: string) => {
     if (target === "query") {
       keyInput.current?.focus();
@@ -1726,10 +1754,6 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           : "Informe ao menos uma chave de acesso",
         true,
       );
-      return;
-    }
-    if (keys.length > 100) {
-      toast("O limite é de 100 chaves por consulta", true);
       return;
     }
     setBusy(true);
@@ -1901,7 +1925,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <span className="eyebrow">HUB DE INTEGRAÇÕES FISCAIS</span>
           <h2>Consulta segura e sincronização automática</h2>
           <p>
-            Consulte até 100 chaves. O sistema escolhe a melhor fonte, baixa o
+            Consulte chaves avulsas ou importe uma planilha. Somente XMLs completos são integrados;
+            qualquer inconsistência permanece registrada no log.
             retorno e integra os documentos automaticamente.
           </p>
         </div>
@@ -1934,7 +1959,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 placeholder={
-                  "Cole até 100 chaves, uma por linha\n00000000000000000000000000000000000000000000"
+                  "Cole as chaves, uma por linha\n00000000000000000000000000000000000000000000"
                 }
               />
               <small>
@@ -1947,6 +1972,11 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 chave(s) informada(s)
               </small>
             </label>
+            <label className="spreadsheet-import">
+              <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
+              <span className="secondary"><FileText/> Importar planilha de chaves</span>
+              <small>Excel, CSV ou TXT · todas as abas serão verificadas</small>
+            </label>
             <button className="primary" onClick={consult} disabled={busy}>
               {busy ? <RefreshCw className="spin" /> : <CloudDownload />}Consultar e importar
             </button>
@@ -1954,7 +1984,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           {results.length > 0 && (
             <div className="batch-query-results">
               <header>
-                <b>Resultado da consulta em lote</b>
+                <b>Log de validação e importação</b>
                 <span>
                   {results.filter((item) => item.ok).length}/{results.length}{" "}
                   localizados
