@@ -17,6 +17,7 @@ import {
   Gauge,
   GraduationCap,
   LayoutDashboard,
+  Laptop,
   Lightbulb,
   Network,
   Link,
@@ -40,7 +41,6 @@ import {
   UploadCloud,
   UserRound,
   Users,
-  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -3499,7 +3499,12 @@ function MaintenanceNotice({
       <div className="maintenance-grid" />
       <section className="maintenance-experience" role="status">
         <div className="maintenance-brand"><img src="/assets/haixel-logo.png" /><b>Haixel</b></div>
-        <div className="maintenance-symbol"><Wrench /></div>
+        <div className="maintenance-worker" aria-label="Assistente Haixel trabalhando na atualização">
+          <span className="worker-person"><Bot /></span>
+          <span className="worker-arms"><i /><i /></span>
+          <span className="worker-laptop"><Laptop /></span>
+          <span className="worker-dots"><i /><i /><i /></span>
+        </div>
         <span className="eyebrow">ATUALIZAÇÃO EM ANDAMENTO</span>
         <h2>{maintenance.title}</h2>
         <p>{maintenance.message}</p>

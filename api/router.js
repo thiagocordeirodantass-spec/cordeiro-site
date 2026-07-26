@@ -83,7 +83,7 @@ export default async function handler(request, response) {
   try {
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const active=!/^(0|false|no)$/i.test(configured);
       return response.json({release:RELEASE,maintenance:{
         active,
