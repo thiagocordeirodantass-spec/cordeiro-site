@@ -55,11 +55,19 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.26.17",
-  title:"Cockpit e centrais operacionais renovados",
-  publishedAt:"2026-07-26T23:55:00-03:00",
-  summary:"O Cockpit Fiscal, a Central de Documentos, os formulários empresariais e a landing ganharam mais profundidade e fluidez.",
+  version:"2026.07.27.18",
+  title:"Experiência Haixel integrada",
+  publishedAt:"2026-07-27T00:45:00-03:00",
+  summary:"Landing, documentos, integrações, empresas, acessos, suporte e manutenção agora formam uma experiência mais interativa e coerente.",
   items:[
+    {type:"new",title:"Haixel IA na landing",text:"Um guia público interativo explica documentos, CNDs, SEFAZ, segurança e a visão geral da plataforma."},
+    {type:"new",title:"Contato público funcional",text:"A landing ganhou uma área para conversar com a equipe, com solicitações registradas no backend."},
+    {type:"improved",title:"Central de Documentos reconstruída",text:"Novo universo documental animado, navegação compacta e áreas contínuas para cofre, auditoria, monitor e importação."},
+    {type:"fixed",title:"Estados SEFAZ sem repetição",text:"O radar nacional agora exibe cada UF uma única vez, priorizando o ambiente de produção."},
+    {type:"improved",title:"Hub de Integrações por estação",text:"Conexão, consulta e Radar nacional são áreas compactas e interativas, exibidas uma por vez."},
+    {type:"improved",title:"Empresas e acessos consistentes",text:"Mapa organizacional, Configuração da Matriz e Identidade e Acesso seguem o padrão visual de Novo Ambiente."},
+    {type:"improved",title:"Central de suporte dedicada",text:"Suporte ganhou navegação própria, agente visual, conhecimento, chamados expansíveis e acompanhamento."},
+    {type:"fixed",title:"Manutenção obrigatória em 10 segundos",text:"Usuários conectados recebem aviso vermelho, contagem regressiva e redirecionamento automático para a landing."},
     {type:"new",title:"Cockpit Fiscal reconstruído",text:"Visão executiva, indicadores, prioridades, saúde operacional, radar e conhecimento agora formam uma central completa."},
     {type:"improved",title:"Soluções conectadas premium",text:"Os cartões da landing ganharam sombra em camadas, brilho, profundidade e movimentos mais fluidos."},
     {type:"improved",title:"Central de Documentos mais ambiciosa",text:"Cofre, navegação, ações, indicadores e tabelas receberam novas animações e hierarquia visual."},
@@ -184,7 +192,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -208,6 +216,18 @@ export default async function handler(request, response) {
       }
     }
     await ensureSchema();
+    if(route[0]==="contact"&&request.method==="POST"){
+      const body=request.body||{},nome=String(body.nome||"").trim(),email=String(body.email||"").trim().toLowerCase(),
+        empresa=String(body.empresa||"").trim(),mensagem=String(body.mensagem||"").trim();
+      if(nome.length<2||empresa.length<2||mensagem.length<10||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        return response.status(400).json({error:"Preencha nome, empresa, e-mail e mensagem válidos"});
+      await pool.query(`CREATE TABLE IF NOT EXISTS public_contact_requests(
+        id BIGSERIAL PRIMARY KEY,nome TEXT NOT NULL,email TEXT NOT NULL,empresa TEXT NOT NULL,
+        mensagem TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'novo',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+      await pool.query(`INSERT INTO public_contact_requests(nome,email,empresa,mensagem)
+        VALUES($1,$2,$3,$4)`,[nome.slice(0,120),email.slice(0,180),empresa.slice(0,180),mensagem.slice(0,2500)]);
+      return response.json({ok:true});
+    }
     if(route[0]==="certidoes"&&route[1]==="dispatch-alerts"&&request.method==="GET"){
       const secret=String(process.env.CRON_SECRET||"");
       if(secret&&String(request.headers.authorization||"")!==`Bearer ${secret}`)

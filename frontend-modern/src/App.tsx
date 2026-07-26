@@ -125,6 +125,14 @@ function Brand() {
   );
 }
 function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
+  const [contact,setContact]=useState({nome:"",email:"",empresa:"",mensagem:""}),[contactBusy,setContactBusy]=useState(false),
+    [contactSent,setContactSent]=useState(false),[landingAiOpen,setLandingAiOpen]=useState(false),
+    [landingAiTopic,setLandingAiTopic]=useState("visao");
+  async function sendContact(event:React.FormEvent){
+    event.preventDefault();setContactBusy(true);
+    try{await api("/api/contact",{method:"POST",body:contact});setContactSent(true);setContact({nome:"",email:"",empresa:"",mensagem:""})}
+    catch{setContactSent(false)}finally{setContactBusy(false)}
+  }
   const solutions=[
     {icon:Files,title:"Documentos fiscais",text:"Cofre centralizado para NF-e, CT-e e NFS-e, com pesquisa, XML e exportação."},
     {icon:ShieldCheck,title:"Regularidade CND",text:"Certidões, vencimentos e alertas organizados por matriz e filial."},
@@ -146,7 +154,19 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     ["02","Centralize a operação","Importe XMLs, consulte documentos e acompanhe certidões e serviços fiscais."],
     ["03","Transforme dados em ação","Use filtros, alertas, relatórios e a Haixel IA para decidir com mais segurança."],
   ];
-  return <main className="landing">
+  const aiTopics:any={
+    visao:["Conheça a Haixel","A Haixel reúne documentos fiscais, empresas, certidões, monitoramento SEFAZ, relatórios e inteligência em um ambiente web seguro."],
+    documentos:["Como funcionam os documentos?","NF-e, CT-e e NFS-e podem ser consultados, importados, pesquisados e exportados. Os XMLs ficam vinculados à empresa correta."],
+    cnd:["Como a Haixel cuida das CNDs?","A plataforma organiza PDFs, validade, situação e alertas por matriz e filial, facilitando a conferência da regularidade."],
+    sefaz:["O que é o Hub SEFAZ?","É o centro de consulta e captura fiscal: acompanha serviços por estado, preserva a sequência NSU e respeita pausas preventivas."],
+    seguranca:["Meus dados estão protegidos?","Acessos, empresas e permissões ficam separados. Certificados A1 são vinculados ao CNPJ e tratados somente pelo backend."],
+  };
+  return <main className="landing" onPointerMove={event=>{
+    const rect=event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty("--landing-x",`${event.clientX-rect.left}px`);
+    event.currentTarget.style.setProperty("--landing-y",`${event.clientY+window.scrollY}px`);
+  }}>
+    <div className="landing-cursor-light" aria-hidden="true"/>
     <header className="landing-nav">
       <Brand/><nav><a href="#solucoes">Soluções</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
       <div>{maintenance&&<span className="landing-maintenance-pill"><Activity/> Manutenção</span>}
@@ -174,7 +194,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     <section className="landing-trust"><span>Uma plataforma para toda a rotina fiscal</span>
       <div><b>NF-e</b><b>CT-e</b><b>NFS-e</b><b>XML</b><b>CND</b><b>SEFAZ</b><b>Multiempresa</b></div></section>
     <section className="landing-section" id="solucoes"><header><span>SOLUÇÕES CONECTADAS</span><h2>Menos retrabalho. Mais controle.</h2><p>Escolha uma tarefa e encontre tudo o que precisa no mesmo fluxo.</p></header>
-      <div className="landing-solutions">{solutions.map(({icon:Icon,title,text},index)=><article key={title}><em>0{index+1}</em><i><Icon/></i><h3>{title}</h3><p>{text}</p><a href="#recursos">Conhecer solução <ChevronRight/></a></article>)}</div>
+      <div className="landing-solutions">{solutions.map(({icon:Icon,title,text},index)=><article key={title}><em>0{index+1}</em><i><Icon/></i><h3>{title}</h3><p>{text}</p></article>)}</div>
     </section>
     <section className="landing-audiences"><header><span>FEITA PARA OPERAÇÕES REAIS</span><h2>Uma base fiscal que acompanha diferentes negócios.</h2></header>
       <div>{audiences.map(([title,text],index)=><article key={title}><em>0{index+1}</em><h3>{title}</h3><p>{text}</p><CheckCircle2/></article>)}</div></section>
@@ -190,8 +210,37 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
       <article><b>Como a regularidade fiscal é acompanhada?</b><p>Certidões são armazenadas com tipo, situação, emissão, validade, PDF e alertas configuráveis por empresa.</p></article>
       <article><b>O sistema funciona em qualquer dispositivo?</b><p>A plataforma é web e responsiva, com navegação adaptada para computador, tablet e celular.</p></article>
     </div></section>
+    <section className="landing-contact" id="contato">
+      <div className="landing-contact-copy"><span>VAMOS CONVERSAR</span><h2>Venha bater um papo com a gente.</h2>
+        <p>Conte como funciona sua operação fiscal. Nossa equipe pode mostrar como centralizar documentos, empresas, CNDs e monitoramento em um fluxo mais claro.</p>
+        <div>{[["Resposta humana","Sua mensagem chega à equipe Haixel.",MessageCircle],
+          ["Conversa sobre a operação","Entendemos empresas, unidades e rotinas.",Building2],
+          ["Demonstração direcionada","Mostramos os módulos relevantes para você.",Sparkles]]
+          .map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span></article>)}</div>
+      </div>
+      <form onSubmit={sendContact}>
+        <header><small>CONTATO HAIXEL</small><h3>Fale sobre a sua necessidade</h3><p>Preencha os dados e retornaremos a conversa.</p></header>
+        <div><label>Seu nome<input required value={contact.nome} onChange={e=>setContact({...contact,nome:e.target.value})}/></label>
+          <label>E-mail profissional<input required type="email" value={contact.email} onChange={e=>setContact({...contact,email:e.target.value})}/></label></div>
+        <label>Empresa<input required value={contact.empresa} onChange={e=>setContact({...contact,empresa:e.target.value})}/></label>
+        <label>Como podemos ajudar?<textarea required rows={4} value={contact.mensagem} onChange={e=>setContact({...contact,mensagem:e.target.value})}
+          placeholder="Conte um pouco sobre documentos, empresas ou desafios da sua rotina fiscal..."/></label>
+        <button className="landing-trial" disabled={contactBusy}>{contactBusy?<RefreshCw className="spin"/>:<Send/>} Enviar mensagem</button>
+        {contactSent&&<span className="landing-contact-success"><CheckCircle2/> Mensagem recebida. Vamos conversar em breve.</span>}
+      </form>
+    </section>
     <section className="landing-final"><span>UMA OPERAÇÃO MAIS CLARA COMEÇA AQUI</span><h2>Entre na Haixel e assuma o controle fiscal.</h2><p>Documentos, empresas, certidões, relatórios e monitoramento reunidos em um único ambiente.</p></section>
     <footer className="landing-footer"><Brand/><p>Inteligência fiscal para decisões seguras.</p><span>© {new Date().getFullYear()} Haixel Fiscal Tech</span></footer>
+    <button className="landing-ai-button" onClick={()=>setLandingAiOpen(value=>!value)} aria-label="Abrir guia Haixel IA">
+      <img src="/assets/macaco-ia.png" alt=""/><span><b>Haixel IA</b><small>Posso explicar a plataforma</small></span></button>
+    {landingAiOpen&&<aside className="landing-ai-guide">
+      <header><span><img src="/assets/macaco-ia.png" alt="Haixel IA"/><i/></span><div><b>Haixel IA</b><small>Guia público da plataforma</small></div>
+        <button onClick={()=>setLandingAiOpen(false)}><X/></button></header>
+      <div className="landing-ai-conversation"><span><Sparkles/><p><b>{aiTopics[landingAiTopic][0]}</b>{aiTopics[landingAiTopic][1]}</p></span></div>
+      <nav>{[["visao","Visão geral"],["documentos","Documentos"],["cnd","CNDs"],["sefaz","SEFAZ"],["seguranca","Segurança"]]
+        .map(([id,label])=><button className={landingAiTopic===id?"active":""} onClick={()=>setLandingAiTopic(id)} key={id}>{label}</button>)}</nav>
+      <footer><small>Para informações da sua empresa, acesse o ambiente autenticado.</small></footer>
+    </aside>}
   </main>;
 }
 function Login({ done,initialMode="login",onBack }: { done: (u: User) => void; initialMode?:"login"|"register"; onBack?:()=>void }) {
@@ -398,6 +447,7 @@ const groups = [
     ],
   ],
   ["Integrações", [["integrations", "Hub SEFAZ", Network]]],
+  ["Suporte", [["feedback", "Central de suporte", MessageCircle]]],
   [
     "Governança",
     [
@@ -410,17 +460,30 @@ const groups = [
 function DocumentHub({toast,initial="archive"}:{toast:(s:string,e?:boolean)=>void;initial?:"archive"|"dfe"}) {
   const [mode,setMode]=useState<"archive"|"dfe">(initial);
   return <section className="unified-document-hub">
-    <header className="unified-document-head"><div><i><Files/></i><span><small>CENTRAL DOCUMENTAL UNIFICADA</small>
-      <h2>Documentos fiscais em um único fluxo</h2><p>Cofre, pesquisa, auditoria, exportação, emitidos, recebidos, Monitor DF-e, SEFAZ e importação.</p></span></div>
-      <aside><ShieldCheck/><span><b>Custódia e captura</b><small>Operação conectada à empresa ativa</small></span></aside>
+    <header className="document-nexus">
+      <div className="document-nexus-copy"><span className="eyebrow">CENTRAL DOCUMENTAL HAIXEL</span>
+        <h1>Todo documento fiscal.<br/><em>Uma única inteligência.</em></h1>
+        <p>Capture, pesquise, audite, importe e exporte NF-e, CT-e e NFS-e sem perder o contexto da empresa.</p>
+        <div><span><i/> Custódia ativa</span><span><ShieldCheck/> Integridade protegida</span><span><Activity/> Monitor conectado</span></div>
+      </div>
+      <div className="document-nexus-visual">
+        <i className="orbit one"/><i className="orbit two"/>
+        <span className="nexus-core"><Files/><b>DF-e</b><small>CENTRAL</small></span>
+        <article className="nexus-file nfe"><FileText/><span><small>DOCUMENTO</small><b>NF-e</b></span><CheckCircle2/></article>
+        <article className="nexus-file cte"><CloudDownload/><span><small>TRANSPORTE</small><b>CT-e</b></span><CheckCircle2/></article>
+        <article className="nexus-file xml"><ShieldCheck/><span><small>ARQUIVO</small><b>XML</b></span><CheckCircle2/></article>
+      </div>
     </header>
-    <nav className="unified-document-nav">
-      <button className={mode==="archive"?"active":""} onClick={()=>setMode("archive")}><Files/><span>
-        <b>Cofre e auditoria</b><small>Pesquisa, arquivos e exportação</small></span><ArrowUpRight/></button>
-      <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
-        <b>Monitor e importação</b><small>Emitidos, recebidos e SEFAZ</small></span><ArrowUpRight/></button>
-    </nav>
-    {mode==="archive"?<Documents toast={toast}/>:<IssuedDocuments toast={toast}/>}
+    <div className="document-workspace-switch">
+      <span><small>ÁREA DE TRABALHO</small><b>{mode==="archive"?"Cofre documental":"Fluxo DF-e"}</b></span>
+      <nav>
+        <button className={mode==="archive"?"active":""} onClick={()=>setMode("archive")}><Files/><span>
+          <b>Cofre e auditoria</b><small>Pesquisar, conferir e exportar</small></span></button>
+        <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
+          <b>Monitor e importação</b><small>Emitidos, recebidos e SEFAZ</small></span></button>
+      </nav>
+    </div>
+    <div className="document-workspace" key={mode}>{mode==="archive"?<Documents toast={toast}/>:<IssuedDocuments toast={toast}/>}</div>
   </section>;
 }
 function Head({
@@ -500,12 +563,13 @@ function Dashboard() {
         <div><span className="eyebrow">COMANDO FISCAL EM TEMPO REAL</span><h2>Da visão geral à próxima ação.</h2>
           <p>Acompanhe o que entrou, identifique riscos e continue a rotina sem alternar entre várias telas.</p>
           <div><span><i/> Operação acompanhada</span><span><ShieldCheck/> Ambiente protegido</span></div></div>
-        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><Radar/><b>HAIXEL</b><small>RADAR ATIVO</small></span></div>
+        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><img src="/assets/macaco-ia.png" alt="Assistente Haixel"/><b>HAIXEL</b><small>RADAR ATIVO</small></span></div>
       </section>
       <div className="cockpit-metrics">{metrics.map(([label,value,Icon,tone]:any,index)=><article className={tone} key={label}
         style={{animationDelay:`${index*.08}s`}}><i><Icon/></i><span><small>{label}</small><b>{loadingStats?"—":value}</b><em>Empresa ativa</em></span></article>)}</div>
       <section className="cockpit-command-grid">
-        <article className="cockpit-priorities"><header><div><Bell/><span><small>PRIORIDADES</small><h3>O que merece atenção agora</h3></span></div><em>Hoje</em></header>
+        <article className="cockpit-priorities"><header><div><Bell/><span><small>AÇÕES RECOMENDADAS</small><h3>Próximas tarefas da sua rotina</h3>
+          <p>Sugestões para manter documentos e certidões organizados — não significam necessariamente um erro.</p></span></div><em>Hoje</em></header>
           <div><span><i className="amber"><ShieldCheck/></i><p><b>Regularidade fiscal</b><small>Confira certidões próximas do vencimento e PDFs pendentes.</small></p><ChevronRight/></span>
             <span><i className="blue"><CloudDownload/></i><p><b>Captura documental</b><small>Sincronize o Monitor DF-e e revise documentos recebidos.</small></p><ChevronRight/></span>
             <span><i className="mint"><Search/></i><p><b>Conferência do cofre</b><small>Valide chaves, situações e arquivos importados recentemente.</small></p><ChevronRight/></span></div>
@@ -2104,6 +2168,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [provider] = useState("sefaz"),
     [results, setResults] = useState<any[]>([]),
     [queueProgress,setQueueProgress]=useState({done:0,total:0}),
+    [hubSection,setHubSection]=useState<"connection"|"query"|"monitor">("connection"),
     [busy, setBusy] = useState(false),
     [captchaToken, setCaptchaToken] = useState(""),
     [sitekey, setSitekey] = useState("0x4AAAAAAD9QFuEXmAjhoAuE"),
@@ -2139,8 +2204,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   }
   const openConnector = (target: string) => {
     if (target === "query") {
-      keyInput.current?.focus();
-      keyInput.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHubSection("query");
+      window.setTimeout(()=>keyInput.current?.focus(),80);
       return;
     }
     if (target === "portal") {
@@ -2151,9 +2216,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
       );
       return;
     }
-    document
-      .getElementById(target)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHubSection(target==="certificate-monitor"?"monitor":"connection");
   };
   useEffect(() => {
     api<any>("/api/meudanfe/config")
@@ -2328,16 +2391,18 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div className="integration-live"><span><i/> Ambiente protegido</span><small>Fila, NSU e limites preventivos ativos</small></div>
       </section>
       <nav className="integration-launchpad">
-        <button onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Chave de acesso</b><small>Consultar NF-e ou CT-e</small></span><ArrowUpRight/></button>
+        <button className={hubSection==="connection"?"active":""} onClick={()=>setHubSection("connection")}><i className="green"><Network/></i><span><b>Conexão fiscal</b><small>Captura, NSU e sincronização</small></span><ArrowUpRight/></button>
+        <button className={hubSection==="query"?"active":""} onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Consulta e importação</b><small>Chave de NF-e ou CT-e</small></span><ArrowUpRight/></button>
         <button className="spreadsheet-icon-action" title="Importar planilha" aria-label="Importar planilha"
-          onClick={()=>document.querySelector<HTMLInputElement>(".spreadsheet-import input")?.click()}>
+          onClick={()=>{setHubSection("query");window.setTimeout(()=>
+            document.querySelector<HTMLInputElement>(".spreadsheet-import input")?.click(),100)}}>
           <i className="green"><FileSpreadsheet/></i>
         </button>
-        <button onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Monitoramento SEFAZ</b><small>Disponibilidade dos serviços</small></span><ArrowUpRight/></button>
+        <button className={hubSection==="monitor"?"active":""} onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Radar nacional</b><small>Todos os estados sem repetição</small></span><ArrowUpRight/></button>
         <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
       </nav>
-      <div id="sefaz-security"><SefazControlCenter toast={toast}/></div>
-      <div className="fiscal-grid integration-query-module">
+      {hubSection==="connection"&&<div id="sefaz-security" className="integration-stage"><SefazControlCenter toast={toast}/></div>}
+      {hubSection==="query"&&<div className="fiscal-grid integration-query-module integration-stage">
         <Panel>
           <header className="integration-query-head">
             <div><i><Search/></i><span><small>ESTAÇÃO DE CONSULTA</small><h2>Consulta e importação de documentos</h2>
@@ -2437,8 +2502,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </div>
           )}
         </Panel>
-      </div>
-      <div className="official-note">
+      </div>}
+      {hubSection==="connection"&&<div className="official-note integration-stage">
         <ShieldCheck />
         <div>
           <b>Integração segura por empresa</b>
@@ -2448,10 +2513,10 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             são expostas ao navegador.
           </p>
         </div>
-      </div>
-      <div id="certificate-monitor">
+      </div>}
+      {hubSection==="monitor"&&<div id="certificate-monitor" className="integration-stage">
         <FiscalOperations />
-      </div>
+      </div>}
     </>
   );
 }
@@ -2737,10 +2802,13 @@ function FiscalOperations() {
   useEffect(() => {
     load();
   }, [load]);
-  const services = [...new Map((monitor?.ufs || []).map((item:any)=>[
-    `${String(item.env||"").trim().toLowerCase()}-${String(item.uf||"").trim().toUpperCase()}`,
-    {...item,uf:String(item.uf||"").trim().toUpperCase(),env:String(item.env||"").trim()},
-  ])).values()] as any[];
+  const stateMap=new Map<string,any>();
+  for(const raw of monitor?.ufs||[]){
+    const item={...raw,uf:String(raw.uf||"").trim().toUpperCase(),env:String(raw.env||"").trim()};
+    const current=stateMap.get(item.uf);
+    if(item.uf&&(!current||/produ/i.test(item.env)))stateMap.set(item.uf,item);
+  }
+  const services=[...stateMap.values()].sort((a,b)=>a.uf.localeCompare(b.uf)) as any[];
   const environments=[...new Set(services.map(item=>item.env).filter(Boolean))];
   const visible=environment==="todos"?services:services.filter(item=>item.env===environment);
   const onlineServices=visible.filter((item:any)=>item.ok).length;
@@ -3100,7 +3168,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
     }
   }
   return (
-    <>
+    <main className="support-desk">
       <Head
         tag="SUPORTE"
         title={isAdmin ? "Central de atendimento" : "Central de suporte"}
@@ -3111,10 +3179,11 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
         }
       />
       <section className="support-hero">
-        <div><i><MessageCircle/></i><span><small>CENTRAL DE RELACIONAMENTO</small>
-          <h2>{isAdmin?"Operação de atendimento":"Como podemos ajudar hoje?"}</h2>
-          <p>Chamados organizados, histórico completo e acompanhamento em um único lugar.</p></span></div>
-        <span className="support-availability"><i/> EQUIPE DISPONÍVEL</span>
+        <div><span><small>SUPORTE DEDICADO HAIXEL</small>
+          <h2>{isAdmin?"Operação de atendimento":"Olá. Como podemos ajudar hoje?"}</h2>
+          <p>Encontre orientação, converse com a Haixel IA ou abra um chamado acompanhado pela nossa equipe.</p>
+          <div><span className="support-availability"><i/> EQUIPE DISPONÍVEL</span><em>Histórico protegido por usuário</em></div></span></div>
+        <aside className="support-agent"><i/><i/><span><img src="/assets/macaco-ia.png" alt="Assistente Haixel"/><b>Haixel</b><small>SUPORTE CONECTADO</small></span></aside>
       </section>
       <section className="support-channels" aria-label="Atalhos de atendimento">
         {[
@@ -3344,7 +3413,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </section>
         </div>
       )}
-    </>
+    </main>
   );
 }
 
@@ -4232,25 +4301,7 @@ function Admin({
             >
               + Adicionar usuário
             </button>
-          ) : (
-            <button
-              className="primary"
-              onClick={() =>
-                setCompanyForm({
-                  cnpj: "",
-                  nome: "",
-                  nome_fantasia: "",
-                  ie: "",
-                  regime_tributario: "simples",
-                  ambiente: "producao",
-                  cadastrarFilial:false,
-                  filial:{cnpj:"",nome:"",nome_fantasia:"",ie:"",im:""},
-                })
-              }
-            >
-              + Cadastrar empresa
-            </button>
-          )
+          ) : undefined
         }
       />
       {kind==="companies"&&<section className="company-command-hero">
@@ -4271,8 +4322,8 @@ function Admin({
           cadastrarFilial:false,filial:{cnpj:"",nome:"",nome_fantasia:"",ie:"",im:""},
         })}><Sparkles/><span><b>Novo ambiente</b><small>Matriz ou filial</small></span></button>
       </section>}
-      {kind==="companies"&&companyView==="structure"&&<section className="company-structure-map">
-        <header><div><Network/><span><b>Mapa da organização</b><small>Relação entre matrizes e filiais cadastradas</small></span></div>
+      {kind==="companies"&&companyView==="structure"&&<section className="company-structure-map environment-structure">
+        <header><div><Network/><span><small>ESTRUTURA DO AMBIENTE</small><b>Ambientes conectados</b><p>Matrizes e filiais organizadas pela relação empresarial cadastrada.</p></span></div>
           <em>{companyRows.length} unidade(s)</em></header>
         <div>{companyRows.filter(item=>!item.empresa_matriz_id).map(matrix=><article key={matrix.id}>
           <i><Building2/></i><span><b>{matrix.nome}</b><small>{matrix.cnpj} · Matriz</small></span>
@@ -4531,12 +4582,12 @@ function Admin({
         </section>
       </div>}
       {moduleCompany&&moduleData&&<div className="modal-backdrop">
-        <section className="feedback-modal module-modal">
+        <section className="feedback-modal company-modal module-modal">
           <header className="environment-modal-head"><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
             <h2>{moduleCompany.nome}</h2><p>CNPJ {moduleCompany.cnpj}</p></div>
             <button className="square" onClick={()=>setModuleCompany(null)}><X/></button>
           </header>
-          <div className="environment-form-intro"><i><Settings/></i><span><b>Configuração do ambiente fiscal</b>
+          <div className="company-form-intro environment-form-intro"><i><Settings/></i><span><b>Configuração do ambiente fiscal</b>
             <small>Defina documentos, certidões e comunicações desta unidade.</small></span></div>
           <nav className="module-tabs">
             {[["cnd","Certidões",ShieldCheck],["documentos","Documentos",Files],["alertas","Comunicações",Bell]].map(([id,label,Icon]:any)=>
@@ -4777,7 +4828,7 @@ function Admin({
       )}
       {userForm && kind === "users" && (
         <div className="modal-backdrop">
-          <form className="feedback-modal user-modal" onSubmit={saveUser}>
+          <form className="feedback-modal company-modal user-modal" onSubmit={saveUser}>
             <header className="environment-modal-head">
               <i className="modal-hero-icon"><ShieldCheck /></i>
               <div>
@@ -4793,11 +4844,16 @@ function Admin({
                 <X />
               </button>
             </header>
-            <div className="environment-form-intro"><i><UserRound/></i><span><b>Identidade vinculada ao ambiente</b>
+            <div className="company-form-intro environment-form-intro"><i><UserRound/></i><span><b>Identidade vinculada ao ambiente</b>
               <small>Dados e permissões ficam organizados com a mesma estrutura das empresas.</small></span></div>
+            <div className="user-access-overview">
+              <article><i><UserRound/></i><span><small>PERFIL</small><b>{userForm.role==="admin"?"Administrador":userForm.role==="visualizador"?"Visualizador":"Operador"}</b></span></article>
+              <article><i><ShieldCheck/></i><span><small>PERMISSÕES</small><b>{Object.values(userForm.permissoes||{}).filter(Boolean).length} liberadas</b></span></article>
+              <article><i><Activity/></i><span><small>CONTA</small><b>{userForm.ativo===false?"Desativada":"Ativa"}</b></span></article>
+            </div>
             <div className="user-modal-body">
             <section className="user-data-section">
-              <header><span>01</span><div><b>Dados do usuário</b><small>Informações usadas para identificação e acesso.</small></div></header>
+              <header><span>01</span><i><UserRound/></i><div><b>Dados do usuário</b><small>Informações usadas para identificação e acesso.</small></div></header>
             <div className="fields">
               <label>
                 Nome
@@ -4860,7 +4916,7 @@ function Admin({
             </div>
             </section>
             <section className="user-permissions">
-              <header><span>02</span><div><b>Permissões nesta empresa</b><small>Controle exatamente o que este usuário poderá fazer.</small></div>
+              <header><span>02</span><i><ShieldCheck/></i><div><b>Permissões nesta empresa</b><small>Controle exatamente o que este usuário poderá fazer.</small></div>
                 <em>{Object.values(userForm.permissoes||{}).filter(Boolean).length} ativas</em></header>
               {[
                 ["documentos_visualizar","Visualizar documentos"],
@@ -5005,15 +5061,9 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
   useEffect(()=>{
-    if(systemStatus?.maintenance.active&&user){
-      const timer=window.setTimeout(()=>api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
-        setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");
-      }),3500);
-      return()=>window.clearTimeout(timer);
-    }
     if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")
       setPublicView("landing");
-  },[systemStatus?.maintenance.active,user,publicView]);
+  },[systemStatus?.maintenance.active,publicView]);
   useEffect(()=>{
     if(!systemStatus?.release.version)return;
     const key="haixel.runtime.version",previous=localStorage.getItem(key),currentVersion=systemStatus.release.version;
@@ -5039,6 +5089,12 @@ export default function App() {
     }),1000);
     return()=>window.clearInterval(timer);
   },[systemStatus?.maintenance.active,systemStatus?.release.version]);
+  useEffect(()=>{
+    if(!user||!systemStatus?.maintenance.active||maintenanceGrace!==0)return;
+    api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
+      setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");
+    });
+  },[maintenanceGrace,systemStatus?.maintenance.active,user]);
   useEffect(() => {
     if (!user || !systemStatus) return;
     const status = systemStatus;
@@ -5057,7 +5113,6 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
-  if(systemStatus?.maintenance.active&&user)return <MaintenanceRedirectNotice/>;
   if (!user) return <div className={`public-experience public-${publicView}${publicTransition?" is-transitioning":""}`}>
     <div className="public-view">{publicView==="landing"
     ?<Landing maintenance={systemStatus?.maintenance.active} onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
@@ -5118,15 +5173,6 @@ export default function App() {
               ),
           )}
         </nav>
-        <button
-          className="support-center"
-          onClick={() => go("feedback")}
-          title="Abrir feedback e suporte"
-        >
-          <Sparkles />
-          <b>Central de suporte</b>
-          <small>Feedback, dúvidas e sugestões</small>
-        </button>
       </aside>
       {mobile && <div className="overlay" onClick={() => setMobile(false)} />}
       <div className="workspace">
@@ -5189,6 +5235,8 @@ export default function App() {
         </main>
       </div>
       <Assistant />
+      {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
+        <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}
       {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
       {showWelcome && (
         <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
