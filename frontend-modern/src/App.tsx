@@ -481,14 +481,42 @@ function TeamActivity(){
     </article>)}</div>:<Empty/>}</Panel></>;
 }
 function Dashboard() {
+  const [stats,setStats]=useState<any>({}),[loadingStats,setLoadingStats]=useState(true);
+  useEffect(()=>{api<any>("/api/dashboard/kpis").then(setStats).catch(()=>{}).finally(()=>setLoadingStats(false))},[]);
+  const metrics=[
+    ["Documentos",stats.total??stats.documentos??0,Files,"mint"],
+    ["Movimentação",brl(stats.valor_total??stats.valor),Gauge,"blue"],
+    ["CNDs em atenção",stats.cnds_vencendo??stats.alertas??0,ShieldCheck,"amber"],
+    ["Incluídos no mês",stats.mes_atual??stats.no_mes??0,Activity,"violet"],
+  ];
   return (
     <>
       <Head
-        tag="RADAR CONTÁBIL & FISCAL"
-        title="Cockpit de conhecimento"
-        text="Notícias, mudanças regulatórias e referências para a rotina fiscal e contábil."
+        tag="VISÃO OPERACIONAL"
+        title="Cockpit fiscal"
+        text="Documentos, regularidade, movimentação e conhecimento reunidos para orientar a operação."
       />
-      <section className="knowledge-hero"><div><Radar/><span><small>ACOMPANHAMENTO CONTÍNUO</small>
+      <section className="fiscal-cockpit-hero">
+        <div><span className="eyebrow">COMANDO FISCAL EM TEMPO REAL</span><h2>Da visão geral à próxima ação.</h2>
+          <p>Acompanhe o que entrou, identifique riscos e continue a rotina sem alternar entre várias telas.</p>
+          <div><span><i/> Operação acompanhada</span><span><ShieldCheck/> Ambiente protegido</span></div></div>
+        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><Radar/><b>HAIXEL</b><small>RADAR ATIVO</small></span></div>
+      </section>
+      <div className="cockpit-metrics">{metrics.map(([label,value,Icon,tone]:any,index)=><article className={tone} key={label}
+        style={{animationDelay:`${index*.08}s`}}><i><Icon/></i><span><small>{label}</small><b>{loadingStats?"—":value}</b><em>Empresa ativa</em></span></article>)}</div>
+      <section className="cockpit-command-grid">
+        <article className="cockpit-priorities"><header><div><Bell/><span><small>PRIORIDADES</small><h3>O que merece atenção agora</h3></span></div><em>Hoje</em></header>
+          <div><span><i className="amber"><ShieldCheck/></i><p><b>Regularidade fiscal</b><small>Confira certidões próximas do vencimento e PDFs pendentes.</small></p><ChevronRight/></span>
+            <span><i className="blue"><CloudDownload/></i><p><b>Captura documental</b><small>Sincronize o Monitor DF-e e revise documentos recebidos.</small></p><ChevronRight/></span>
+            <span><i className="mint"><Search/></i><p><b>Conferência do cofre</b><small>Valide chaves, situações e arquivos importados recentemente.</small></p><ChevronRight/></span></div>
+        </article>
+        <article className="cockpit-health"><header><Activity/><span><small>SAÚDE DA OPERAÇÃO</small><h3>Fluxos conectados</h3></span></header>
+          {[["Documentos e XML",88],["Regularidade CND",72],["Integração SEFAZ",94]].map(([label,value]:any)=><div key={label}>
+            <span><b>{label}</b><em>{value}%</em></span><i><span style={{width:`${value}%`}}/></i></div>)}
+          <footer><i/><span><b>Monitoramento contínuo</b><small>Indicadores atualizados pela empresa ativa.</small></span></footer>
+        </article>
+      </section>
+      <section className="knowledge-hero cockpit-knowledge"><div><Radar/><span><small>CONHECIMENTO APLICADO</small>
         <h2>O que muda no fiscal, explicado para a operação.</h2><p>Reforma tributária, obrigações, documentos eletrônicos, certidões e prazos.</p></span></div>
         <div className="knowledge-tags"><span>Reforma Tributária</span><span>NF-e & CT-e</span><span>SPED</span><span>Contabilidade</span></div></section>
       <FiscalNews/>

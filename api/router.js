@@ -55,11 +55,16 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.26.16",
-  title:"Hub SEFAZ e experiência operacional evoluídos",
-  publishedAt:"2026-07-26T23:20:00-03:00",
-  summary:"Monitoramento nacional, manutenção interativa, conhecimento e formulários administrativos receberam uma nova experiência.",
+  version:"2026.07.26.17",
+  title:"Cockpit e centrais operacionais renovados",
+  publishedAt:"2026-07-26T23:55:00-03:00",
+  summary:"O Cockpit Fiscal, a Central de Documentos, os formulários empresariais e a landing ganharam mais profundidade e fluidez.",
   items:[
+    {type:"new",title:"Cockpit Fiscal reconstruído",text:"Visão executiva, indicadores, prioridades, saúde operacional, radar e conhecimento agora formam uma central completa."},
+    {type:"improved",title:"Soluções conectadas premium",text:"Os cartões da landing ganharam sombra em camadas, brilho, profundidade e movimentos mais fluidos."},
+    {type:"improved",title:"Central de Documentos mais ambiciosa",text:"Cofre, navegação, ações, indicadores e tabelas receberam novas animações e hierarquia visual."},
+    {type:"improved",title:"Configuração da Matriz padronizada",text:"Módulos agora seguem a mesma estrutura visual de Novo Ambiente e Editar cadastro."},
+    {type:"fixed",title:"Rolagem adaptável ao zoom",text:"Conteúdo, tabelas e modais exibem barras de rolagem quando o zoom ou a resolução reduz o espaço disponível."},
     {type:"new",title:"Radar SEFAZ nacional",text:"O Hub exibe todos os estados e ambientes retornados pelo monitor, com filtro, disponibilidade e atualização."},
     {type:"improved",title:"Hub SEFAZ reconstruído",text:"Conexão, NSU, fila, ambiente, fluxo de captura e sincronização foram reorganizados em um novo centro operacional."},
     {type:"improved",title:"Landing mais dinâmica",text:"Novos movimentos ambientais, cartões vivos e microinterações deixam a apresentação mais fluida."},
@@ -179,7 +184,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
