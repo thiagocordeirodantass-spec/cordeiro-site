@@ -4104,3 +4104,56 @@ img,svg{max-width:100%}
   .page-head p{font-size:9px!important}
   .kpis,.issued-kpis,.ops-kpis,.status-grid{grid-template-columns:1fr!important}
 }
+
+/* Estrutura de empresas: compacta e expansível */
+.company-grid{grid-template-columns:1fr!important;gap:8px!important}
+.company-card-compact{position:relative!important;display:block!important;min-height:76px!important;padding:14px 15px!important;overflow:hidden!important;border-radius:16px!important;background:var(--panel)!important;box-shadow:0 7px 20px #061b1409!important;transition:border-color .2s,box-shadow .2s!important}
+.company-card-compact:hover{transform:none!important;border-color:color-mix(in srgb,var(--brand) 28%,var(--line))!important}
+.company-card-compact.expanded{border-color:color-mix(in srgb,var(--brand) 38%,var(--line))!important;box-shadow:0 15px 35px #061b1412!important}
+.company-card-compact:after{display:none!important}
+.company-card-compact>header{position:absolute!important;z-index:3!important;inset:13px 14px auto 14px!important;display:flex!important;height:48px!important;align-items:center!important;gap:9px!important;padding:0!important;cursor:pointer}
+.company-card-compact>header>i{display:grid!important;width:46px!important;height:46px!important;flex:0 0 46px!important;place-items:center!important;border-radius:13px!important;background:linear-gradient(145deg,#16876a,#075b48)!important;color:#fff!important;box-shadow:0 8px 18px #08705425!important}
+.company-card-compact>header>i svg{width:20px!important;height:20px!important}
+.company-card-compact>header>.status{margin-left:auto!important}
+.company-expand-toggle{display:grid!important;width:34px!important;height:34px!important;flex:0 0 34px!important;place-items:center!important;padding:0!important;border:1px solid var(--line)!important;border-radius:10px!important;color:var(--muted)!important;background:var(--field)!important;transition:color .2s,border-color .2s!important}
+.company-expand-toggle svg{width:15px!important;transition:transform .22s!important}
+.company-card-compact.expanded .company-expand-toggle{color:var(--brand)!important;border-color:color-mix(in srgb,var(--brand) 32%,var(--line))!important}
+.company-card-compact.expanded .company-expand-toggle svg{transform:rotate(180deg)!important}
+.company-card-compact>div{min-height:48px!important;padding:4px 175px 4px 58px!important}
+.company-card-compact>div>small{font-size:6.5px!important;letter-spacing:.13em!important}
+.company-card-compact>div>h3{margin:4px 0 2px!important;overflow:hidden!important;color:var(--text)!important;font-size:11px!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.company-card-compact>div>p{margin:0!important;overflow:hidden!important;color:var(--muted)!important;font-size:7.5px!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.company-card-compact>dl,.company-card-compact>footer{display:none!important}
+.company-card-compact.expanded>dl{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important;margin:14px 0 0!important;padding:14px 0 0!important;border:0!important;border-top:1px solid var(--line)!important;border-radius:0!important;background:transparent!important}
+.company-card-compact.expanded>dl>div{min-width:0!important;padding:10px 11px!important;border:1px solid var(--line)!important;border-radius:11px!important;background:var(--field)!important}
+.company-card-compact.expanded>dl dt{margin-bottom:4px!important;color:var(--muted)!important;font-size:6.5px!important}
+.company-card-compact.expanded>dl dd{overflow:hidden!important;color:var(--text)!important;font-size:8px!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.company-card-compact.expanded>footer{display:flex!important;align-items:center!important;gap:6px!important;margin-top:10px!important;padding:10px 0 0!important;border-top:1px solid var(--line)!important}
+.company-card-compact.expanded>footer button{width:auto!important;min-height:34px!important;flex:0 0 auto!important;padding:0 10px!important;border-radius:9px!important;font-size:7px!important}
+.company-card-compact.expanded>footer .primary{margin-right:auto!important}
+.company-card-compact.expanded .company-branches{display:block!important;margin:12px 0 0!important;padding:13px!important;border:1px solid var(--line)!important;border-radius:13px!important;background:var(--field)!important}
+.company-card-compact .company-branches>header{margin-bottom:7px!important}
+.company-card-compact .company-branches>header b{font-size:8px!important}
+.company-card-compact .company-branches>header span{font-size:7px!important}
+.company-card-compact .company-branches>div{min-height:48px!important;grid-template-columns:34px minmax(170px,1fr) repeat(5,auto)!important;gap:6px!important;padding:7px 8px!important;border:1px solid transparent!important;border-radius:10px!important;background:var(--panel)!important}
+.company-card-compact .company-branches>div+div{margin-top:5px!important}
+.company-card-compact .company-branches>div>i{width:32px!important;height:32px!important}
+.company-card-compact .company-branches>div b{font-size:8px!important}
+.company-card-compact .company-branches>div small{font-size:6.5px!important}
+.company-card-compact .company-branches>div button{min-height:30px!important;padding:0 8px!important;border-radius:8px!important;font-size:6.5px!important}
+.company-card-compact.inactive{opacity:.68!important}
+@media(max-width:900px){
+  .company-card-compact.expanded>dl{grid-template-columns:1fr 1fr!important}
+  .company-card-compact.expanded>footer{align-items:stretch!important;display:grid!important;grid-template-columns:1fr 1fr!important}
+  .company-card-compact.expanded>footer .primary{margin:0!important}
+  .company-card-compact .company-branches>div{grid-template-columns:34px 1fr!important}
+  .company-card-compact .company-branches>div button{grid-column:auto!important}
+}
+@media(max-width:560px){
+  .company-card-compact{min-height:88px!important;padding:13px!important}
+  .company-card-compact>header{inset:12px 12px auto!important}
+  .company-card-compact>header>.status{position:absolute!important;left:55px!important;top:43px!important;margin:0!important}
+  .company-card-compact>div{padding:2px 42px 2px 57px!important}
+  .company-card-compact.expanded>dl,.company-card-compact.expanded>footer{grid-template-columns:1fr!important}
+  .company-card-compact.expanded>dl{margin-top:18px!important}
+}

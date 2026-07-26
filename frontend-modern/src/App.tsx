@@ -4160,16 +4160,23 @@ function Admin({
             {companyRows.filter((item)=>!item.empresa_matriz_id).map((company, index) => {
               const inactive = company.ativo === false || company.ativo === 0;
               const branches=companyRows.filter((item)=>Number(item.empresa_matriz_id)===Number(company.id));
+              const expanded=Boolean(expandedCompanies[company.id]);
               return (
                 <article
-                  className={`company-card ${inactive ? "inactive" : ""}`}
+                  className={`company-card company-card-compact ${inactive ? "inactive" : ""} ${expanded ? "expanded" : ""}`}
                   key={company.id || index}
                 >
-                  <header>
+                  <header onClick={()=>setExpandedCompanies(current=>({
+                    ...current,[company.id]:!current[company.id],
+                  }))}>
                     <i><Building2 /></i>
                     <span className={`status ${inactive ? "inactive" : ""}`}>
                       {inactive ? "Inativa" : "Ativa"}
                     </span>
+                    <button className="company-expand-toggle" type="button"
+                      aria-label={expanded?"Recolher detalhes":"Expandir detalhes"} aria-expanded={expanded}>
+                      <ChevronDown/>
+                    </button>
                   </header>
                   <div>
                     <small>EMPRESA</small>
