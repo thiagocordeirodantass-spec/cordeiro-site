@@ -4856,7 +4856,7 @@ export default function App() {
       setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
   }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
-  if (systemStatus?.maintenance.active&&maintenanceGrace===0)
+  if (systemStatus?.maintenance.active)
     return <MaintenanceNotice maintenance={systemStatus.maintenance} />;
   if (checking)
     return (
@@ -4866,9 +4866,7 @@ export default function App() {
       </div>
     );
   if (!user) return <><Login done={enter}/>{systemStatus?.maintenance.scheduled&&
-    <MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
-    {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
-      <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}</>;
+    <MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</>;
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);
@@ -4991,8 +4989,6 @@ export default function App() {
       </div>
       <Assistant />
       {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
-      {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
-        <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}
       {showWelcome && (
         <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
       )}
