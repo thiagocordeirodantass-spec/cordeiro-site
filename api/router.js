@@ -55,14 +55,16 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.26.13",
-  title:"Estrutura empresarial mais clara e produtiva",
-  publishedAt:"2026-07-26T19:10:00-03:00",
-  summary:"A gestão de matrizes e filiais ficou compacta, expansível e mais simples de operar.",
+  version:"2026.07.26.14",
+  title:"Landing e experiência fiscal evoluídas",
+  publishedAt:"2026-07-26T21:10:00-03:00",
+  summary:"A apresentação da Haixel, a Central de Documentos e o reconhecimento de CNDs receberam uma evolução completa.",
   items:[
     {type:"new",title:"Empresas compactas e expansíveis",text:"Cada matriz aparece resumida e abre detalhes, ações e filiais somente quando necessário."},
     {type:"new",title:"Documentos Fiscais reformulados",text:"Cofre, DF-e, importação, filtros, downloads e tabelas receberam uma interface operacional mais compacta e responsiva."},
-    {type:"new",title:"Nova landing page Haixel",text:"A apresentação pública agora reúne soluções, recursos, segurança e acessos diretos para login ou experiência gratuita."},
+    {type:"new",title:"Nova landing page Haixel",text:"A apresentação pública agora reúne soluções, recursos, segurança e acesso direto à plataforma."},
+    {type:"improved",title:"Landing mais completa e animada",text:"Novas seções, assistente visual, públicos atendidos, fluxo operacional, perguntas frequentes e microinterações apresentam melhor a plataforma."},
+    {type:"fixed",title:"Empresa correta nas CNDs",text:"O CNPJ reconhecido no PDF agora determina a matriz ou filial exibida como subtítulo da certidão."},
     {type:"improved",title:"Barra lateral restaurada",text:"A navegação principal voltou para a lateral esquerda, preservando mais contexto entre os módulos."},
     {type:"improved",title:"Gestão de filiais organizada",text:"Unidades vinculadas, certificados, módulos e cadastros permanecem acessíveis dentro da empresa correspondente."},
     {type:"fixed",title:"Ciclo de atualização corrigido",text:"O sistema volta a exibir manutenção durante a publicação e apresenta este resumo após a liberação."},
@@ -166,7 +168,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;

@@ -71,9 +71,15 @@ export default async function handler(req,res){
     const normalized=text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
     const cnpjs=[...new Set([...text.matchAll(/\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}/g)]
       .map(match=>match[0].replace(/\D/g,"")))];
-    const company=await pool.query("SELECT id,nome,cnpj FROM empresas WHERE id=$1 AND ativo=TRUE",[empresaId]);
-    if(!company.rowCount) return res.status(404).json({error:"Empresa não encontrada"});
-    const cnpj=String(company.rows[0].cnpj||cnpjs[0]||"").replace(/\D/g,"");
+    const activeCompany=await pool.query("SELECT id,nome,cnpj FROM empresas WHERE id=$1 AND ativo=TRUE",[empresaId]);
+    if(!activeCompany.rowCount) return res.status(404).json({error:"Empresa não encontrada"});
+    const recognizedCnpj=String(cnpjs[0]||"").replace(/\D/g,"");
+    const matchedCompany=recognizedCnpj?await pool.query(
+      "SELECT id,nome,cnpj FROM empresas WHERE regexp_replace(COALESCE(cnpj,''),'\\D','','g')=$1 AND ativo=TRUE ORDER BY id LIMIT 1",
+      [recognizedCnpj],
+    ):{rows:[],rowCount:0};
+    const company=matchedCompany.rowCount?matchedCompany.rows[0]:activeCompany.rows[0];
+    const cnpj=recognizedCnpj||String(company.cnpj||"").replace(/\D/g,"");
     const dateExpression=/\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}|\d{1,2}\s+de\s+[A-Za-zÀ-ÿ]+\s+de\s+\d{4}/gi;
     const allDates=[...text.matchAll(dateExpression)].map(match=>match[0]);
     const emissionRaw=findLabeledDate(text,"EMISS[AÃ]O|EMITIDA?|EXPEDI[CÇ][AÃ]O|GERADA?");
@@ -103,16 +109,16 @@ export default async function handler(req,res){
       data_emissao,data_validade,observacoes,pdf_data,pdf_name,orgao,cnpj,razao_social,situacao,
       emitida_em,valida_ate,numero)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::bytea,$11,$12,$13,$14,$15,$7,$8,$6) RETURNING *`,
-      [session.rows[0].user_id,company.rows[0].id,company.rows[0].nome,tipo,status,numero,dataEmissao,dataValidade,
+      [session.rows[0].user_id,company.id,company.nome,tipo,status,numero,dataEmissao,dataValidade,
        `PDF lido integralmente${totalPages?` (${totalPages} página(s))`:""}. Diagnóstico automático: ${diagnostico}.`,
-       bytes,safeName(file.originalFilename),orgao,cnpj,company.rows[0].nome,status]);
+       bytes,safeName(file.originalFilename),orgao,cnpj,company.nome,status]);
     const missing=[];if(!cnpj)missing.push("CNPJ");if(!dataEmissao)missing.push("data de emissão");
     if(!dataValidade)missing.push("data de validade");if(!numero)missing.push("número");
     const row=saved.rows[0];
     return res.json({ok:true,id:Number(row.id),document:{...row,pdf_data:undefined,pdf_url:`/api/certidoes/${row.id}/pdf`},
-      recognized:{cnpj,razaoSocial:company.rows[0].nome,
+      recognized:{cnpj,razaoSocial:company.nome,
       orgao,tipo,status,numero,dataEmissao,dataValidade,totalPages},
-      diagnostico,missing,message:`Certidão lida, vinculada a ${company.rows[0].nome} e diagnosticada: ${diagnostico}.`});
+      diagnostico,missing,message:`Certidão lida, vinculada a ${company.nome} e diagnosticada: ${diagnostico}.`});
   }catch(error){
     if(parser)try{await parser.destroy()}catch{}
     console.error("CND recognize",stage,error);
