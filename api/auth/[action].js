@@ -81,6 +81,7 @@ async function publicUser(user) {
     email: user.email,
     role: user.role,
     primeiro_login: Boolean(user.primeiro_login),
+    onboarding_completed: Boolean(user.onboarding_completed_at),
     ultimo_login: user.ultimo_login,
     is_super_admin: user.role === "admin",
     memberships,
@@ -95,6 +96,7 @@ async function publicUser(user) {
     instagram_url: user.instagram_url || "",
     website_url: user.website_url || "",
     telefone: user.telefone || "",
+    avatar_url: user.avatar_mime ? "/api/auth/avatar" : null,
   };
 }
 
@@ -203,6 +205,17 @@ export default async function handler(request, response) {
       if (!user)
         return response.status(401).json({ error: "Não autenticado" });
       return response.json({ user: await publicUser(user) });
+    }
+
+    if (action === "onboarding" && request.method === "POST") {
+      const user = await currentUser(request);
+      if (!user)
+        return response.status(401).json({ error: "Não autenticado" });
+      await pool.query(
+        "UPDATE users SET onboarding_completed_at=COALESCE(onboarding_completed_at,NOW()) WHERE id=$1",
+        [user.id],
+      );
+      return response.json({ ok: true });
     }
 
     if (action === "me" && request.method === "PUT") {

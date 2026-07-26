@@ -25,7 +25,6 @@ export default async function handler(req,res){
     const auth=await pool.query(`SELECT s.user_id,u.role FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.id=$1 AND s.expires_at>NOW() AND u.ativo=TRUE`,[sessionId]);
     if(!auth.rowCount)return res.status(401).json({error:"Não autenticado"});
-    if(auth.rows[0].role!=="admin")return res.status(403).json({error:"Apenas administradores podem configurar o certificado"});
     const company=await pool.query("SELECT id,cnpj,nome FROM empresas WHERE id=$1 AND ativo=TRUE",[empresaId]);
     if(!company.rowCount)return res.status(404).json({error:"Empresa não encontrada"});
     if(req.method==="GET"){
@@ -33,6 +32,7 @@ export default async function handler(req,res){
         FROM empresa_certificados WHERE empresa_id=$1`,[empresaId]);
       return res.json({configurado:Boolean(result.rowCount),certificado:result.rows[0]||null});
     }
+    if(auth.rows[0].role!=="admin")return res.status(403).json({error:"Apenas administradores podem configurar o certificado"});
     if(req.method==="DELETE"){
       await pool.query("DELETE FROM empresa_certificados WHERE empresa_id=$1",[empresaId]);
       await pool.query("UPDATE sessions SET auth_method='password' WHERE id=$1",[sessionId]);

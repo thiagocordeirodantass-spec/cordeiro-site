@@ -7,7 +7,9 @@ import {
   Bell,
   BookOpen,
   Building2,
+  Bug,
   ChevronDown,
+  CheckCircle2,
   CloudDownload,
   FileDown,
   FileText,
@@ -22,10 +24,12 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  Megaphone,
   Moon,
   PackageSearch,
   Radar,
   RefreshCw,
+  Rocket,
   Save,
   Search,
   Send,
@@ -36,6 +40,7 @@ import {
   UploadCloud,
   UserRound,
   Users,
+  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -548,14 +553,16 @@ function FiscalFilters({
 function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
     [direction,setDirection]=useState<"outgoing"|"incoming">("outgoing"),
-    [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true);
+    [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true),
+    [syncing,setSyncing]=useState(false),issuedSyncRef=useRef(false);
   const issuedParams=new URLSearchParams({month,direction,...(kind?{kind}:{})});
   const load=useCallback((notify=false)=>{setBusy(true);api<any>(`/api/docs/issued?${issuedParams}`)
     .then(result=>{setData(result);if(notify)toast(`${result.items?.length||0} documento(s) emitido(s) atualizado(s)`)})
     .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,direction,toast]);
   useEffect(()=>{load();const timer=window.setInterval(()=>load(false),30000);return()=>window.clearInterval(timer)},[load]);
   const refreshIssued=async()=>{
-    setBusy(true);
+    if(issuedSyncRef.current)return;
+    issuedSyncRef.current=true;setSyncing(true);
     try{
       const [year,monthNumber]=month.split("-").map(Number);
       const dateFrom=`${month}-01`;
@@ -567,7 +574,7 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
       const message=(error as Error).message;
       toast(/espera|aguarde|bloque|656/i.test(message)?message:`Não foi possível sincronizar com a SEFAZ: ${message}`,true);
       await load(false);
-    }finally{setBusy(false)}
+    }finally{issuedSyncRef.current=false;setSyncing(false)}
   };
   const stats=data.stats||{};
   return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
@@ -575,7 +582,7 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
     action={<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
       <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.xlsx`)}><FileDown/> NFS-e Excel</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/csv?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.csv`)}><FileDown/> CSV</button>
-      <button className="primary" onClick={refreshIssued} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Buscar na SEFAZ</button></div>}/>
+      <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<RefreshCw/>} {syncing?"Sincronizando...":"Buscar na SEFAZ"}</button></div>}/>
     <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
       <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
       <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
@@ -1726,6 +1733,108 @@ function TurnstileBox({
   );
 }
 
+function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
+  const [data,setData]=useState<any>(null),[file,setFile]=useState<File|null>(null),
+    [password,setPassword]=useState(""),[busy,setBusy]=useState(false);
+  const load=useCallback(async()=>{
+    try{
+      const me=await api<any>("/api/auth/me");
+      const company=me.user.empresa_ativa;
+      const companyId=Number(company?.empresa_id||company?.id||me.user.empresa_ativa_id);
+      if(!companyId)throw new Error("Selecione uma empresa no topo do sistema");
+      const [modules,certificate,sync]=await Promise.all([
+        api<any>(`/api/empresas/${companyId}/modulos`),
+        api<any>(`/api/empresas/${companyId}/certificado`),
+        api<any>("/api/sefaz/sync-state"),
+      ]);
+      setData({company,companyId,modules,certificate,sync,admin:Boolean(me.user.is_super_admin||me.user.role==="admin")});
+    }catch(error){toast((error as Error).message,true)}
+  },[toast]);
+  useEffect(()=>{load()},[load]);
+  async function saveCertificate(){
+    if(!file||!password)return toast("Selecione o PFX/P12 e informe a senha",true);
+    setBusy(true);
+    try{
+      const body=new FormData();body.set("certificate",file);body.set("password",password);
+      await api(`/api/empresas/${data.companyId}/certificado`,{method:"POST",body});
+      setFile(null);setPassword("");toast("Certificado validado e protegido no cofre da empresa");await load();
+    }catch(error){toast((error as Error).message,true)}finally{setBusy(false)}
+  }
+  async function removeCertificate(){
+    setBusy(true);
+    try{await api(`/api/empresas/${data.companyId}/certificado`,{method:"DELETE"});
+      toast("Certificado removido");await load()}catch(error){toast((error as Error).message,true)}finally{setBusy(false)}
+  }
+  async function saveProtection(){
+    setBusy(true);
+    try{
+      const config=data.modules.modulos.sefaz;
+      await api(`/api/empresas/${data.companyId}/modulos`,{method:"PUT",body:{
+        modulo:"sefaz",configuracao:config,ativo:config.ativo!==false,
+      }});
+      toast("Proteções e preferências SEFAZ salvas");
+    }catch(error){toast((error as Error).message,true)}finally{setBusy(false)}
+  }
+  if(!data)return <section className="sefaz-control loading-card"><RefreshCw className="spin"/><span>Carregando cofre e proteções SEFAZ...</span></section>;
+  const config=data.modules.modulos.sefaz,state=data.sync.state||{},locked=state.locked_until&&new Date(state.locked_until)>new Date();
+  const certificate=data.certificate?.certificado;
+  return <section className="sefaz-control">
+    <header><div><span className="eyebrow">CENTRO DE CONTROLE</span><h2>Segurança, certificado e consumo protegido</h2>
+      <p>Configuração da empresa ativa: <b>{data.company?.nome}</b></p></div>
+      <span className={`sefaz-health ${locked?"waiting":"protected"}`}><i/>{locked?"Em espera segura":"Proteções ativas"}</span></header>
+    <div className="sefaz-control-kpis">
+      <article><ShieldCheck/><span><small>Certificado A1</small><b>{data.certificate?.configurado?"Validado":"Não configurado"}</b></span></article>
+      <article><Network/><span><small>Último NSU</small><b>{state.ult_nsu||"0"}</b></span></article>
+      <article><Activity/><span><small>Consultas individuais / 1h</small><b>{data.sync.individualQueriesLastHour||0} de 18</b></span></article>
+      <article><RefreshCw/><span><small>Estado da fila</small><b>{String(state.last_status||"Não iniciada").replaceAll("_"," ")}</b></span></article>
+    </div>
+    <div className="sefaz-control-grid">
+      <section className="sefaz-vault"><header><i><ShieldCheck/></i><span><b>Certificado digital A1</b>
+        <small>{certificate?`${certificate.arquivo_nome} · válido até ${date(certificate.validade_fim)}`:
+          "Anexe o PFX/P12 da empresa. CNPJ e validade serão conferidos antes de salvar."}</small></span></header>
+        {data.admin?<div className="company-certificate-fields">
+          <label><input type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={e=>setFile(e.target.files?.[0]||null)}/>
+            <span>{file?.name||"Selecionar PFX/P12"}</span></label>
+          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Senha do certificado"/>
+          <button disabled={busy} onClick={saveCertificate}>{busy?<RefreshCw className="spin"/>:<Save/>} Validar e salvar</button>
+          {data.certificate?.configurado&&<button className="danger" disabled={busy} onClick={removeCertificate}><Trash2/> Remover</button>}
+        </div>:<div className="hub-readonly"><ShieldCheck/> Somente administradores podem substituir o certificado.</div>}
+        <p><ShieldCheck/> Arquivo e senha ficam criptografados; o navegador não recebe o conteúdo após o envio.</p>
+      </section>
+      <section className="sefaz-policy"><header><i><Activity/></i><span><b>Política preventiva</b>
+        <small>Limites conservadores para Distribuição DF-e</small></span></header>
+        <div className="sefaz-policy-fields">
+          <label>UF autora<input maxLength={2} value={config.uf||"MG"} onChange={e=>setData({...data,modules:{...data.modules,
+            modulos:{...data.modules.modulos,sefaz:{...config,uf:e.target.value.toUpperCase()}}}})}/></label>
+          <label>Estratégia<select value={config.modo_consulta||"nsu"} onChange={e=>setData({...data,modules:{...data.modules,
+            modulos:{...data.modules.modulos,sefaz:{...config,modo_consulta:e.target.value}}}})}>
+            <option value="nsu">distNSU sequencial</option><option value="chave">Chaves individuais</option></select></label>
+          <label>Limite interno / hora<input type="number" min="1" max="18" value={config.limite_chaves_hora??18}
+            onChange={e=>setData({...data,modules:{...data.modules,modulos:{...data.modules.modulos,
+              sefaz:{...config,limite_chaves_hora:Math.min(18,Math.max(1,Number(e.target.value)))}}}})}/></label>
+          <label>Máximo por lote<input type="number" min="1" max="50" value={config.lote_maximo??50}
+            onChange={e=>setData({...data,modules:{...data.modules,modulos:{...data.modules.modulos,
+              sefaz:{...config,lote_maximo:Math.min(50,Math.max(1,Number(e.target.value)))}}}})}/></label>
+        </div>
+        {data.admin&&<button className="save-policy" disabled={busy} onClick={saveProtection}><Save/> Salvar política</button>}
+      </section>
+    </div>
+    {locked&&<div className="sefaz-lock-alert"><Bell/><span><b>Fila em pausa preventiva</b>
+      <small>Nova tentativa liberada após {new Date(state.locked_until).toLocaleString("pt-BR")}. Antecipar a chamada pode reiniciar a contagem da SEFAZ.</small></span></div>}
+    <div className="sefaz-guardrails">
+      {[
+        ["NSU sempre crescente","Cada chamada continua exatamente do ultNSU devolvido; o sistema não reinicia em zero.",ShieldCheck],
+        ["Uma fila por CNPJ","Bloqueio transacional impede duas sincronizações simultâneas para a mesma empresa.",Network],
+        ["cStat 137: pausa de 1 hora","Quando não há documentos novos, nenhuma nova chamada distNSU é feita durante 60 minutos.",RefreshCw],
+        ["cStat 656: pausa integral","Após Consumo Indevido, aguarda 60 minutos completos; novas tentativas não encurtam o prazo.",Bell],
+        ["Margem abaixo do limite oficial","Chaves individuais limitadas internamente a 18/h, abaixo das 20/h informadas pela SEFAZ.",Activity],
+        ["Sem looping de erros","Falhas repetidas entram em espera e ficam registradas, evitando reenvio contínuo pelo certificado.",X],
+      ].map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span></article>)}
+    </div>
+    <footer><ShieldCheck/><p><b>Atenção:</b> outras aplicações que consultem o mesmo CNPJ também devem compartilhar a sequência do último NSU. O sistema protege as chamadas feitas pelo Cordeiro, mas não controla softwares externos.</p></footer>
+  </section>
+}
+
 function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [key, setKey] = useState(()=>localStorage.getItem("cordeiro.sefaz.queue")||""),
     [kind, setKind] = useState("nfe"),
@@ -1978,6 +2087,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           ["03","Importação segura","Somente documentos completos entram na Central."],
         ].map(([number,title,text])=><article key={number}><b>{number}</b><span><strong>{title}</strong><small>{text}</small></span></article>)}
       </section>
+      <SefazControlCenter toast={toast}/>
       <div className="fiscal-grid">
         <Panel title="Consulta e importação de documentos">
           <div className="query-box">
@@ -2492,10 +2602,12 @@ function Profile({
     try {
       const body = new FormData();
       body.set("avatar", file);
-      const r = await api<{ user: User }>("/api/auth/me/avatar", {
+      const uploaded = await api<{ avatar_url:string }>("/api/auth/avatar", {
         method: "POST",
         body,
       });
+      const r = await api<{ user: User }>("/api/auth/me");
+      r.user.avatar_url=uploaded.avatar_url;
       onUpdate(r.user);
       setForm({ ...r.user });
       toast("Foto do perfil atualizada");
@@ -2508,7 +2620,7 @@ function Profile({
   async function removeAvatar() {
     setBusy(true);
     try {
-      await api("/api/auth/me/avatar", { method: "DELETE" });
+      await api("/api/auth/avatar", { method: "DELETE" });
       const r = await api<{ user: User }>("/api/auth/me");
       onUpdate(r.user);
       setForm({ ...r.user });
@@ -3010,18 +3122,18 @@ function Assistant() {
         ) : (
           <>
             <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
-            <span>Ajuda</span>
+            <span><b>IA fiscal</b><small>Como posso ajudar?</small></span>
           </>
         )}
       </button>
       {open && (
         <section className="assistant">
           <header>
-            <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
+            <span className="assistant-avatar"><img src="/assets/macaco-ia.png" alt="Macaquinho da IA" /></span>
             <div>
-              <b>Seu amigo fiscal</b>
+              <b>Cordeiro IA <em>Beta</em></b>
               <small>
-                Online · {aiEnabled ? "IA fiscal ativada" : "ajuda fiscal"}
+                <i /> {aiEnabled ? "Assistente fiscal disponível" : "Central de ajuda disponível"}
               </small>
             </div>
             <button onClick={() => setOpen(false)}>
@@ -3156,6 +3268,239 @@ function NotificationCenter({
         </section>
       )}
     </div>
+  );
+}
+
+type SystemStatus = {
+  release: {
+    version: string;
+    title: string;
+    publishedAt: string;
+    summary: string;
+    items: { type: "new" | "improved" | "fixed"; title: string; text: string }[];
+  };
+  maintenance: {
+    active: boolean;
+    title: string;
+    message: string;
+    startsAt?: string | null;
+    endsAt?: string | null;
+  };
+};
+
+function WelcomeExperience({
+  user,
+  admin,
+  onNavigate,
+  onFinish,
+}: {
+  user: User;
+  admin: boolean;
+  onNavigate: (page: Page) => void;
+  onFinish: () => void;
+}) {
+  const steps = [
+    {
+      title: `Bem-vindo, ${String(user.nome || user.username).split(" ")[0]}!`,
+      tag: "SEU NOVO ESPAÇO FISCAL",
+      text: "Vamos conhecer o Cordeiro Fiscal. Em poucos passos, você verá onde acompanhar a operação, consultar documentos e cuidar da regularidade da empresa.",
+      Icon: Sparkles,
+    },
+    {
+      page: "dashboard" as Page,
+      title: "Cockpit fiscal",
+      tag: "VISÃO OPERACIONAL",
+      text: "Seu ponto de partida. Aqui você enxerga indicadores, movimentações, alertas e o panorama fiscal da empresa ativa.",
+      Icon: Radar,
+    },
+    {
+      page: "documents" as Page,
+      title: "Central de documentos",
+      tag: "GESTÃO DOCUMENTAL",
+      text: "Consulte e filtre NF-e, CT-e e outros documentos já armazenados, com acesso rápido aos arquivos e detalhes fiscais.",
+      Icon: Files,
+    },
+    {
+      page: "issued" as Page,
+      title: "Documentos emitidos e recebidos",
+      tag: "MONITOR SEFAZ",
+      text: "Acompanhe tanto os documentos emitidos pela empresa quanto os emitidos contra o seu CNPJ, respeitando a fila segura da SEFAZ.",
+      Icon: Send,
+    },
+    {
+      page: "import" as Page,
+      title: "Central XML",
+      tag: "IMPORTAÇÃO",
+      text: "Importe XML e PDF, extraia informações e incorpore documentos à base fiscal sem digitação repetitiva.",
+      Icon: UploadCloud,
+    },
+    {
+      page: "reports" as Page,
+      title: "Inteligência fiscal",
+      tag: "ANÁLISE",
+      text: "Transforme os documentos em relatórios e leituras gerenciais para apoiar conferências e decisões.",
+      Icon: BarChart3,
+    },
+    {
+      page: "certificates" as Page,
+      title: "Regularidade CND",
+      tag: "CERTIDÕES",
+      text: "Controle validade, situação e alertas das certidões para evitar vencimentos inesperados.",
+      Icon: ShieldCheck,
+    },
+    {
+      page: "integrations" as Page,
+      title: "Hub SEFAZ",
+      tag: "INTEGRAÇÕES",
+      text: "Centralize o certificado A1, acompanhe o NSU e consulte todas as proteções usadas para reduzir bloqueios por consumo indevido.",
+      Icon: Network,
+    },
+    ...(admin
+      ? [
+          {
+            page: "companies" as Page,
+            title: "Empresas e acessos",
+            tag: "GOVERNANÇA",
+            text: "Como administrador, você também pode configurar empresas, módulos, usuários e permissões da equipe.",
+            Icon: Building2,
+          },
+        ]
+      : []),
+  ];
+  const [index, setIndex] = useState(0);
+  const step = steps[index];
+  useEffect(() => {
+    if (step.page) onNavigate(step.page);
+  }, [index]);
+  const finish = () => onFinish();
+  return (
+    <div className="experience-backdrop" role="dialog" aria-modal="true">
+      <section className="welcome-experience">
+        <div className="experience-visual">
+          <span className="experience-orbit one" />
+          <span className="experience-orbit two" />
+          <div className="experience-icon"><step.Icon /></div>
+          <Brand />
+          <small>PASSO {index + 1} DE {steps.length}</small>
+        </div>
+        <div className="experience-content">
+          <button className="experience-skip" onClick={finish}>Pular apresentação</button>
+          <span className="eyebrow">{step.tag}</span>
+          <h2>{step.title}</h2>
+          <p>{step.text}</p>
+          <div className="experience-progress" aria-label="Progresso da apresentação">
+            {steps.map((_, stepIndex) => (
+              <button
+                aria-label={`Ir para o passo ${stepIndex + 1}`}
+                className={stepIndex === index ? "active" : stepIndex < index ? "done" : ""}
+                onClick={() => setIndex(stepIndex)}
+                key={stepIndex}
+              />
+            ))}
+          </div>
+          <footer>
+            <button
+              className="secondary"
+              disabled={index === 0}
+              onClick={() => setIndex((value) => Math.max(0, value - 1))}
+            >
+              Voltar
+            </button>
+            <button
+              className="primary"
+              onClick={() => index === steps.length - 1 ? finish() : setIndex((value) => value + 1)}
+            >
+              {index === steps.length - 1 ? "Começar a usar" : "Conhecer próximo módulo"}
+              <ArrowUpRight />
+            </button>
+          </footer>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReleaseExperience({
+  release,
+  onClose,
+}: {
+  release: SystemStatus["release"];
+  onClose: () => void;
+}) {
+  const icons = { new: Rocket, improved: Sparkles, fixed: Bug };
+  const labels = { new: "Novidade", improved: "Melhoria", fixed: "Correção" };
+  return (
+    <div className="experience-backdrop" role="dialog" aria-modal="true">
+      <section className="release-experience">
+        <header>
+          <div className="release-symbol"><Megaphone /></div>
+          <div>
+            <span className="eyebrow">NOVIDADES · VERSÃO {release.version}</span>
+            <h2>{release.title}</h2>
+            <p>{release.summary}</p>
+          </div>
+          <button className="icon-button" onClick={onClose}><X /></button>
+        </header>
+        <div className="release-list">
+          {release.items.map((item) => {
+            const Icon = icons[item.type];
+            return (
+              <article className={item.type} key={item.title}>
+                <i><Icon /></i>
+                <div>
+                  <small>{labels[item.type]}</small>
+                  <b>{item.title}</b>
+                  <p>{item.text}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <footer>
+          <small>Publicado em {new Date(release.publishedAt).toLocaleDateString("pt-BR")}</small>
+          <button className="primary" onClick={onClose}><CheckCircle2 /> Entendi as novidades</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function MaintenanceNotice({
+  maintenance,
+  open,
+  setOpen,
+}: {
+  maintenance: SystemStatus["maintenance"];
+  open: boolean;
+  setOpen: (value: boolean) => void;
+}) {
+  if (!maintenance.active) return null;
+  return (
+    <>
+      <button className="maintenance-banner" onClick={() => setOpen(true)}>
+        <i><Wrench /></i>
+        <span><b>{maintenance.title}</b><small>{maintenance.message}</small></span>
+        <em>Ver aviso</em>
+      </button>
+      {open && (
+        <div className="experience-backdrop maintenance-backdrop" role="dialog" aria-modal="true">
+          <section className="maintenance-experience">
+            <button className="icon-button" onClick={() => setOpen(false)}><X /></button>
+            <div className="maintenance-symbol"><Wrench /></div>
+            <span className="eyebrow">SISTEMA EM ATUALIZAÇÃO</span>
+            <h2>{maintenance.title}</h2>
+            <p>{maintenance.message}</p>
+            {(maintenance.startsAt || maintenance.endsAt) && (
+              <div className="maintenance-window">
+                {maintenance.startsAt && <span><small>Início previsto</small><b>{new Date(maintenance.startsAt).toLocaleString("pt-BR")}</b></span>}
+                {maintenance.endsAt && <span><small>Conclusão prevista</small><b>{new Date(maintenance.endsAt).toLocaleString("pt-BR")}</b></span>}
+              </div>
+            )}
+            <button className="primary" onClick={() => setOpen(false)}>Continuar para o sistema</button>
+          </section>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -3313,9 +3658,6 @@ function Admin({
     [expandedCompanies,setExpandedCompanies]=useState<Record<number,boolean>>({}),
     [replicateTargets,setReplicateTargets]=useState<number[]>([]),
     [replicationOpen,setReplicationOpen]=useState(false),
-    [companyCertificateFile,setCompanyCertificateFile]=useState<File|null>(null),
-    [companyCertificatePassword,setCompanyCertificatePassword]=useState(""),
-    [companyCertificateBusy,setCompanyCertificateBusy]=useState(false),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3362,38 +3704,10 @@ function Admin({
   }
   async function openModules(company:any){
     try{
-      const [data,certificate]=await Promise.all([
-        api<any>(`/api/empresas/${company.id}/modulos`),
-        api<any>(`/api/empresas/${company.id}/certificado`),
-      ]);
-      setModuleCompany(company); setModuleData({...data,certificate}); setModuleTab("cnd");
-      setCompanyCertificateFile(null);setCompanyCertificatePassword("");
+      const data=await api<any>(`/api/empresas/${company.id}/modulos`);
+      setModuleCompany(company); setModuleData(data); setModuleTab("cnd");
       setReplicationOpen(false); setReplicateTargets([]);
     }catch(error){toast((error as Error).message,true)}
-  }
-  async function saveCompanyCertificate(){
-    if(!companyCertificateFile||!companyCertificatePassword)
-      return toast("Selecione o arquivo PFX/P12 e informe a senha",true);
-    setCompanyCertificateBusy(true);
-    try{
-      const body=new FormData();
-      body.set("certificate",companyCertificateFile);
-      body.set("password",companyCertificatePassword);
-      const certificate=await api<any>(`/api/empresas/${moduleCompany.id}/certificado`,{method:"POST",body});
-      setModuleData({...moduleData,certificate});
-      setCompanyCertificateFile(null);setCompanyCertificatePassword("");
-      toast("Certificado validado e vinculado à empresa");
-    }catch(error){toast((error as Error).message,true)}
-    finally{setCompanyCertificateBusy(false)}
-  }
-  async function removeCompanyCertificate(){
-    setCompanyCertificateBusy(true);
-    try{
-      await api(`/api/empresas/${moduleCompany.id}/certificado`,{method:"DELETE"});
-      setModuleData({...moduleData,certificate:{configurado:false,certificado:null}});
-      toast("Certificado removido da empresa");
-    }catch(error){toast((error as Error).message,true)}
-    finally{setCompanyCertificateBusy(false)}
   }
   async function saveModule(){
     try{
@@ -3770,40 +4084,9 @@ function Admin({
                   ...moduleData.modulos.cnd,dominio_remetente:e.target.value}}})}/></label>
             </>}
             {moduleTab==="sefaz"&&<>
-              <h3>Consulta SEFAZ</h3>
-              <div className="mtls-company-card">
-                <i><ShieldCheck/></i><span><b>Certificado digital A1 da empresa</b>
-                  <small>{moduleData.certificate?.configurado
-                    ? `${moduleData.certificate.certificado?.arquivo_nome} · válido até ${date(moduleData.certificate.certificado?.validade_fim)}`
-                    :"Anexe o arquivo PFX/P12 e informe a senha. O certificado será validado pelo CNPJ da empresa."}</small></span>
-                <div className="company-certificate-fields">
-                  <label><input type="file" accept=".pfx,.p12,application/x-pkcs12"
-                    onChange={e=>setCompanyCertificateFile(e.target.files?.[0]||null)}/>
-                    <span>{companyCertificateFile?.name||"Selecionar PFX/P12"}</span></label>
-                  <input type="password" value={companyCertificatePassword}
-                    onChange={e=>setCompanyCertificatePassword(e.target.value)} placeholder="Senha do certificado"/>
-                  <button type="button" disabled={companyCertificateBusy} onClick={saveCompanyCertificate}>
-                    {companyCertificateBusy?<RefreshCw className="spin"/>:<Save/>} Validar e salvar</button>
-                  {moduleData.certificate?.configurado&&<button type="button" className="danger"
-                    disabled={companyCertificateBusy} onClick={removeCompanyCertificate}><Trash2/> Remover</button>}
-                </div>
-              </div>
-              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.consulta_automatica)}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,consulta_automatica:e.target.checked}}})}/>Consulta automática habilitada</label>
-              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.importar_automaticamente)}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,importar_automaticamente:e.target.checked}}})}/>Importar documentos automaticamente</label>
-              <label>UF autora<input maxLength={2} value={moduleData.modulos.sefaz.uf}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,uf:e.target.value.toUpperCase()}}})}/></label>
-              <label>Estratégia de consulta<select value={moduleData.modulos.sefaz.modo_consulta||"nsu"}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,modo_consulta:e.target.value}}})}>
-                <option value="nsu">Lotes por NSU (recomendado)</option><option value="chave">Chaves individuais protegidas</option></select></label>
-              <label>Limite de chaves por hora<input type="number" min="1" max="18"
-                value={moduleData.modulos.sefaz.limite_chaves_hora??18}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,limite_chaves_hora:Math.min(18,Math.max(1,Number(e.target.value)))}}})}/></label>
-              <label>Registros por lote<input type="number" min="1" max="50"
-                value={moduleData.modulos.sefaz.lote_maximo??50}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,lote_maximo:Math.min(50,Math.max(1,Number(e.target.value)))}}})}/></label>
-              <div className="secure-note"><ShieldCheck/><span><b>Proteção contra Consumo Indevido 656 ativa</b><small>Preserva o último NSU, impede sincronizações simultâneas, consulta em lotes e aplica pausa automática de 60 minutos quando solicitado pela SEFAZ.</small></span></div>
+              <h3>Configuração centralizada</h3>
+              <div className="secure-note"><Network/><span><b>Certificado e proteções foram movidos para o Hub SEFAZ</b>
+                <small>Use Integrações → Hub SEFAZ para administrar o A1, acompanhar o último NSU, verificar a fila e ajustar os limites preventivos.</small></span></div>
             </>}
             {moduleTab==="documentos"&&<>
               <h3>Armazenamento de documentos</h3>
@@ -4162,6 +4445,10 @@ export default function App() {
     [mobile, setMobileState] = useState(false),
     [dark, setDark] = useState(()=>localStorage.getItem("cordeiro.theme")==="dark"),
     [note, setNote] = useState<{ s: string; e: boolean } | null>(null),
+    [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
+    [showWelcome, setShowWelcome] = useState(false),
+    [showRelease, setShowRelease] = useState(false),
+    [maintenanceOpen, setMaintenanceOpen] = useState(false),
     [notifications, setNotifications] =
       useState<AppNotification[]>(storedNotifications);
   const setMobile = (value: boolean) =>
@@ -4223,6 +4510,18 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("cordeiro.theme",dark?"dark":"light");
   }, [dark]);
+  useEffect(() => {
+    if (!user) return;
+    api<SystemStatus>("/api/system").then((status) => {
+      setSystemStatus(status);
+      const welcomeKey = `cordeiro.onboarding.${user.id}`;
+      const releaseKey = `cordeiro.release.${user.id}`;
+      const firstAccess = !user.onboarding_completed && localStorage.getItem(welcomeKey) !== "1";
+      setShowWelcome(firstAccess);
+      setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
+      setMaintenanceOpen(Boolean(status.maintenance.active));
+    }).catch(() => {});
+  }, [user]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
   if (checking)
     return (
@@ -4241,6 +4540,17 @@ export default function App() {
     setUser(null);
     setCompany(null);
   }
+  const finishWelcome = () => {
+    localStorage.setItem(`cordeiro.onboarding.${user.id}`, "1");
+    api("/api/auth/onboarding", { method: "POST" }).catch(() => {});
+    setShowWelcome(false);
+    if (systemStatus && localStorage.getItem(`cordeiro.release.${user.id}`) !== systemStatus.release.version)
+      setShowRelease(true);
+  };
+  const closeRelease = () => {
+    if (systemStatus) localStorage.setItem(`cordeiro.release.${user.id}`, systemStatus.release.version);
+    setShowRelease(false);
+  };
   return (
     <div className="shell">
       <aside className={mobile ? "open" : ""}>
@@ -4338,6 +4648,19 @@ export default function App() {
         </main>
       </div>
       <Assistant />
+      {systemStatus && (
+        <MaintenanceNotice
+          maintenance={systemStatus.maintenance}
+          open={maintenanceOpen}
+          setOpen={setMaintenanceOpen}
+        />
+      )}
+      {showWelcome && (
+        <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
+      )}
+      {!showWelcome && showRelease && systemStatus && (
+        <ReleaseExperience release={systemStatus.release} onClose={closeRelease} />
+      )}
       {note && (
         <div className={`toast ${note.e ? "bad" : ""}`}>
           {note.e ? <X /> : <ShieldCheck />}

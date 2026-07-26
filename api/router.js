@@ -376,17 +376,31 @@ export default async function handler(request, response) {
     }
 
     if (route[0] === "sefaz" && route[1] === "cert" && route[2] === "listar") {
-      const configured = Boolean(process.env.SEFAZ_PFX_BASE64 && process.env.SEFAZ_PFX_PASSWORD);
+      const certificate=activeEmpresaId?await pool.query(`SELECT arquivo_nome,titular,cnpj,validade_fim
+        FROM empresa_certificados WHERE empresa_id=$1`,[activeEmpresaId]):{rows:[],rowCount:0};
+      const configured = Boolean(certificate.rowCount||process.env.SEFAZ_PFX_BASE64);
       return response.json({
         certificados: configured
           ? [{
-              thumbprint: "vercel-secret",
-              label: "INTECOM SERVIÇOS DE LOGÍSTICA LTDA",
-              subject: `CNPJ ${process.env.SEFAZ_CNPJ || ""}`,
-              issuer: "Certificado A1 protegido na Vercel",
+              thumbprint: certificate.rowCount?"empresa-db":"vercel-secret",
+              label: certificate.rows[0]?.arquivo_nome||"Certificado A1 configurado",
+              subject: certificate.rows[0]?.titular||`CNPJ ${process.env.SEFAZ_CNPJ || ""}`,
+              issuer: certificate.rowCount?"Cofre criptografado da empresa":"Certificado protegido na Vercel",
+              validade_fim:certificate.rows[0]?.validade_fim||null,
             }]
           : [],
       });
+    }
+    if(route[0]==="sefaz"&&route[1]==="sync-state"&&request.method==="GET"){
+      if(!activeEmpresaId)return response.status(400).json({error:"Selecione uma empresa"});
+      const state=await pool.query(`SELECT ult_nsu,max_nsu,locked_until,last_status,last_error,updated_at
+        FROM sefaz_sync_state WHERE empresa_id=$1`,[activeEmpresaId]);
+      const usage=await pool.query(`SELECT COUNT(*)::int used FROM sefaz_key_query_log
+        WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,[activeEmpresaId]);
+      return response.json({state:state.rows[0]||{ult_nsu:"0",max_nsu:"0",last_status:"ainda_não_iniciado"},
+        individualQueriesLastHour:Number(usage.rows[0]?.used||0),safeLimit:18,
+        protections:{sequentialNsu:true,exclusiveQueue:true,cooldown137Minutes:60,
+          cooldown656Minutes:60,individualLimitPerHour:18,officialLimitPerHour:20}});
     }
 
     if (

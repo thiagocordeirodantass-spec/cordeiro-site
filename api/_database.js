@@ -32,6 +32,7 @@ export function ensureSchema() {
         role VARCHAR(20) NOT NULL DEFAULT 'operador',
         ativo BOOLEAN NOT NULL DEFAULT TRUE,
         primeiro_login BOOLEAN NOT NULL DEFAULT FALSE,
+        onboarding_completed_at TIMESTAMPTZ,
         ultimo_login TIMESTAMPTZ,
         cargo TEXT,
         area_atuacao TEXT,
@@ -51,6 +52,9 @@ export function ensureSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS website_url TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS telefone TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS preferencias JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
