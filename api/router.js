@@ -172,7 +172,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -321,8 +321,12 @@ export default async function handler(request, response) {
       }
       if (route.length === 1 && request.method === "GET") {
         const empresaId=Number(request.headers["x-empresa-id"]||request.query.empresaId||0);
-        const result = await pool.query(`SELECT c.*,COALESCE(e.nome,c.empresa_nome,'Empresa ativa') empresa_nome
+        const result = await pool.query(`SELECT c.*,COALESCE(
+            CASE WHEN e.empresa_matriz_id IS NOT NULL
+              THEN CONCAT(COALESCE(m.nome,e.nome),' · ',COALESCE(NULLIF(e.nome_fantasia,''),e.nome))
+              ELSE e.nome END,c.empresa_nome,'Empresa ativa') empresa_nome
           FROM certidoes c LEFT JOIN empresas e ON e.id=c.empresa_id
+          LEFT JOIN empresas m ON m.id=e.empresa_matriz_id
           WHERE ($1::bigint=0 OR c.empresa_id=$1) ORDER BY data_validade ASC NULLS LAST`,[empresaId]);
         return response.json(result.rows.map(row=>({
           ...row,pdf_data:undefined,pdf_url:row.pdf_data?`/api/certidoes/${row.id}/pdf`:null,

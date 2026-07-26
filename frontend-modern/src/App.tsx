@@ -154,8 +154,7 @@ function Landing({onAccess}:{onAccess:()=>void}) {
       <div className="landing-hero-copy"><span><Sparkles/> GESTÃO FISCAL INTELIGENTE</span>
         <h1>Controle fiscal claro para empresas que querem <em>avançar.</em></h1>
         <p>Documentos, certidões, SEFAZ e empresas reunidos em uma plataforma segura, rápida e preparada para a sua operação.</p>
-        <div><button className="landing-trial" onClick={onAccess}>Acessar a Haixel <ArrowUpRight/></button>
-          <a className="landing-demo" href="#recursos"><Radar/> Conhecer recursos</a></div>
+        <div><a className="landing-demo" href="#recursos"><Radar/> Conhecer recursos</a></div>
         <small><CheckCircle2/> Acesso web <CheckCircle2/> Sem instalação <CheckCircle2/> Dados protegidos</small>
       </div>
       <div className="landing-product">
@@ -177,8 +176,7 @@ function Landing({onAccess}:{onAccess:()=>void}) {
     </section>
     <section className="landing-audiences"><header><span>FEITA PARA OPERAÇÕES REAIS</span><h2>Uma base fiscal que acompanha diferentes negócios.</h2></header>
       <div>{audiences.map(([title,text],index)=><article key={title}><em>0{index+1}</em><h3>{title}</h3><p>{text}</p><CheckCircle2/></article>)}</div></section>
-    <section className="landing-dark" id="recursos"><div><span>PLATAFORMA COMPLETA</span><h2>A operação fiscal vista por inteiro.</h2><p>Recursos conectados para consultar, organizar, acompanhar e decidir com segurança.</p>
-      <button className="landing-trial" onClick={onAccess}>Acessar plataforma <ArrowUpRight/></button></div>
+    <section className="landing-dark" id="recursos"><div><span>PLATAFORMA COMPLETA</span><h2>A operação fiscal vista por inteiro.</h2><p>Recursos conectados para consultar, organizar, acompanhar e decidir com segurança.</p></div>
       <div className="landing-features">{features.map(([Icon,title])=><article key={title}><i><Icon/></i><b>{title}</b><CheckCircle2/></article>)}</div></section>
     <section className="landing-flow"><header><span>DA CONFIGURAÇÃO À DECISÃO</span><h2>Um fluxo contínuo para a rotina fiscal.</h2><p>A Haixel conecta cadastros, documentos e acompanhamento sem espalhar a operação em várias ferramentas.</p></header>
       <div>{steps.map(([number,title,text])=><article key={number}><em>{number}</em><span><h3>{title}</h3><p>{text}</p></span><ArrowUpRight/></article>)}</div></section>
@@ -190,8 +188,7 @@ function Landing({onAccess}:{onAccess:()=>void}) {
       <article><b>Como a regularidade fiscal é acompanhada?</b><p>Certidões são armazenadas com tipo, situação, emissão, validade, PDF e alertas configuráveis por empresa.</p></article>
       <article><b>O sistema funciona em qualquer dispositivo?</b><p>A plataforma é web e responsiva, com navegação adaptada para computador, tablet e celular.</p></article>
     </div></section>
-    <section className="landing-final"><span>UMA OPERAÇÃO MAIS CLARA COMEÇA AQUI</span><h2>Entre na Haixel e assuma o controle fiscal.</h2><p>Acesse documentos, empresas, certidões, relatórios e monitoramento em um único ambiente.</p>
-      <div><button className="landing-trial" onClick={onAccess}>Acessar plataforma <ArrowUpRight/></button></div></section>
+    <section className="landing-final"><span>UMA OPERAÇÃO MAIS CLARA COMEÇA AQUI</span><h2>Entre na Haixel e assuma o controle fiscal.</h2><p>Documentos, empresas, certidões, relatórios e monitoramento reunidos em um único ambiente.</p></section>
     <footer className="landing-footer"><Brand/><p>Inteligência fiscal para decisões seguras.</p><span>© {new Date().getFullYear()} Haixel Fiscal Tech</span></footer>
   </main>;
 }
@@ -411,11 +408,15 @@ const groups = [
 function DocumentHub({toast,initial="archive"}:{toast:(s:string,e?:boolean)=>void;initial?:"archive"|"dfe"}) {
   const [mode,setMode]=useState<"archive"|"dfe">(initial);
   return <section className="unified-document-hub">
+    <header className="unified-document-head"><div><i><Files/></i><span><small>CENTRAL DOCUMENTAL UNIFICADA</small>
+      <h2>Documentos fiscais em um único fluxo</h2><p>Cofre, pesquisa, auditoria, exportação, emitidos, recebidos, Monitor DF-e, SEFAZ e importação.</p></span></div>
+      <aside><ShieldCheck/><span><b>Custódia e captura</b><small>Operação conectada à empresa ativa</small></span></aside>
+    </header>
     <nav className="unified-document-nav">
       <button className={mode==="archive"?"active":""} onClick={()=>setMode("archive")}><Files/><span>
-        <b>Central de documentos</b><small>Cofre, pesquisa, auditoria e exportação</small></span><ArrowUpRight/></button>
+        <b>Cofre e auditoria</b><small>Pesquisa, arquivos e exportação</small></span><ArrowUpRight/></button>
       <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
-        <b>Documentos emitidos e recebidos</b><small>Monitor DF-e, SEFAZ e importação</small></span><ArrowUpRight/></button>
+        <b>Monitor e importação</b><small>Emitidos, recebidos e SEFAZ</small></span><ArrowUpRight/></button>
     </nav>
     {mode==="archive"?<Documents toast={toast}/>:<IssuedDocuments toast={toast}/>}
   </section>;
