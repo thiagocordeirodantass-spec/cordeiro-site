@@ -204,6 +204,10 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS messages_pair_idx
         ON user_messages(sender_id, recipient_id, created_at);
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_data BYTEA;
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_mime TEXT;
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_size INTEGER;
       CREATE TABLE IF NOT EXISTS certidoes (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,

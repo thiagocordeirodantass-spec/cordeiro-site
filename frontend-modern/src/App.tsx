@@ -9,7 +9,9 @@ import {
   Building2,
   Bug,
   ChevronDown,
+  ChevronRight,
   CheckCircle2,
+  CheckCheck,
   CloudDownload,
   FileDown,
   FileText,
@@ -28,6 +30,7 @@ import {
   Megaphone,
   Moon,
   PackageSearch,
+  Paperclip,
   Radar,
   RefreshCw,
   Rocket,
@@ -310,8 +313,7 @@ const groups = [
   [
     "Gestão documental",
     [
-      ["documents", "Central de documentos", Files],
-      ["issued", "Documentos emitidos", Send],
+      ["documents", "Central fiscal", Files],
       ["reports", "Inteligência fiscal", BarChart3],
       ["certificates", "Regularidade CND", ShieldCheck],
     ],
@@ -325,6 +327,19 @@ const groups = [
     ],
   ],
 ] as any[];
+
+function DocumentHub({toast,initial="archive"}:{toast:(s:string,e?:boolean)=>void;initial?:"archive"|"dfe"}) {
+  const [mode,setMode]=useState<"archive"|"dfe">(initial);
+  return <section className="unified-document-hub">
+    <nav className="unified-document-nav">
+      <button className={mode==="archive"?"active":""} onClick={()=>setMode("archive")}><Files/><span>
+        <b>Central de documentos</b><small>Cofre, pesquisa, auditoria e exportação</small></span><ArrowUpRight/></button>
+      <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
+        <b>Documentos emitidos e recebidos</b><small>Monitor DF-e, SEFAZ e importação</small></span><ArrowUpRight/></button>
+    </nav>
+    {mode==="archive"?<Documents toast={toast}/>:<IssuedDocuments toast={toast}/>}
+  </section>;
+}
 function Head({
   tag,
   title,
@@ -1209,6 +1224,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [cndPage,setCndPage]=useState(1),
     [selectedCnds,setSelectedCnds]=useState<number[]>([]),
     [confirmCndBatch,setConfirmCndBatch]=useState(false),
+    [recognitionResults,setRecognitionResults]=useState<any[]>([]),
     [form, setForm] = useState<any>(null),
     [viewingCertificate,setViewingCertificate]=useState<any>(null),
     [pendingDelete,setPendingDelete]=useState<any>(null),
@@ -1267,12 +1283,14 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
   }
   async function recognizePdf(files?: FileList | null) {
     if (!files?.length) return;
-    let imported=0;
+    let imported=0;const results:any[]=[];
     for(const file of Array.from(files)){
       const body=new FormData(); body.set("pdf",file);
-      try{await api<any>("/api/certidoes/recognize",{method:"POST",body});imported++}
+      try{const result=await api<any>("/api/certidoes/recognize",{method:"POST",body});
+        results.push({...result,fileName:file.name});imported++}
       catch(error){toast(`${file.name}: ${(error as Error).message}`,true)}
     }
+    setRecognitionResults(results);
     if(imported)toast(`${imported} certidão(ões) importada(s) e vinculada(s) pelo CNPJ`);
     load();
     if (smartInput.current) smartInput.current.value = "";
@@ -1359,6 +1377,18 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <span className="safe"><small>Negativas</small><b>{stats.negativas||0}</b></span>
         </div>
       </section>
+      {recognitionResults.length>0&&<section className="cnd-recognition-results">
+        <header><div><Sparkles/><span><b>Leitura integral concluída</b><small>Campos identificados em todas as páginas processadas</small></span></div>
+          <button onClick={()=>setRecognitionResults([])}><X/></button></header>
+        <div>{recognitionResults.map((result,index)=><article key={`${result.fileName}-${index}`}>
+          <i><FileText/></i><span><b>{result.fileName}</b><small>{result.recognized?.razaoSocial||"Empresa ativa"}</small></span>
+          <dl><div><dt>Número</dt><dd>{result.recognized?.numero||"Revisão necessária"}</dd></div>
+            <div><dt>Emissão</dt><dd>{date(result.recognized?.dataEmissao)}</dd></div>
+            <div><dt>Validade</dt><dd>{date(result.recognized?.dataValidade)}</dd></div>
+            <div><dt>Páginas</dt><dd>{result.recognized?.totalPages||"Todas"}</dd></div></dl>
+          <em className={result.missing?.length?"warning":"ok"}>{result.missing?.length?`Revisar: ${result.missing.join(", ")}`:"Preenchimento completo"}</em>
+        </article>)}</div>
+      </section>}
       <div className="cnd-stats">
         {[
           ["Total de CNDs", stats.total || 0, FileText, "blue"],
@@ -1786,7 +1816,8 @@ function TurnstileBox({
 
 function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
   const [data,setData]=useState<any>(null),[file,setFile]=useState<File|null>(null),
-    [password,setPassword]=useState(""),[busy,setBusy]=useState(false);
+    [password,setPassword]=useState(""),[busy,setBusy]=useState(false),
+    [section,setSection]=useState<"certificate"|"policy"|"rules">("certificate");
   const load=useCallback(async()=>{
     try{
       const me=await api<any>("/api/auth/me");
@@ -1839,8 +1870,13 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
       <article><Activity/><span><small>Consultas individuais / 1h</small><b>{data.sync.individualQueriesLastHour||0} de 18</b></span></article>
       <article><RefreshCw/><span><small>Estado da fila</small><b>{String(state.last_status||"Não iniciada").replaceAll("_"," ")}</b></span></article>
     </div>
+    <nav className="sefaz-compact-nav">
+      <button className={section==="certificate"?"active":""} onClick={()=>setSection("certificate")}><ShieldCheck/><span><b>Certificado A1</b><small>Cofre e validade</small></span></button>
+      <button className={section==="policy"?"active":""} onClick={()=>setSection("policy")}><Activity/><span><b>Consulta segura</b><small>UF, estratégia e limites</small></span></button>
+      <button className={section==="rules"?"active":""} onClick={()=>setSection("rules")}><Network/><span><b>Proteções</b><small>Fila, NSU e bloqueios</small></span></button>
+    </nav>
     <div className="sefaz-control-grid">
-      <section className="sefaz-vault"><header><i><ShieldCheck/></i><span><b>Certificado digital A1</b>
+      {section==="certificate"&&<section className="sefaz-vault"><header><i><ShieldCheck/></i><span><b>Certificado digital A1</b>
         <small>{certificate?`${certificate.arquivo_nome} · válido até ${date(certificate.validade_fim)}`:
           "Anexe o PFX/P12 da empresa. CNPJ e validade serão conferidos antes de salvar."}</small></span></header>
         {data.admin?<div className="company-certificate-fields">
@@ -1851,8 +1887,8 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
           {data.certificate?.configurado&&<button className="danger" disabled={busy} onClick={removeCertificate}><Trash2/> Remover</button>}
         </div>:<div className="hub-readonly"><ShieldCheck/> Somente administradores podem substituir o certificado.</div>}
         <p><ShieldCheck/> Arquivo e senha ficam criptografados; o navegador não recebe o conteúdo após o envio.</p>
-      </section>
-      <section className="sefaz-policy"><header><i><Activity/></i><span><b>Política preventiva</b>
+      </section>}
+      {section==="policy"&&<section className="sefaz-policy"><header><i><Activity/></i><span><b>Política preventiva</b>
         <small>Limites conservadores para Distribuição DF-e</small></span></header>
         <div className="sefaz-policy-fields">
           <label>UF autora<input maxLength={2} value={config.uf||"MG"} onChange={e=>setData({...data,modules:{...data.modules,
@@ -1868,11 +1904,11 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
               sefaz:{...config,lote_maximo:Math.min(50,Math.max(1,Number(e.target.value)))}}}})}/></label>
         </div>
         {data.admin&&<button className="save-policy" disabled={busy} onClick={saveProtection}><Save/> Salvar política</button>}
-      </section>
+      </section>}
     </div>
     {locked&&<div className="sefaz-lock-alert"><Bell/><span><b>Fila em pausa preventiva</b>
       <small>Nova tentativa liberada após {new Date(state.locked_until).toLocaleString("pt-BR")}. Antecipar a chamada pode reiniciar a contagem da SEFAZ.</small></span></div>}
-    <div className="sefaz-guardrails">
+    {section==="rules"&&<div className="sefaz-guardrails">
       {[
         ["NSU sempre crescente","Cada chamada continua exatamente do ultNSU devolvido; o sistema não reinicia em zero.",ShieldCheck],
         ["Uma fila por CNPJ","Bloqueio transacional impede duas sincronizações simultâneas para a mesma empresa.",Network],
@@ -1881,7 +1917,7 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
         ["Margem abaixo do limite oficial","Chaves individuais limitadas internamente a 18/h, abaixo das 20/h informadas pela SEFAZ.",Activity],
         ["Sem looping de erros","Falhas repetidas entram em espera e ficam registradas, evitando reenvio contínuo pelo certificado.",X],
       ].map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span></article>)}
-    </div>
+    </div>}
     <footer><ShieldCheck/><p><b>Atenção:</b> outras aplicações que consultem o mesmo CNPJ também devem compartilhar a sequência do último NSU. A Haixel protege as chamadas feitas pela plataforma, mas não controla softwares externos.</p></footer>
   </section>
 }
@@ -2909,6 +2945,18 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <p>Chamados organizados, histórico completo e acompanhamento em um único lugar.</p></span></div>
         <span className="support-availability"><i/> EQUIPE DISPONÍVEL</span>
       </section>
+      <section className="support-channels" aria-label="Atalhos de atendimento">
+        {[
+          ["duvida","Dúvida fiscal","Orientação para usar os módulos",BookOpen],
+          ["bug","Reportar problema","Envie o erro para nossa equipe",Bug],
+          ["melhoria","Sugerir melhoria","Ajude a evoluir a Haixel",Sparkles],
+        ].map(([id,title,description,Icon]:any)=>(
+          <button type="button" className={category===id?"active":""} key={id}
+            onClick={()=>setCategory(id)}>
+            <i><Icon/></i><span><b>{title}</b><small>{description}</small></span><ChevronRight/>
+          </button>
+        ))}
+      </section>
       <div className="support-kpis">
         {[
           ["Total", items.length],
@@ -3155,7 +3203,7 @@ function Assistant() {
           <X />
         ) : (
           <>
-            <img src="/assets/haixel-logo.png" alt="Haixel IA" />
+            <i className="haixel-ai-orb"><Sparkles/><em/><em/></i>
             <span><b>Haixel IA</b><small>Assistente fiscal</small></span>
           </>
         )}
@@ -3163,7 +3211,7 @@ function Assistant() {
       {open && (
         <section className="assistant">
           <header>
-            <span className="assistant-avatar"><img src="/assets/haixel-logo.png" alt="Haixel IA" /></span>
+            <span className="assistant-avatar"><Sparkles/><i/><i/></span>
             <div>
               <b>Haixel IA <em>Beta</em></b>
               <small>
@@ -3315,12 +3363,35 @@ type SystemStatus = {
   };
   maintenance: {
     active: boolean;
+    scheduled?: boolean;
     title: string;
     message: string;
     startsAt?: string | null;
     endsAt?: string | null;
   };
 };
+
+function MaintenanceCountdown({maintenance}:{maintenance:SystemStatus["maintenance"]}) {
+  const [remaining,setRemaining]=useState(()=>Math.max(0,new Date(maintenance.startsAt||0).getTime()-Date.now()));
+  useEffect(()=>{
+    const update=()=>{
+      const value=Math.max(0,new Date(maintenance.startsAt||0).getTime()-Date.now());
+      setRemaining(value);
+      if(value===0)window.location.reload();
+    };
+    update();const timer=window.setInterval(update,1000);return()=>window.clearInterval(timer);
+  },[maintenance.startsAt]);
+  if(!maintenance.scheduled||!remaining)return null;
+  const seconds=Math.ceil(remaining/1000),label=seconds<60?`${seconds}s`:
+    seconds<3600?`${Math.floor(seconds/60)}min ${seconds%60}s`:`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}min`;
+  const progress=Math.max(0,Math.min(100,remaining/60000*100));
+  return <aside className="maintenance-countdown" role="alert">
+    <div className="countdown-worker"><Bot/><i/></div>
+    <span><small>ATUALIZAÇÃO PROGRAMADA</small><b>A manutenção começa em {label}</b>
+      <p>{maintenance.message}</p></span>
+    <time>{label}</time><div className="countdown-progress"><i style={{width:`${Math.min(100,progress)}%`}}/></div>
+  </aside>;
+}
 
 function WelcomeExperience({
   user,
@@ -3537,7 +3608,10 @@ function Messenger() {
     [selected, setSelected] = useState<any>(null),
     [messages, setMessages] = useState<any[]>([]),
     [text, setText] = useState(""),
+    [attachment,setAttachment]=useState<File|null>(null),
+    [sending,setSending]=useState(false),
     [unread, setUnread] = useState(0);
+  const threadRef=useRef<HTMLDivElement>(null);
   const loadUsers = useCallback(() => {
     api<any[]>("/api/messages/users")
       .then((rows) => {
@@ -3548,26 +3622,45 @@ function Messenger() {
   }, []);
   useEffect(() => {
     loadUsers();
-    const timer = window.setInterval(loadUsers, 15000);
+    const timer = window.setInterval(loadUsers, 5000);
     return () => clearInterval(timer);
   }, [loadUsers]);
   const openThread = async (userItem: any) => {
     setSelected(userItem);
+    setAttachment(null);
     try {
       setMessages(await api<any[]>(`/api/messages/thread/${userItem.id}`));
       loadUsers();
     } catch {}
   };
+  const loadThread=useCallback(async()=>{
+    if(!open||!selected?.id)return;
+    try{setMessages(await api<any[]>(`/api/messages/thread/${selected.id}`));loadUsers()}catch{}
+  },[open,selected?.id,loadUsers]);
+  useEffect(()=>{
+    if(!open||!selected?.id)return;
+    loadThread();const timer=window.setInterval(loadThread,2500);return()=>window.clearInterval(timer);
+  },[open,selected?.id,loadThread]);
+  useEffect(()=>{threadRef.current?.scrollTo({top:threadRef.current.scrollHeight,behavior:"smooth"})},[messages]);
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || !text.trim()) return;
-    const message = await api<any>("/api/messages", {
-      method: "POST",
-      body: { recipientId: selected.id, content: text },
-    });
-    setMessages((current) => [...current, message]);
-    setText("");
+    if (!selected || (!text.trim()&&!attachment)||sending) return;
+    setSending(true);
+    try{
+      let encoded:any=null;
+      if(attachment){
+        if(attachment.size>2_500_000)throw new Error("O anexo deve ter até 2,5 MB");
+        const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();
+          reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("Não foi possível ler o anexo"));reader.readAsDataURL(attachment)});
+        encoded={name:attachment.name,mime:attachment.type||"application/octet-stream",base64};
+      }
+      const message = await api<any>("/api/messages", {
+        method: "POST",body: { recipientId: selected.id, content: text,attachment:encoded },
+      });
+      setMessages((current) => [...current, message]);setText("");setAttachment(null);loadUsers();
+    }catch(error){alert((error as Error).message)}finally{setSending(false)}
   }
+  const activeSelected=users.find(item=>Number(item.id)===Number(selected?.id))||selected;
   return (
     <div className="messenger-center">
       <button
@@ -3607,7 +3700,7 @@ function Messenger() {
                   </i>
                   <span>
                     <b>{userItem.nome || userItem.username}</b>
-                    <small>{userItem.role}</small>
+                    <small><i className={userItem.online?"online":""}/>{userItem.online?"Online agora":"Offline"}</small>
                   </span>
                   {userItem.unread > 0 && <em>{userItem.unread}</em>}
                 </button>
@@ -3617,32 +3710,43 @@ function Messenger() {
               {selected ? (
                 <>
                   <div className="thread-title">
-                    <b>{selected.nome || selected.username}</b>
-                    <small>Conversa privada</small>
+                    <i>{String(activeSelected.nome||activeSelected.username).slice(0,2).toUpperCase()}<em className={activeSelected.online?"online":""}/></i>
+                    <span><b>{activeSelected.nome || activeSelected.username}</b>
+                      <small>{activeSelected.online?"Online agora · respostas em tempo real":"Offline · receberá quando entrar"}</small></span>
                   </div>
-                  <div className="thread-messages">
+                  <div className="thread-messages" ref={threadRef}>
                     {messages.map((message) => (
-                      <p
+                      <article
                         className={
                           message.recipient_id === selected.id ? "mine" : ""
                         }
                         key={message.id}
                       >
-                        {message.content}
-                        <small>
-                          {new Date(message.created_at).toLocaleString("pt-BR")}
-                        </small>
-                      </p>
+                        {message.attachment_url&&String(message.attachment_mime).startsWith("image/")&&
+                          <a className="message-image" href={message.attachment_url} target="_blank" rel="noreferrer">
+                            <img src={message.attachment_url}/></a>}
+                        {message.attachment_url&&!String(message.attachment_mime).startsWith("image/")&&
+                          <a className="message-file" href={message.attachment_url} target="_blank" rel="noreferrer">
+                            <Paperclip/><span><b>{message.attachment_name}</b><small>{Math.ceil(Number(message.attachment_size||0)/1024)} KB</small></span></a>}
+                        {message.content&&<p>{message.content}</p>}
+                        <small>{new Date(message.created_at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
+                          {message.recipient_id===selected.id&&<CheckCheck className={message.read_at?"read":""}/>}</small>
+                      </article>
                     ))}
                   </div>
+                  {attachment&&<div className="message-attachment-preview"><Paperclip/><span><b>{attachment.name}</b>
+                    <small>{Math.ceil(attachment.size/1024)} KB</small></span><button onClick={()=>setAttachment(null)}><X/></button></div>}
                   <form onSubmit={sendMessage}>
+                    <label className="message-attach" title="Enviar imagem ou arquivo"><Paperclip/><input type="file"
+                      accept="image/png,image/jpeg,image/webp,application/pdf,text/plain,text/xml,application/xml"
+                      onChange={event=>setAttachment(event.target.files?.[0]||null)}/></label>
                     <input
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       placeholder="Escreva uma mensagem..."
                     />
-                    <button className="primary">
-                      <Send />
+                    <button className="primary" disabled={sending||(!text.trim()&&!attachment)}>
+                      {sending?<RefreshCw className="spin"/>:<Send />}
                     </button>
                   </form>
                 </>
@@ -3880,6 +3984,15 @@ function Admin({
         <div className="company-command-actions">
           <span><Network/><b>{items.filter(item=>item.empresa_matriz_id).length}</b><small>filiais conectadas</small></span>
           <span><ShieldCheck/><b>{items.filter(item=>item.ativo!==false&&item.ativo!==0).length}</b><small>ambientes ativos</small></span>
+        </div>
+      </section>}
+      {kind==="users"&&<section className="access-command-hero">
+        <div><i><ShieldCheck/></i><span><small>IDENTIDADES E PERMISSÕES</small>
+          <h2>Controle de acessos inteligente</h2>
+          <p>Gerencie perfis, permissões, sessões e segurança da equipe em um painel único.</p></span></div>
+        <div className="access-live">
+          <span><i/><b>{items.filter(item=>item.online).length}</b><small>online agora</small></span>
+          <span><Users/><b>{items.filter(item=>Boolean(item.ativo)).length}</b><small>acessos ativos</small></span>
         </div>
       </section>}
       {kind === "users" && (
@@ -4570,7 +4683,8 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
-  if (!user) return <Login done={enter} />;
+  if (!user) return <><Login done={enter}/>{systemStatus?.maintenance.scheduled&&
+    <MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</>;
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);
@@ -4673,8 +4787,8 @@ export default function App() {
         </header>
         <main>
           {page === "dashboard" && <Dashboard />}
-          {page === "documents" && <Documents toast={toast} />}{" "}
-          {page === "issued" && <IssuedDocuments toast={toast} />}{" "}
+          {page === "documents" && <DocumentHub toast={toast} />}{" "}
+          {page === "issued" && <DocumentHub toast={toast} initial="dfe" />}{" "}
           {page === "import" && <Importer toast={toast} done={()=>go("documents")} />}{" "}
           {page === "reports" && <Reports toast={toast} />}{" "}
           {page === "certificates" && <Certificates toast={toast} />}{" "}
@@ -4688,6 +4802,7 @@ export default function App() {
         </main>
       </div>
       <Assistant />
+      {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
       {showWelcome && (
         <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
       )}

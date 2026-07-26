@@ -3,11 +3,17 @@ import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
 
 const RELEASE={
-  version:"2026.07.26.7",
+  version:"2026.07.26.8",
   title:"Centrais fiscais e governança reconstruídas",
-  publishedAt:"2026-07-26T20:00:00-03:00",
+  publishedAt:"2026-07-26T23:30:00-03:00",
   summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
   items:[
+    {type:"new",title:"Central Fiscal unificada",text:"Documentos arquivados, emitidos, recebidos, importação e monitor SEFAZ reunidos em um só fluxo."},
+    {type:"fixed",title:"Leitura integral de CND",text:"PDFs são processados no servidor e preenchem número, órgão, CNPJ, emissão, validade e situação."},
+    {type:"new",title:"Mensagens em tempo real",text:"Presença online, confirmação de leitura e envio protegido de imagens e anexos."},
+    {type:"improved",title:"Hub SEFAZ compacto",text:"Certificado A1, política de consulta, NSU e proteções contra Consumo Indevido organizados por tarefa."},
+    {type:"new",title:"Manutenção com contagem regressiva",text:"O usuário é avisado antes da atualização e entra automaticamente na manutenção quando o contador termina."},
+    {type:"improved",title:"Haixel IA renovada",text:"Novo símbolo animado, painel translúcido e conversas com leitura mais confortável."},
     {type:"new",title:"Central DF-e reconstruída",text:"Novo cockpit do ciclo documental, custódia, alertas e movimentação fiscal."},
     {type:"new",title:"Central de documentos renovada",text:"Cofre fiscal com nova organização para pesquisa, auditoria, exportação e gestão de XMLs."},
     {type:"new",title:"Regularidade CND reformulada",text:"Painel de risco com vencidas, vencendo, negativas, PDFs e programação de alertas."},
@@ -83,14 +89,18 @@ export default async function handler(request, response) {
   try {
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
-      const active=!/^(0|false|no)$/i.test(configured);
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const enabled=!/^(0|false|no)$/i.test(configured);
+      const startsAt=process.env.MAINTENANCE_START||null;
+      const endsAt=process.env.MAINTENANCE_END||null;
+      const now=Date.now(),startTime=startsAt?new Date(startsAt).getTime():null,endTime=endsAt?new Date(endsAt).getTime():null;
+      const scheduled=Boolean(enabled&&startTime&&Number.isFinite(startTime)&&startTime>now);
+      const active=Boolean(enabled&&!scheduled&&(!endTime||!Number.isFinite(endTime)||endTime>now));
       return response.json({release:RELEASE,maintenance:{
-        active,
+        active,scheduled,
         title:process.env.MAINTENANCE_TITLE||"A Haixel está ficando ainda melhor",
         message:process.env.MAINTENANCE_MESSAGE||"Estamos implementando e validando novas funcionalidades com todo cuidado. O acesso será liberado assim que a atualização estiver concluída.",
-        startsAt:process.env.MAINTENANCE_START||null,
-        endsAt:process.env.MAINTENANCE_END||null,
+        startsAt,endsAt,
       }});
     }
     if(route[0]==="health"&&request.method==="GET"){
@@ -373,13 +383,27 @@ export default async function handler(request, response) {
       if (route[1] === "users" && request.method === "GET") {
         const result = await pool.query(
           `SELECT u.id,u.username,u.nome,u.email,u.role,
-             COUNT(m.id) FILTER(WHERE m.read_at IS NULL)::int AS unread
+             EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
+               AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
+             COUNT(m.id) FILTER(WHERE m.read_at IS NULL)::int AS unread,
+             MAX(m.created_at) last_message_at
            FROM users u LEFT JOIN user_messages m
              ON m.sender_id=u.id AND m.recipient_id=$1
-           WHERE u.ativo=TRUE AND u.id<>$1 GROUP BY u.id ORDER BY unread DESC,u.nome`,
+           WHERE u.ativo=TRUE AND u.id<>$1 GROUP BY u.id
+           ORDER BY unread DESC,last_message_at DESC NULLS LAST,u.nome`,
           [user.id],
         );
         return response.json(result.rows);
+      }
+      if (Number.isInteger(Number(route[1])) && route[2] === "attachment" && request.method === "GET") {
+        const result=await pool.query(`SELECT attachment_data,attachment_name,attachment_mime
+          FROM user_messages WHERE id=$1 AND (sender_id=$2 OR recipient_id=$2)`,[Number(route[1]),user.id]);
+        if(!result.rowCount||!result.rows[0].attachment_data)
+          return response.status(404).json({error:"Anexo não encontrado"});
+        response.setHeader("Content-Type",result.rows[0].attachment_mime||"application/octet-stream");
+        response.setHeader("Content-Disposition",`inline; filename="${String(result.rows[0].attachment_name||"anexo").replace(/["\r\n]/g,"_")}"`);
+        response.setHeader("Cache-Control","private, max-age=300");
+        return response.send(result.rows[0].attachment_data);
       }
       if (route[1] === "thread" && request.method === "GET") {
         const other = Number(route[2]);
@@ -388,7 +412,10 @@ export default async function handler(request, response) {
           [other,user.id],
         );
         const result = await pool.query(
-          `SELECT * FROM user_messages WHERE
+          `SELECT id,sender_id,recipient_id,content,read_at,created_at,
+             attachment_name,attachment_mime,attachment_size,
+             CASE WHEN attachment_data IS NOT NULL THEN '/api/messages/'||id||'/attachment' END attachment_url
+           FROM user_messages WHERE
            (sender_id=$1 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$1)
            ORDER BY id LIMIT 300`,
           [user.id,other],
@@ -398,12 +425,26 @@ export default async function handler(request, response) {
       if (route.length === 1 && request.method === "POST") {
         const recipient = Number(request.body?.recipientId);
         const content = String(request.body?.content || "").trim().slice(0,3000);
-        if (!recipient || !content)
-          return response.status(400).json({ error: "Destinatário e mensagem obrigatórios" });
+        const attachment=request.body?.attachment||null;
+        let attachmentData=null,attachmentName=null,attachmentMime=null,attachmentSize=null;
+        if(attachment){
+          attachmentName=String(attachment.name||"anexo").replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").slice(0,160);
+          attachmentMime=String(attachment.mime||"application/octet-stream").slice(0,100);
+          const allowed=["image/png","image/jpeg","image/webp","application/pdf","text/plain","text/xml","application/xml"];
+          if(!allowed.includes(attachmentMime))return response.status(415).json({error:"Envie imagem, PDF, TXT ou XML"});
+          attachmentData=Buffer.from(String(attachment.base64||"").replace(/^data:[^;]+;base64,/,""),"base64");
+          if(!attachmentData.length||attachmentData.length>2_500_000)
+            return response.status(413).json({error:"O anexo deve ter até 2,5 MB"});
+          attachmentSize=attachmentData.length;
+        }
+        if (!recipient || (!content&&!attachmentData))
+          return response.status(400).json({ error: "Destinatário e mensagem ou anexo obrigatórios" });
         const result = await pool.query(
-          `INSERT INTO user_messages(sender_id,recipient_id,content)
-           VALUES($1,$2,$3) RETURNING *`,
-          [user.id,recipient,content],
+          `INSERT INTO user_messages(sender_id,recipient_id,content,attachment_data,attachment_name,attachment_mime,attachment_size)
+           VALUES($1,$2,$3,$4::bytea,$5,$6,$7) RETURNING id,sender_id,recipient_id,content,read_at,created_at,
+             attachment_name,attachment_mime,attachment_size,
+             CASE WHEN attachment_data IS NOT NULL THEN '/api/messages/'||id||'/attachment' END attachment_url`,
+          [user.id,recipient,content,attachmentData,attachmentName,attachmentMime,attachmentSize],
         );
         return response.json(result.rows[0]);
       }
