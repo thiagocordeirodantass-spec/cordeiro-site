@@ -103,12 +103,12 @@ function Brand() {
     <div className="brand">
       <span>
         <img
-          src="/assets/cordeiro-mascote-v2.png"
-          alt="Cordeirinho Cordeiro Fiscal"
+          src="/assets/haixel-logo.png"
+          alt="Haixel"
         />
       </span>
       <b>
-        Cordeiro<small>FISCAL</small>
+        Haixel<small>FISCAL TECH</small>
       </b>
     </div>
   );
@@ -553,6 +553,7 @@ function FiscalFilters({
 function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
     [direction,setDirection]=useState<"outgoing"|"incoming">("outgoing"),
+    [query,setQuery]=useState(""),[statusFilter,setStatusFilter]=useState(""),
     [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true),
     [syncing,setSyncing]=useState(false),issuedSyncRef=useRef(false);
   const issuedParams=new URLSearchParams({month,direction,...(kind?{kind}:{})});
@@ -577,30 +578,52 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
     }finally{issuedSyncRef.current=false;setSyncing(false)}
   };
   const stats=data.stats||{};
-  return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
-    text="NF-e, NFS-e e CT-e emitidos pelo CNPJ da empresa ativa, organizados automaticamente."
+  const filtered=(data.items||[]).filter((item:any)=>{
+    const content=[item.kind,item.numero,item.chave,item.remetente_nome,item.remetente_doc,
+      item.destinatario_nome,item.destinatario_doc,item.status].join(" ").toLowerCase();
+    return (!query||content.includes(query.toLowerCase()))&&
+      (!statusFilter||String(item.status||"").toLowerCase()===statusFilter);
+  });
+  const statusOptions=[...new Set((data.items||[]).map((item:any)=>String(item.status||"").toLowerCase()).filter(Boolean))];
+  return <><Head tag="CENTRAL DF-e" title="Documentos fiscais"
+    text="Recebimento, custódia e acompanhamento dos documentos emitidos pela empresa e contra o seu CNPJ."
     action={<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
-      <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.xlsx`)}><FileDown/> NFS-e Excel</button>
-      <button className="secondary" onClick={()=>download(`/api/relatorio/csv?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.csv`)}><FileDown/> CSV</button>
+      <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?month=${month}`,`documentos-fiscais-${month}.xlsx`)}><FileDown/> Exportar Excel</button>
+      <button className="secondary" onClick={()=>download(`/api/relatorio/lote?formato=xml&month=${month}`,`xml-fiscais-${month}.zip`)}><CloudDownload/> Baixar XMLs</button>
       <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<RefreshCw/>} {syncing?"Sincronizando...":"Buscar na SEFAZ"}</button></div>}/>
-    <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
-      <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
-      <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
-    <div className="issued-kpis">{[["Total",stats.total||0,Files],["NF-e",stats.nfe||0,FileText],["NFS-e",stats.nfse||0,FileText],["CT-e",stats.cte||0,CloudDownload]]
+    <section className="issued-hero dfe-hero"><div><i>{direction==="incoming"?<CloudDownload/>:<Send/>}</i><span>
+      <small>{direction==="incoming"?"RECEBIMENTO FISCAL":"EMISSÕES PRÓPRIAS"}</small>
+      <h2>{direction==="incoming"?"Documentos emitidos contra a empresa":"Documentos emitidos pela empresa"}</h2>
+      <p>Informações centralizadas por CNPJ, com captura segura, consulta e custódia do arquivo fiscal.</p></span></div>
+      <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Documentos de transporte</span><span><i/> XML · Integridade e custódia</span></div></section>
+    <div className="issued-kpis dfe-kpis">{[["Documentos",stats.total||0,Files],["XML em custódia",stats.xml||0,ShieldCheck],
+      ["Alertas fiscais",stats.alertas||0,Bell],["Valor monitorado",brl(stats.valor||0),Gauge]]
       .map(([label,value,Icon]:any)=><article key={label}><i><Icon/></i><span><small>{label}</small><b>{value}</b></span></article>)}</div>
+    <section className="dfe-capabilities">
+      <article><i><CloudDownload/></i><span><b>Captura centralizada</b><small>Documentos localizados pela distribuição oficial e importações da empresa.</small></span></article>
+      <article><i><ShieldCheck/></i><span><b>Validação e custódia</b><small>Identificação imediata da disponibilidade do XML armazenado.</small></span></article>
+      <article><i><Bell/></i><span><b>Eventos e situações</b><small>Status fiscal destacado para acelerar conferências e tratar cancelamentos.</small></span></article>
+      <article><i><FileDown/></i><span><b>Consulta e exportação</b><small>Planilha gerencial e arquivos XML disponíveis individualmente ou em lote.</small></span></article>
+    </section>
     <Panel><div className="issued-direction">
       <button className={direction==="outgoing"?"active":""} onClick={()=>setDirection("outgoing")}><Send/><span><b>Emitidas pela empresa</b><small>CNPJ ativo como emitente/prestador</small></span></button>
       <button className={direction==="incoming"?"active":""} onClick={()=>setDirection("incoming")}><CloudDownload/><span><b>Emitidas contra a empresa</b><small>CNPJ ativo como destinatário/tomador</small></span></button>
+    </div><div className="dfe-query-bar"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)}
+      placeholder="Buscar por fornecedor, cliente, CNPJ, número ou chave..."/></label>
+      <select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Todas as situações</option>
+        {statusOptions.map((status:any)=><option value={status} key={status}>{status}</option>)}</select>
     </div><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
       <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}>{label}</button>)}</div>
-      <small>Competência {month.split("-").reverse().join("/")} · atualização automática a cada 30 segundos</small></div>
-      <div className="table"><table><thead><tr><th>Documento</th><th>Destinatário</th><th>Emissão</th><th>Valor</th><th>Status</th><th>Origem</th><th>XML</th></tr></thead>
-        <tbody>{(data.items||[]).map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
-          <td>{item.destinatario_nome||"Não identificado"}<small>{item.destinatario_doc||""}</small></td><td>{date(item.data_emissao)}</td>
+      <small>{filtered.length} de {data.items?.length||0} documentos · atualização automática a cada 30 segundos</small></div>
+      <div className="table dfe-table"><table><thead><tr><th>Documento</th><th>{direction==="incoming"?"Emitente / fornecedor":"Destinatário / cliente"}</th><th>Emissão</th><th>Valor</th><th>Situação</th><th>Origem</th><th>Arquivo</th></tr></thead>
+        <tbody>{filtered.map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
+          <td>{direction==="incoming"?(item.remetente_nome||"Não identificado"):(item.destinatario_nome||"Não identificado")}
+            <small>{direction==="incoming"?(item.remetente_doc||""):(item.destinatario_doc||"")}</small></td><td>{date(item.data_emissao)}</td>
           <td><b>{brl(item.valor_total)}</b></td><td><span className="status">{item.status}</span></td>
           <td><span className={`source-badge ${sourceInfo(item.source).tone}`}><i/>{sourceInfo(item.source).label}</span></td>
-          <td><button className="square" disabled={!item.has_xml} onClick={()=>download(`/api/docs/${item.id}/xml`,`${item.chave||item.id}.xml`)}><FileDown/></button></td></tr>)}</tbody></table>
-        {!busy&&!data.items?.length&&<Empty/>}</div></Panel>
+          <td><button className="square" title={item.has_xml?"Baixar XML":"XML ainda não disponível"} disabled={!item.has_xml}
+            onClick={()=>download(`/api/docs/${item.id}/xml`,`${item.chave||item.id}.xml`)}><FileDown/></button></td></tr>)}</tbody></table>
+        {!busy&&!filtered.length&&<Empty/>}</div></Panel>
   </>;
 }
 
@@ -1831,7 +1854,7 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
         ["Sem looping de erros","Falhas repetidas entram em espera e ficam registradas, evitando reenvio contínuo pelo certificado.",X],
       ].map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span></article>)}
     </div>
-    <footer><ShieldCheck/><p><b>Atenção:</b> outras aplicações que consultem o mesmo CNPJ também devem compartilhar a sequência do último NSU. O sistema protege as chamadas feitas pelo Cordeiro, mas não controla softwares externos.</p></footer>
+    <footer><ShieldCheck/><p><b>Atenção:</b> outras aplicações que consultem o mesmo CNPJ também devem compartilhar a sequência do último NSU. A Haixel protege as chamadas feitas pela plataforma, mas não controla softwares externos.</p></footer>
   </section>
 }
 
@@ -2636,7 +2659,7 @@ function Profile({
       <Head
         tag="MINHA CONTA"
         title="Perfil profissional"
-        text="Personalize como você aparece no Cordeiro e mantenha seus contatos atualizados."
+        text="Personalize como você aparece na Haixel e mantenha seus contatos atualizados."
       />
       <div className="profile-grid">
         <Panel>
@@ -2647,7 +2670,7 @@ function Profile({
                   {user.avatar_url ? (
                     <img src={user.avatar_url} />
                   ) : (
-                    <img src="/assets/cordeiro-mascote-v2.png" />
+                    <img src="/assets/haixel-logo.png" />
                   )}
                 </span>
                 <label className="avatar-upload">
@@ -2757,7 +2780,7 @@ function Profile({
         </Panel>
         <article className="profile-preview">
           <span className="profile-photo large">
-            <img src={user.avatar_url || "/assets/cordeiro-mascote-v2.png"} />
+            <img src={user.avatar_url || "/assets/haixel-logo.png"} />
           </span>
           <span className="eyebrow">SEU CARTÃO</span>
           <h2>{form.nome || user.username}</h2>
@@ -3131,7 +3154,7 @@ function Assistant() {
           <header>
             <span className="assistant-avatar"><img src="/assets/macaco-ia.png" alt="Macaquinho da IA" /></span>
             <div>
-              <b>Cordeiro IA <em>Beta</em></b>
+              <b>Haixel IA <em>Beta</em></b>
               <small>
                 <i /> {aiEnabled ? "Assistente fiscal disponível" : "Central de ajuda disponível"}
               </small>
@@ -3303,7 +3326,7 @@ function WelcomeExperience({
     {
       title: `Bem-vindo, ${String(user.nome || user.username).split(" ")[0]}!`,
       tag: "SEU NOVO ESPAÇO FISCAL",
-      text: "Vamos conhecer o Cordeiro Fiscal. Em poucos passos, você verá onde acompanhar a operação, consultar documentos e cuidar da regularidade da empresa.",
+      text: "Vamos conhecer a Haixel. Em poucos passos, você verá onde acompanhar a operação, consultar documentos e cuidar da regularidade da empresa.",
       Icon: Sparkles,
     },
     {
@@ -4609,7 +4632,7 @@ export default function App() {
                 {user.avatar_url ? (
                   <img src={user.avatar_url} />
                 ) : (
-                  <img src="/assets/cordeiro-mascote-v2.png" />
+                  <img src="/assets/haixel-logo.png" />
                 )}
               </span>
               <span className="profile-trigger-text">

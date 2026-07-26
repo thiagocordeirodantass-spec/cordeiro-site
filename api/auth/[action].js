@@ -8,20 +8,20 @@ async function sendAccessCode({to,name,code}){
   const safeName=String(name||"").replace(/[<>&"']/g,"");
   const html=`<!doctype html><html><body style="margin:0;background:#061713;padding:36px 16px;font-family:Arial,sans-serif;color:#eafff8">
   <table role="presentation" width="100%"><tr><td align="center"><table width="560" style="max-width:560px;background:#0b241d;border:1px solid #1f5a49;border-radius:24px;overflow:hidden">
-  <tr><td style="padding:34px;background:#0b2d24"><div style="color:#62e0b8;font-size:11px;letter-spacing:3px">CORDEIRO FISCAL · ACESSO SEGURO</div>
+  <tr><td style="padding:34px;background:#0b2d24"><div style="color:#62e0b8;font-size:11px;letter-spacing:3px">HAIXEL · ACESSO SEGURO</div>
   <h1 style="margin:14px 0 8px;font-size:27px;color:#fff">Confirme sua identidade</h1>
   <p style="margin:0;color:#9fc4b8;line-height:1.6">Olá, ${safeName}. Use o código abaixo para concluir seu acesso à plataforma.</p></td></tr>
   <tr><td style="padding:34px"><div style="padding:25px;text-align:center;border:1px solid #2f8068;border-radius:16px;background:#071d18">
   <small style="color:#7ca99b;letter-spacing:2px">CÓDIGO DE VERIFICAÇÃO</small>
   <div style="font:700 38px monospace;letter-spacing:10px;color:#65e2ba;margin:13px 0">${code}</div>
   <small style="color:#d9aa52">EXPIRA EM 15 MINUTOS</small></div>
-  <p style="color:#789b90;font-size:12px;line-height:1.6;margin:22px 0 0">🔐 Não compartilhe este código. A equipe Cordeiro nunca solicitará sua senha ou certificado por e-mail.</p></td></tr>
+  <p style="color:#789b90;font-size:12px;line-height:1.6;margin:22px 0 0">🔐 Não compartilhe este código. A equipe Haixel nunca solicitará sua senha ou certificado por e-mail.</p></td></tr>
   <tr><td style="padding:18px 34px;border-top:1px solid #173f34;color:#587c71;font-size:10px">CONEXÃO PROTEGIDA · MONITORAMENTO ATIVO · ${new Date().getFullYear()}</td></tr>
   </table></td></tr></table></body></html>`;
   const result=await fetch("https://api.resend.com/emails",{method:"POST",headers:{
     Authorization:`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json"},
-    body:JSON.stringify({from:process.env.MAIL_FROM||"Cordeiro Fiscal <acesso@cordeirofiscal.com.br>",
-      to:[to],subject:`${code} é seu código de acesso · Cordeiro Fiscal`,html})});
+    body:JSON.stringify({from:process.env.MAIL_FROM||"Haixel <acesso@cordeirofiscal.com.br>",
+      to:[to],subject:`${code} é seu código de acesso · Haixel`,html})});
   if(!result.ok) throw new Error("Falha no serviço de e-mail");
   return {sent:true};
 }

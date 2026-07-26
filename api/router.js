@@ -83,7 +83,7 @@ export default async function handler(request, response) {
   try {
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const active=!/^(0|false|no)$/i.test(configured);
       return response.json({release:RELEASE,maintenance:{
         active,
@@ -142,7 +142,7 @@ export default async function handler(request, response) {
         return response.json({
           answer: text.toLowerCase().includes("sefaz")
             ? "A integração SEFAZ está disponível somente para consultas, sem emissão de documentos."
-            : "Posso ajudar com documentos, empresas, relatórios e navegação no Cordeiro Fiscal.",
+            : "Posso ajudar com documentos, empresas, relatórios e navegação na Haixel.",
         });
       }
     }
@@ -644,7 +644,8 @@ export default async function handler(request, response) {
           [activeCompanyId]);
         if(!company.rowCount)return response.status(404).json({error:"Empresa ativa não encontrada"});
         const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.serie,d.data_emissao,d.valor_total,
-          d.status,d.destinatario_nome,d.destinatario_doc,d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
+          d.status,d.remetente_nome,d.remetente_doc,d.destinatario_nome,d.destinatario_doc,
+          d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
           FROM documents d WHERE d.empresa_id=$1
           AND (($5='outgoing' AND regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3)
             OR ($5='incoming' AND regexp_replace(COALESCE(d.destinatario_doc,''),'\\D','','g')=$3))
@@ -655,8 +656,12 @@ export default async function handler(request, response) {
           [activeCompanyId,kind,company.rows[0].cnpj,month,direction]);
         const stats=result.rows.reduce((summary,row)=>{
           summary.total++;const key=String(row.kind||"").toLowerCase();
-          if(Object.hasOwn(summary,key))summary[key]++;return summary;
-        },{total:0,nfe:0,nfse:0,cte:0});
+          if(Object.hasOwn(summary,key))summary[key]++;
+          if(row.has_xml)summary.xml++;
+          if(/cancel|rejeit|erro/i.test(String(row.status||"")))summary.alertas++;
+          summary.valor+=Number(row.valor_total||0);
+          return summary;
+        },{total:0,nfe:0,nfse:0,cte:0,xml:0,alertas:0,valor:0});
         return response.json({items:result.rows,stats,company:company.rows[0],month,direction,
           connectors:{nfe:"nsu_protegido",cte:"aguardando_configuracao",nfse:"aguardando_provedor"}});
       }
@@ -728,7 +733,7 @@ export default async function handler(request, response) {
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7000);
       try{
         const monitorResponse=await fetch("https://monitorsefaz.webmaniabr.com/v3/components.json",{
-          signal:controller.signal,headers:{"User-Agent":"CordeiroFiscalMonitor/2.0"},
+          signal:controller.signal,headers:{"User-Agent":"HaixelFiscalMonitor/2.0"},
         });
         if(!monitorResponse.ok)throw new Error(`HTTP ${monitorResponse.status}`);
         const monitor=await monitorResponse.json();
