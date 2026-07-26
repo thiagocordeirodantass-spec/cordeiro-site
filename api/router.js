@@ -3,17 +3,17 @@ import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
 
 const RELEASE={
-  version:"2026.07.26.6",
-  title:"Hub fiscal e experiência Haixel renovados",
+  version:"2026.07.26.7",
+  title:"Centrais fiscais e governança reconstruídas",
   publishedAt:"2026-07-26T20:00:00-03:00",
-  summary:"Uma atualização visual e operacional para deixar consultas, importações e navegação mais simples e agradáveis.",
+  summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
   items:[
-    {type:"new",title:"Hub de Integrações reconstruído",text:"Novo painel compacto, atalhos operacionais e organização visual dos serviços oficiais."},
-    {type:"new",title:"Importação dentro da Central DF-e",text:"XML de NF-e, CT-e e NFS-e agora é importado no mesmo módulo dos documentos emitidos e recebidos."},
-    {type:"improved",title:"Haixel IA renovada",text:"Assistente mais limpo, translúcido e alinhado à nova identidade da plataforma."},
-    {type:"improved",title:"Hub em tela fixa",text:"O sistema ocupa 100% da tela e mantém a navegação interna sem barras de rolagem visíveis."},
-    {type:"improved",title:"Manutenção animada",text:"A tela de atualização agora apresenta um personagem trabalhando no notebook e status automático."},
-    {type:"fixed",title:"Experiência responsiva",text:"Ajustes de altura, overflow e navegação em desktop, notebook e celular."},
+    {type:"new",title:"Central DF-e reconstruída",text:"Novo cockpit do ciclo documental, custódia, alertas e movimentação fiscal."},
+    {type:"new",title:"Central de documentos renovada",text:"Cofre fiscal com nova organização para pesquisa, auditoria, exportação e gestão de XMLs."},
+    {type:"new",title:"Regularidade CND reformulada",text:"Painel de risco com vencidas, vencendo, negativas, PDFs e programação de alertas."},
+    {type:"new",title:"Governança de empresas",text:"Nova visão para matrizes, filiais, ambientes ativos e configurações fiscais."},
+    {type:"fixed",title:"Foto de usuário ajustada",text:"Imagens agora preenchem o avatar proporcionalmente, com recorte central e sem deformação."},
+    {type:"improved",title:"Experiência visual consistente",text:"Cartões, tabelas, indicadores e ações seguem a mesma linguagem dinâmica da Haixel."},
   ],
 };
 
@@ -83,7 +83,7 @@ export default async function handler(request, response) {
   try {
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const active=!/^(0|false|no)$/i.test(configured);
       return response.json({release:RELEASE,maintenance:{
         active,

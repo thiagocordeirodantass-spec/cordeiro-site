@@ -596,6 +596,15 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
       <button className={section==="import"?"active":""} onClick={()=>setSection("import")}><UploadCloud/><span><b>Importar documentos</b><small>XML de NF-e, CT-e e NFS-e</small></span></button>
     </nav>
     {section==="import"?<Importer toast={toast} embedded done={()=>{setSection("monitor");load(true)}}/>:<>
+    <section className="dfe-command-board">
+      <div><span className="eyebrow">OPERAÇÃO DOCUMENTAL</span><h2>Visão unificada do ciclo fiscal</h2>
+        <p>Capture, confira, organize e exporte documentos sem perder o contexto da empresa ativa.</p></div>
+      <div className="dfe-command-metrics">
+        <span><small>Em custódia</small><b>{stats.xml||0}</b></span>
+        <span><small>Com alerta</small><b>{stats.alertas||0}</b></span>
+        <span><small>Movimentação</small><b>{brl(stats.valor||0)}</b></span>
+      </div>
+    </section>
     <section className="issued-hero dfe-hero"><div><i>{direction==="incoming"?<CloudDownload/>:<Send/>}</i><span>
       <small>{direction==="incoming"?"RECEBIMENTO FISCAL":"EMISSÕES PRÓPRIAS"}</small>
       <h2>{direction==="incoming"?"Documentos emitidos contra a empresa":"Documentos emitidos pela empresa"}</h2>
@@ -731,9 +740,14 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     <>
       <Head
         tag="DOCUMENTOS"
-        title="Documentos fiscais"
+        title="Central de documentos"
         text={`${total} registros encontrados · página ${page} de ${pages}`}
       />
+      <section className="document-vault-hero">
+        <div><i><Files/></i><span><small>COFRE FISCAL DIGITAL</small><h2>Documentos organizados e prontos para conferência</h2>
+          <p>Pesquise, audite, exporte e gerencie XMLs oficiais da empresa ativa em uma única visão.</p></span></div>
+        <div><span><ShieldCheck/><b>Custódia protegida</b></span><span><Activity/><b>Rastreabilidade ativa</b></span></div>
+      </section>
       <div className="kpis document-kpis">{[
         ["Documentos",stats.total??stats.documentos??total,FileText,"mint"],
         ["Valor movimentado",brl(stats.valor_total??stats.valor),Gauge,"violet"],
@@ -1312,7 +1326,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     <>
       <Head
         tag="REGULARIDADE FISCAL"
-        title="Certidões CND"
+        title="Regularidade CND"
         text="Controle vencimentos, situação fiscal, PDFs e histórico das certidões."
         action={
           <div className="cnd-head-actions">
@@ -1336,6 +1350,15 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </div>
         }
       />
+      <section className="cnd-command-hero">
+        <div><i><ShieldCheck/></i><span><small>PAINEL DE REGULARIDADE</small><h2>Risco fiscal visível antes do vencimento</h2>
+          <p>Acompanhe certidões, PDFs, situações positivas e alertas programados por empresa.</p></span></div>
+        <div className="cnd-risk-summary">
+          <span className="critical"><small>Vencidas</small><b>{stats.vencidas||0}</b></span>
+          <span className="warning"><small>Vencendo</small><b>{stats.vencendo||0}</b></span>
+          <span className="safe"><small>Negativas</small><b>{stats.negativas||0}</b></span>
+        </div>
+      </section>
       <div className="cnd-stats">
         {[
           ["Total de CNDs", stats.total || 0, FileText, "blue"],
@@ -2654,7 +2677,7 @@ function Profile({
           <form className="profile-form" onSubmit={save}>
             <div className="profile-hero">
               <div className="avatar-editor">
-                <span className="profile-photo">
+                <span className={`profile-photo ${user.avatar_url?"user-photo":"brand-photo"}`}>
                   {user.avatar_url ? (
                     <img src={user.avatar_url} />
                   ) : (
@@ -2767,7 +2790,7 @@ function Profile({
           </form>
         </Panel>
         <article className="profile-preview">
-          <span className="profile-photo large">
+          <span className={`profile-photo large ${user.avatar_url?"user-photo":"brand-photo"}`}>
             <img src={user.avatar_url || "/assets/haixel-logo.png"} />
           </span>
           <span className="eyebrow">SEU CARTÃO</span>
@@ -3802,8 +3825,8 @@ function Admin({
   return (
     <>
       <Head
-        tag="ADMINISTRAÇÃO"
-        title={kind === "companies" ? "Empresas" : "Usuários"}
+        tag={kind === "companies" ? "GOVERNANÇA EMPRESARIAL" : "ADMINISTRAÇÃO"}
+        title={kind === "companies" ? "Estrutura de empresas" : "Usuários"}
         text={
           kind === "companies"
             ? "Gerencie os ambientes empresariais da plataforma."
@@ -3851,6 +3874,14 @@ function Admin({
           )
         }
       />
+      {kind==="companies"&&<section className="company-command-hero">
+        <div><i><Building2/></i><span><small>MATRIZES, FILIAIS E AMBIENTES</small><h2>Governança empresarial centralizada</h2>
+          <p>Organize unidades, alterne a empresa ativa e replique configurações fiscais com segurança.</p></span></div>
+        <div className="company-command-actions">
+          <span><Network/><b>{items.filter(item=>item.empresa_matriz_id).length}</b><small>filiais conectadas</small></span>
+          <span><ShieldCheck/><b>{items.filter(item=>item.ativo!==false&&item.ativo!==0).length}</b><small>ambientes ativos</small></span>
+        </div>
+      </section>}
       {kind === "users" && (
         <div className="admin-stats">
           <article>
@@ -4621,7 +4652,7 @@ export default function App() {
               onClick={() => go("profile")}
               title="Abrir meu perfil"
             >
-              <span className="avatar">
+              <span className={`avatar ${user.avatar_url?"user-photo":"brand-photo"}`}>
                 {user.avatar_url ? (
                   <img src={user.avatar_url} />
                 ) : (
