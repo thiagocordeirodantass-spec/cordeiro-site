@@ -4,11 +4,22 @@ import {getCompanyCertificate} from "./_company-certificate.js";
 import {cndAlertEmail,sendResend} from "./_email-templates.js";
 
 const RELEASE={
-  version:"2026.07.26.10",
+  version:"2026.07.26.11",
   title:"Centrais fiscais e governança reconstruídas",
-  publishedAt:"2026-07-27T00:25:00-03:00",
+  publishedAt:"2026-07-27T01:05:00-03:00",
   summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
   items:[
+    {type:"new",title:"Navegação no topo",text:"O menu principal agora ocupa a faixa superior e libera mais largura para tabelas e operações fiscais."},
+    {type:"fixed",title:"Filtros de documentos estabilizados",text:"As abas que quebravam o layout foram substituídas por um seletor compacto e responsivo."},
+    {type:"improved",title:"Monitor DF-e compacto",text:"Documentos emitidos e recebidos, filtros e ações ganharam uma composição menor e mais clara."},
+    {type:"improved",title:"Consulta e importação renovadas",text:"Chave de acesso, planilha e processamento foram reorganizados em um fluxo visual objetivo."},
+    {type:"new",title:"Monitoramento SEFAZ",text:"Novo módulo dedicado à disponibilidade dos serviços, sem misturar credenciais ou certificado."},
+    {type:"fixed",title:"Certificado A1 corrigido",text:"O botão abre exclusivamente o cofre da empresa, sem navegação indevida para telas administrativas."},
+    {type:"improved",title:"Replicação de configurações",text:"Nova seleção visual de matrizes e filiais com resumo e ação destacada."},
+    {type:"improved",title:"Mensagens restauradas",text:"O painel voltou ao visual simples anterior, mantendo a correção do campo de envio."},
+    {type:"improved",title:"E-mails com a marca Haixel",text:"Login e vencimento de CND receberam novo layout e agora usam a logo oficial."},
+    {type:"new",title:"Logout automático após atualização",text:"Uma nova versão encerra a sessão anterior e direciona o usuário novamente ao login."},
+    {type:"new",title:"Alerta vermelho de manutenção",text:"Ícone, texto destacado e contagem regressiva de 10 segundos antecedem o bloqueio."},
     {type:"fixed",title:"Mensagens prontas para envio",text:"A conversa é selecionada automaticamente e o campo de composição também fica disponível no canal pessoal."},
     {type:"fixed",title:"Situação da CND corrigida",text:"Datas ausentes ou inválidas não geram mais NaN; a interface apresenta uma situação segura e legível."},
     {type:"new",title:"Certificado por empresa",text:"O A1 agora é administrado somente em Empresas e fica amarrado ao CNPJ da matriz ou filial."},
@@ -135,7 +146,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;

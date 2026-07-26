@@ -14,6 +14,7 @@ import {
   CheckCheck,
   CloudDownload,
   FileDown,
+  FileSpreadsheet,
   FileText,
   Files,
   Gauge,
@@ -836,10 +837,11 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <RefreshCw className={busy ? "spin" : ""} />
           </button>
         </div>
-        <div className="doc-tabs">
-          {[["","Todos"],["NFE","NF-e"],["CTE","CT-e"],["NFSE","NFS-e"]].map(([value,label])=>
-            <button className={kindFilter===value?"active":""} key={value} onClick={()=>{setKindFilter(value);setPage(1)}}>{label}</button>)}
-        </div>
+        <label className="document-type-select"><Files/><span><small>TIPO DE DOCUMENTO</small>
+          <select value={kindFilter} onChange={event=>{setKindFilter(event.target.value);setPage(1)}}>
+            <option value="">Todos os documentos</option><option value="NFE">NF-e</option>
+            <option value="CTE">CT-e</option><option value="NFSE">NFS-e</option>
+          </select></span><ChevronDown/></label>
         <div className="table">
           <table>
             <thead>
@@ -2212,9 +2214,9 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div className="integration-live"><span><i/> Ambiente protegido</span><small>Fila, NSU e limites preventivos ativos</small></div>
       </section>
       <nav className="integration-launchpad">
-        <button onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Consultar chave</b><small>NF-e e CT-e oficiais</small></span><ArrowUpRight/></button>
-        <button onClick={()=>document.getElementById("sefaz-security")?.scrollIntoView({behavior:"smooth"})}><i className="green"><ShieldCheck/></i><span><b>Certificado A1</b><small>Cofre e política SEFAZ</small></span><ArrowUpRight/></button>
-        <button onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Monitor fiscal</b><small>Disponibilidade e serviços</small></span><ArrowUpRight/></button>
+        <button onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Chave de acesso</b><small>Consultar NF-e ou CT-e</small></span><ArrowUpRight/></button>
+        <button onClick={()=>document.querySelector<HTMLInputElement>(".spreadsheet-import input")?.click()}><i className="green"><FileSpreadsheet/></i><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><ArrowUpRight/></button>
+        <button onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Monitoramento SEFAZ</b><small>Disponibilidade dos serviços</small></span><ArrowUpRight/></button>
         <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
       </nav>
       <div id="sefaz-security"><SefazControlCenter toast={toast}/></div>
@@ -2248,7 +2250,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </label>
             <label className="spreadsheet-import">
               <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
-              <span className="spreadsheet-button"><FileText/><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><UploadCloud/></span>
+              <span className="spreadsheet-button"><FileSpreadsheet/><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><UploadCloud/></span>
               <small>Excel, CSV ou TXT · todas as abas serão verificadas</small>
             </label>
             {informedKeys.length>0&&<div className="sefaz-queue-estimate">
@@ -2592,17 +2594,11 @@ function SefazBatch({ toast }: { toast: (s: string, e?: boolean) => void }) {
 
 function FiscalOperations() {
   const [monitor, setMonitor] = useState<any>(null),
-    [certs, setCerts] = useState<any[]>([]),
     [busy, setBusy] = useState(true);
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const [m, c] = await Promise.all([
-        api<any>("/api/sefaz-monitor"),
-        api<any>("/api/sefaz/cert/listar"),
-      ]);
-      setMonitor(m);
-      setCerts(Array.isArray(c) ? c : c.certificados || []);
+      setMonitor(await api<any>("/api/sefaz-monitor"));
     } catch {
     } finally {
       setBusy(false);
@@ -2617,8 +2613,8 @@ function FiscalOperations() {
       <div className="section-title">
         <div>
           <span className="eyebrow">OPERAÇÃO FISCAL</span>
-          <h2>Monitor e certificado digital</h2>
-          <p>Status dos serviços e credenciais disponíveis nesta máquina.</p>
+          <h2>Monitoramento SEFAZ</h2>
+          <p>Disponibilidade dos serviços fiscais por ambiente e estado.</p>
         </div>
         <button className="secondary" onClick={load}>
           <RefreshCw className={busy ? "spin" : ""} />
@@ -2633,10 +2629,6 @@ function FiscalOperations() {
         <article>
           <small>Serviços offline</small>
           <b className="bad-text">{monitor?.offline ?? "—"}</b>
-        </article>
-        <article>
-          <small>Certificados A1</small>
-          <b>{certs.length}</b>
         </article>
         <article>
           <small>Última verificação</small>
@@ -2661,31 +2653,8 @@ function FiscalOperations() {
           </article>
         ))}
       </div>
-      <div className="certificate-list">
-        {certs.length ? (
-          certs.map((c: any) => (
-            <article key={c.thumbprint}>
-              <ShieldCheck />
-              <div>
-                <b>{c.label || c.subject}</b>
-                <small>Emissor: {c.issuer}</small>
-              </div>
-              <span>Válido até {c.vence || date(c.notAfter)}</span>
-            </article>
-          ))
-        ) : (
-          <div className="cert-alert">
-            <ShieldCheck />
-            <div>
-              <b>Nenhum certificado A1 detectado</b>
-              <small>
-                Instale o certificado no Windows ou carregue um arquivo PFX nas
-                operações SEFAZ.
-              </small>
-            </div>
-          </div>
-        )}
-      </div>
+      <div className="sefaz-monitor-note"><Activity/><span><b>Monitoramento independente do certificado</b>
+        <small>O certificado A1 é administrado exclusivamente no cadastro da empresa correspondente.</small></span></div>
     </section>
   );
 }
@@ -3484,6 +3453,17 @@ function MaintenanceCountdown({maintenance}:{maintenance:SystemStatus["maintenan
   </aside>;
 }
 
+function MaintenanceActivationCountdown({seconds}:{seconds:number}){
+  return <aside className="maintenance-red-alert" role="alert" aria-live="assertive">
+    <div className="maintenance-red-icon"><Bot/><i/></div>
+    <span><small>ATENÇÃO · ATUALIZAÇÃO DO SISTEMA</small>
+      <b>A manutenção começará em {seconds} segundo{seconds===1?"":"s"}</b>
+      <p>Salve o que estiver fazendo. A Haixel encerrará a sessão automaticamente.</p></span>
+    <time>{String(seconds).padStart(2,"0")}</time>
+    <div className="maintenance-red-progress"><i style={{width:`${seconds*10}%`}}/></div>
+  </aside>;
+}
+
 function WelcomeExperience({
   user,
   admin,
@@ -3699,7 +3679,6 @@ function Messenger() {
     [selected, setSelected] = useState<any>(null),
     [messages, setMessages] = useState<any[]>([]),
     [text, setText] = useState(""),
-    [userQuery,setUserQuery]=useState(""),
     [attachment,setAttachment]=useState<File|null>(null),
     [sending,setSending]=useState(false),
     [unread, setUnread] = useState(0);
@@ -3772,9 +3751,9 @@ function Messenger() {
       {open && (
         <section className="messenger-panel">
           <header>
-            <div className="messenger-brand">
-              <i><MessageCircle/></i><span><b>Mensagens da equipe</b>
-              <small><em/> Conversas sincronizadas automaticamente</small></span>
+            <div>
+              <b>Mensagens</b>
+              <small>Converse com sua equipe</small>
             </div>
             <button onClick={() => setOpen(false)}>
               <X />
@@ -3782,10 +3761,7 @@ function Messenger() {
           </header>
           <div className="messenger-layout">
             <aside>
-              <label className="messenger-search"><Search/><input value={userQuery}
-                onChange={event=>setUserQuery(event.target.value)} placeholder="Buscar pessoa..."/></label>
-              <small className="messenger-section-label">EQUIPE · {users.filter(item=>item.online).length} ONLINE</small>
-              {users.filter(item=>`${item.nome||""} ${item.username||""}`.toLowerCase().includes(userQuery.toLowerCase())).map((userItem) => (
+              {users.map((userItem) => (
                 <button
                   className={selected?.id === userItem.id ? "active" : ""}
                   onClick={() => openThread(userItem)}
@@ -4235,7 +4211,7 @@ function Admin({
                     <button className="secondary" onClick={()=>openModules(company)}>
                       <Save /> Configurar módulos
                     </button>
-                    <button className="secondary certificate-action" onClick={()=>openCompanyCertificate(company)}>
+                    <button type="button" className="secondary certificate-action" onClick={event=>{event.preventDefault();event.stopPropagation();openCompanyCertificate(company)}}>
                       <ShieldCheck /> Certificado A1
                     </button>
                     <button className="secondary" onClick={()=>setCompanyForm({...company})}>Editar</button>
@@ -4251,7 +4227,7 @@ function Admin({
                         <i><Building2/></i>
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
                         <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
-                        <button className="secondary" onClick={()=>openCompanyCertificate(branch)}>Certificado</button>
+                        <button type="button" className="secondary" onClick={event=>{event.preventDefault();event.stopPropagation();openCompanyCertificate(branch)}}>Certificado</button>
                         <button className="secondary" onClick={()=>setCompanyForm({...branch})}>Editar</button>
                         <button className="secondary" onClick={()=>toggleCompany(branch)}>{branchInactive?"Reativar":"Inativar"}</button>
                         <button className="secondary danger" onClick={()=>deleteCompany(branch)}>Excluir</button>
@@ -4770,6 +4746,7 @@ export default function App() {
     [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
     [showWelcome, setShowWelcome] = useState(false),
     [showRelease, setShowRelease] = useState(false),
+    [maintenanceGrace,setMaintenanceGrace]=useState<number|null>(null),
     [notifications, setNotifications] =
       useState<AppNotification[]>(storedNotifications);
   const setMobile = (value: boolean) =>
@@ -4837,6 +4814,31 @@ export default function App() {
     const timer = window.setInterval(checkStatus, 3000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(()=>{
+    if(!systemStatus?.release.version)return;
+    const key="haixel.runtime.version",previous=localStorage.getItem(key),currentVersion=systemStatus.release.version;
+    if(!previous){localStorage.setItem(key,currentVersion);return}
+    if(previous!==currentVersion){
+      if(checking)return;
+      localStorage.setItem(key,currentVersion);
+      if(user){
+        sessionStorage.setItem("haixel.updated","1");
+        api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>window.location.reload());
+      }
+    }
+  },[systemStatus?.release.version,user,checking]);
+  useEffect(()=>{
+    if(!systemStatus?.maintenance.active){setMaintenanceGrace(null);return}
+    const key=`haixel.maintenance.seen.${systemStatus.release.version}`;
+    if(sessionStorage.getItem(key)==="1"){setMaintenanceGrace(0);return}
+    setMaintenanceGrace(value=>value??10);
+    const timer=window.setInterval(()=>setMaintenanceGrace(value=>{
+      if(value==null)return 10;
+      if(value<=1){sessionStorage.setItem(key,"1");window.clearInterval(timer);return 0}
+      return value-1;
+    }),1000);
+    return()=>window.clearInterval(timer);
+  },[systemStatus?.maintenance.active,systemStatus?.release.version]);
   useEffect(() => {
     if (!user || !systemStatus) return;
     const status = systemStatus;
@@ -4848,7 +4850,7 @@ export default function App() {
       setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
   }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
-  if (systemStatus?.maintenance.active)
+  if (systemStatus?.maintenance.active&&maintenanceGrace===0)
     return <MaintenanceNotice maintenance={systemStatus.maintenance} />;
   if (checking)
     return (
@@ -4858,7 +4860,9 @@ export default function App() {
       </div>
     );
   if (!user) return <><Login done={enter}/>{systemStatus?.maintenance.scheduled&&
-    <MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</>;
+    <MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
+    {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
+      <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}</>;
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);
@@ -4977,6 +4981,8 @@ export default function App() {
       </div>
       <Assistant />
       {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
+      {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
+        <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}
       {showWelcome && (
         <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
       )}

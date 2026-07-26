@@ -8,7 +8,10 @@ function shell({eyebrow,title,intro,content,footer}){
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#eef5f2"><tr><td align="center">
       <table role="presentation" width="620" cellspacing="0" cellpadding="0" style="width:100%;max-width:620px;overflow:hidden;border:1px solid #dce9e4;border-radius:24px;background:#fff;box-shadow:0 22px 60px rgba(19,59,46,.10)">
         <tr><td style="padding:28px 30px;background:linear-gradient(135deg,#f9fffc,#e5f7f0);border-bottom:1px solid #dce9e4">
-          <table role="presentation" width="100%"><tr><td><div style="display:inline-block;width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#1ca47e,#08614d);color:#fff;font-size:22px;font-weight:900;line-height:44px;text-align:center;box-shadow:0 10px 24px rgba(11,111,84,.24)">H</div></td>
+          <table role="presentation" width="100%"><tr><td><table role="presentation" cellspacing="0" cellpadding="0"><tr>
+            <td><div style="width:52px;height:52px;border:1px solid #b8e2d4;border-radius:16px;background:#fff;box-shadow:0 10px 24px rgba(11,111,84,.16);overflow:hidden"><img src="https://cordeiro-site.vercel.app/assets/haixel-logo.png" width="52" height="52" alt="Haixel" style="display:block;width:52px;height:52px;object-fit:contain"></div></td>
+            <td style="padding-left:11px"><strong style="display:block;color:#123a2e;font-size:17px;letter-spacing:-.3px">Haixel</strong><span style="display:block;margin-top:3px;color:#678078;font-size:9px;letter-spacing:1.2px">INTELIGÊNCIA FISCAL</span></td>
+          </tr></table></td>
           <td align="right"><span style="display:inline-block;padding:7px 10px;border:1px solid #bfe3d6;border-radius:999px;background:#f7fffc;color:#127257;font-size:9px;font-weight:800;letter-spacing:1.4px">${eyebrow}</span></td></tr></table>
           <h1 style="margin:22px 0 8px;color:#10251e;font-size:27px;line-height:1.16">${title}</h1>
           <p style="margin:0;max-width:520px;color:#60756e;font-size:14px;line-height:1.65">${intro}</p>
