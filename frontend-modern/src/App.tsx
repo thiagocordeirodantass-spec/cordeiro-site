@@ -313,7 +313,7 @@ const groups = [
   [
     "Gestão documental",
     [
-      ["documents", "Central fiscal", Files],
+      ["documents", "Central de documentos", Files],
       ["reports", "Inteligência fiscal", BarChart3],
       ["certificates", "Regularidade CND", ShieldCheck],
     ],
@@ -762,6 +762,11 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div><i><Files/></i><span><small>COFRE FISCAL DIGITAL</small><h2>Documentos organizados e prontos para conferência</h2>
           <p>Pesquise, audite, exporte e gerencie XMLs oficiais da empresa ativa em uma única visão.</p></span></div>
         <div><span><ShieldCheck/><b>Custódia protegida</b></span><span><Activity/><b>Rastreabilidade ativa</b></span></div>
+      </section>
+      <section className="document-action-deck">
+        <button onClick={()=>setShowFilters(true)}><i className="blue"><Search/></i><span><b>Pesquisa inteligente</b><small>Cruze chave, CNPJ, período e situação</small></span><ChevronRight/></button>
+        <button onClick={load}><i className="green"><RefreshCw className={busy?"spin":""}/></i><span><b>Atualizar cofre</b><small>Carregue os registros mais recentes</small></span><ChevronRight/></button>
+        <button onClick={()=>download(`/api/relatorio/lote?formato=xml&${exportParams}`,"documentos-xml.zip")}><i className="violet"><CloudDownload/></i><span><b>Pacote de XMLs</b><small>Exporte o resultado da consulta</small></span><ChevronRight/></button>
       </section>
       <div className="kpis document-kpis">{[
         ["Documentos",stats.total??stats.documentos??total,FileText,"mint"],
@@ -1291,8 +1296,16 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       catch(error){toast(`${file.name}: ${(error as Error).message}`,true)}
     }
     setRecognitionResults(results);
+    setItems(current=>{
+      const documents=results.map(result=>result.document).filter(Boolean);
+      return [...documents,...current.filter(item=>!documents.some(document=>Number(document.id)===Number(item.id)))];
+    });
     if(imported)toast(`${imported} certidão(ões) importada(s) e vinculada(s) pelo CNPJ`);
-    load();
+    await load();
+    setItems(current=>{
+      const documents=results.map(result=>result.document).filter(Boolean);
+      return [...documents,...current.filter(item=>!documents.some(document=>Number(document.id)===Number(item.id)))];
+    });
     if (smartInput.current) smartInput.current.value = "";
   }
   async function saveConfig() {
@@ -2864,7 +2877,8 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [items, setItems] = useState<any[]>([]),
     [isAdmin, setIsAdmin] = useState(false),
     [editing, setEditing] = useState<any>(null),
-    [reply, setReply] = useState("");
+    [reply, setReply] = useState(""),
+    [activeGuide,setActiveGuide]=useState("primeiros-passos");
   const load = useCallback(async () => {
     try {
       const all = await api<any[]>("/api/feedback");
@@ -2956,6 +2970,26 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <i><Icon/></i><span><b>{title}</b><small>{description}</small></span><ChevronRight/>
           </button>
         ))}
+      </section>
+      <section className="support-guide">
+        <nav>
+          {[["primeiros-passos","Primeiros passos",Rocket],["documentos","Documentos fiscais",Files],
+            ["sefaz","Conexão SEFAZ",Network],["cnd","Certidões CND",ShieldCheck]].map(([id,label,Icon]:any)=>
+            <button className={activeGuide===id?"active":""} onClick={()=>setActiveGuide(id)} key={id}>
+              <Icon/><span>{label}</span><ChevronRight/>
+            </button>)}
+        </nav>
+        <article>
+          <span className="eyebrow">GUIA INTERATIVO</span>
+          <h3>{activeGuide==="primeiros-passos"?"Comece pela empresa ativa":
+            activeGuide==="documentos"?"Organize todo o ciclo documental":
+            activeGuide==="sefaz"?"Consulte sem exceder os limites":"Antecipe vencimentos e pendências"}</h3>
+          <p>{activeGuide==="primeiros-passos"?"Cadastre a matriz, vincule a equipe e defina as permissões antes de iniciar a operação.":
+            activeGuide==="documentos"?"Importe XMLs, sincronize documentos contra o CNPJ e use os filtros para conferir cada movimentação.":
+            activeGuide==="sefaz"?"Valide o A1, preserve o último NSU e deixe as proteções preventivas cuidarem da fila.":
+            "Importe o PDF completo, confira os campos reconhecidos e mantenha destinatários de alerta atualizados."}</p>
+          <button className="secondary" onClick={()=>setCategory("duvida")}><MessageCircle/> Ainda preciso de ajuda</button>
+        </article>
       </section>
       <div className="support-kpis">
         {[
@@ -3608,6 +3642,7 @@ function Messenger() {
     [selected, setSelected] = useState<any>(null),
     [messages, setMessages] = useState<any[]>([]),
     [text, setText] = useState(""),
+    [userQuery,setUserQuery]=useState(""),
     [attachment,setAttachment]=useState<File|null>(null),
     [sending,setSending]=useState(false),
     [unread, setUnread] = useState(0);
@@ -3677,9 +3712,9 @@ function Messenger() {
       {open && (
         <section className="messenger-panel">
           <header>
-            <div>
-              <b>Mensagens</b>
-              <small>Converse com sua equipe</small>
+            <div className="messenger-brand">
+              <i><MessageCircle/></i><span><b>Mensagens da equipe</b>
+              <small><em/> Conversas sincronizadas automaticamente</small></span>
             </div>
             <button onClick={() => setOpen(false)}>
               <X />
@@ -3687,7 +3722,10 @@ function Messenger() {
           </header>
           <div className="messenger-layout">
             <aside>
-              {users.map((userItem) => (
+              <label className="messenger-search"><Search/><input value={userQuery}
+                onChange={event=>setUserQuery(event.target.value)} placeholder="Buscar pessoa..."/></label>
+              <small className="messenger-section-label">EQUIPE · {users.filter(item=>item.online).length} ONLINE</small>
+              {users.filter(item=>`${item.nome||""} ${item.username||""}`.toLowerCase().includes(userQuery.toLowerCase())).map((userItem) => (
                 <button
                   className={selected?.id === userItem.id ? "active" : ""}
                   onClick={() => openThread(userItem)}
@@ -3789,6 +3827,8 @@ function Admin({
     [expandedCompanies,setExpandedCompanies]=useState<Record<number,boolean>>({}),
     [replicateTargets,setReplicateTargets]=useState<number[]>([]),
     [replicationOpen,setReplicationOpen]=useState(false),
+    [companyQuery,setCompanyQuery]=useState(""),
+    [companyView,setCompanyView]=useState<"cards"|"structure">("cards"),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3926,6 +3966,8 @@ function Admin({
       toast((e as Error).message, true);
     }
   }
+  const companyRows=kind==="companies"?items.filter(item=>
+    `${item.nome||""} ${item.nome_fantasia||""} ${item.cnpj||""}`.toLowerCase().includes(companyQuery.toLowerCase())):items;
   return (
     <>
       <Head
@@ -3986,6 +4028,26 @@ function Admin({
           <span><ShieldCheck/><b>{items.filter(item=>item.ativo!==false&&item.ativo!==0).length}</b><small>ambientes ativos</small></span>
         </div>
       </section>}
+      {kind==="companies"&&<section className="company-workbench">
+        <div className="company-workbench-search"><Search/><input value={companyQuery}
+          onChange={event=>setCompanyQuery(event.target.value)} placeholder="Localizar matriz, filial, nome ou CNPJ..."/></div>
+        <nav><button className={companyView==="cards"?"active":""} onClick={()=>setCompanyView("cards")}><Building2/> Ambientes</button>
+          <button className={companyView==="structure"?"active":""} onClick={()=>setCompanyView("structure")}><Network/> Estrutura</button></nav>
+        <button className="company-new-action" onClick={()=>setCompanyForm({
+          cnpj:"",nome:"",nome_fantasia:"",ie:"",regime_tributario:"simples",ambiente:"producao",
+          cadastrarFilial:false,filial:{cnpj:"",nome:"",nome_fantasia:"",ie:"",im:""},
+        })}><Sparkles/><span><b>Novo ambiente</b><small>Matriz ou filial</small></span></button>
+      </section>}
+      {kind==="companies"&&companyView==="structure"&&<section className="company-structure-map">
+        <header><div><Network/><span><b>Mapa da organização</b><small>Relação entre matrizes e filiais cadastradas</small></span></div>
+          <em>{companyRows.length} unidade(s)</em></header>
+        <div>{companyRows.filter(item=>!item.empresa_matriz_id).map(matrix=><article key={matrix.id}>
+          <i><Building2/></i><span><b>{matrix.nome}</b><small>{matrix.cnpj} · Matriz</small></span>
+          <div>{companyRows.filter(branch=>Number(branch.empresa_matriz_id)===Number(matrix.id)).map(branch=>
+            <button key={branch.id} onClick={()=>setExpandedCompanies(current=>({...current,[matrix.id]:true}))}>
+              <Network/><span><b>{branch.nome}</b><small>{branch.cnpj}</small></span></button>)}</div>
+        </article>)}</div>
+      </section>}
       {kind==="users"&&<section className="access-command-hero">
         <div><i><ShieldCheck/></i><span><small>IDENTIDADES E PERMISSÕES</small>
           <h2>Controle de acessos inteligente</h2>
@@ -4033,9 +4095,9 @@ function Admin({
       <Panel>
         {items.length && kind === "companies" ? (
           <div className="company-grid">
-            {items.filter((item)=>!item.empresa_matriz_id).map((company, index) => {
+            {companyRows.filter((item)=>!item.empresa_matriz_id).map((company, index) => {
               const inactive = company.ativo === false || company.ativo === 0;
-              const branches=items.filter((item)=>Number(item.empresa_matriz_id)===Number(company.id));
+              const branches=companyRows.filter((item)=>Number(item.empresa_matriz_id)===Number(company.id));
               return (
                 <article
                   className={`company-card ${inactive ? "inactive" : ""}`}
@@ -4142,8 +4204,8 @@ function Admin({
                   </div>
                   <dl>
                     <div>
-                      <dt>E-mail</dt>
-                      <dd>{userItem.email || "Não informado"}</dd>
+                      <dt>Perfil de acesso</dt>
+                      <dd>{roleLabel}</dd>
                     </div>
                     <div>
                       <dt>Último acesso</dt>
@@ -4475,16 +4537,6 @@ function Admin({
                   value={userForm.username || ""}
                   onChange={(e) =>
                     setUserForm({ ...userForm, username: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                E-mail
-                <input
-                  type="email"
-                  value={userForm.email || ""}
-                  onChange={(e) =>
-                    setUserForm({ ...userForm, email: e.target.value })
                   }
                 />
               </label>

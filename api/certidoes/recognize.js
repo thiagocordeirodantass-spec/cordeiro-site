@@ -71,10 +71,7 @@ export default async function handler(req,res){
     const normalized=text.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
     const cnpjs=[...new Set([...text.matchAll(/\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}/g)]
       .map(match=>match[0].replace(/\D/g,"")))];
-    let company=cnpjs.length?await pool.query(`SELECT id,nome,cnpj FROM empresas
-      WHERE regexp_replace(cnpj,'\\D','','g')=ANY($1::text[]) AND ativo=TRUE
-      ORDER BY CASE WHEN id=$2 THEN 0 ELSE 1 END LIMIT 1`,[cnpjs,empresaId]):{rowCount:0,rows:[]};
-    if(!company.rowCount)company=await pool.query("SELECT id,nome,cnpj FROM empresas WHERE id=$1 AND ativo=TRUE",[empresaId]);
+    const company=await pool.query("SELECT id,nome,cnpj FROM empresas WHERE id=$1 AND ativo=TRUE",[empresaId]);
     if(!company.rowCount) return res.status(404).json({error:"Empresa não encontrada"});
     const cnpj=String(company.rows[0].cnpj||cnpjs[0]||"").replace(/\D/g,"");
     const dateExpression=/\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}|\d{1,2}\s+de\s+[A-Za-zÀ-ÿ]+\s+de\s+\d{4}/gi;
@@ -105,13 +102,15 @@ export default async function handler(req,res){
     const saved=await pool.query(`INSERT INTO certidoes(user_id,empresa_id,empresa_nome,tipo,status,numero_certidao,
       data_emissao,data_validade,observacoes,pdf_data,pdf_name,orgao,cnpj,razao_social,situacao,
       emitida_em,valida_ate,numero)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::bytea,$11,$12,$13,$14,$15,$7,$8,$6) RETURNING id`,
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::bytea,$11,$12,$13,$14,$15,$7,$8,$6) RETURNING *`,
       [session.rows[0].user_id,company.rows[0].id,company.rows[0].nome,tipo,status,numero,dataEmissao,dataValidade,
        `PDF lido integralmente${totalPages?` (${totalPages} página(s))`:""}. Diagnóstico automático: ${diagnostico}.`,
        bytes,safeName(file.originalFilename),orgao,cnpj,company.rows[0].nome,status]);
     const missing=[];if(!cnpj)missing.push("CNPJ");if(!dataEmissao)missing.push("data de emissão");
     if(!dataValidade)missing.push("data de validade");if(!numero)missing.push("número");
-    return res.json({ok:true,id:Number(saved.rows[0].id),recognized:{cnpj,razaoSocial:company.rows[0].nome,
+    const row=saved.rows[0];
+    return res.json({ok:true,id:Number(row.id),document:{...row,pdf_data:undefined,pdf_url:`/api/certidoes/${row.id}/pdf`},
+      recognized:{cnpj,razaoSocial:company.rows[0].nome,
       orgao,tipo,status,numero,dataEmissao,dataValidade,totalPages},
       diagnostico,missing,message:`Certidão lida, vinculada a ${company.rows[0].nome} e diagnosticada: ${diagnostico}.`});
   }catch(error){

@@ -1,13 +1,21 @@
 import crypto from "node:crypto";
 import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
+import {cndAlertEmail,sendResend} from "./_email-templates.js";
 
 const RELEASE={
-  version:"2026.07.26.8",
+  version:"2026.07.26.9",
   title:"Centrais fiscais e governança reconstruídas",
-  publishedAt:"2026-07-26T23:30:00-03:00",
+  publishedAt:"2026-07-26T23:55:00-03:00",
   summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
   items:[
+    {type:"fixed",title:"CND visível após a importação",text:"O registro completo entra imediatamente na empresa ativa e as consultas dinâmicas não reutilizam listas antigas."},
+    {type:"new",title:"Empresas e estrutura organizacional",text:"Busca rápida, mapa de matrizes e filiais, novos cartões e formulários de configuração."},
+    {type:"improved",title:"Central de Documentos reconstruída",text:"Atalhos operacionais, pesquisa inteligente, exportação e nova experiência do cofre fiscal."},
+    {type:"improved",title:"Suporte, SEFAZ e Mensagens",text:"Guias interativos, controles mais compactos, busca da equipe e conversas mais claras."},
+    {type:"improved",title:"Haixel IA clara",text:"A assistente mantém o visual translúcido e agora usa uma superfície clara, sem o fundo escuro."},
+    {type:"new",title:"E-mails Haixel renovados",text:"Novo acesso seguro e alertas diários de CND com layout responsivo e resumo das pendências."},
+    {type:"improved",title:"Privacidade de usuários",text:"E-mails permanecem no banco, mas não são exibidos nem retornados na administração de acessos."},
     {type:"new",title:"Central Fiscal unificada",text:"Documentos arquivados, emitidos, recebidos, importação e monitor SEFAZ reunidos em um só fluxo."},
     {type:"fixed",title:"Leitura integral de CND",text:"PDFs são processados no servidor e preenchem número, órgão, CNPJ, emissão, validade e situação."},
     {type:"new",title:"Mensagens em tempo real",text:"Presença online, confirmação de leitura e envio protegido de imagens e anexos."},
@@ -87,9 +95,10 @@ function feedback(row) {
 
 export default async function handler(request, response) {
   try {
+    response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -193,9 +202,28 @@ export default async function handler(request, response) {
         return response.json({ok:true});
       }
       if (route[1] === "enviar-teste" && request.method === "POST") {
-        const result=await pool.query("SELECT COUNT(*)::int total FROM cnd_destinatarios WHERE ativo=TRUE");
-        if (!result.rows[0].total) return response.status(400).json({error:"Cadastre ao menos um destinatário ativo"});
-        return response.json({ok:true,enviados:result.rows[0].total,message:"Teste registrado para envio"});
+        const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
+        const [recipients,company,certificates]=await Promise.all([
+          pool.query("SELECT email FROM cnd_destinatarios WHERE ativo=TRUE AND ($1::bigint=0 OR empresa_id=$1)",[empresaId]),
+          pool.query("SELECT nome FROM empresas WHERE id=$1",[empresaId]),
+          pool.query(`SELECT tipo,numero_certidao,data_validade,
+            COALESCE((data_validade-CURRENT_DATE)::int,0) days FROM certidoes
+            WHERE ($1::bigint=0 OR empresa_id=$1) ORDER BY data_validade ASC NULLS LAST LIMIT 8`,[empresaId]),
+        ]);
+        if (!recipients.rowCount) return response.status(400).json({error:"Cadastre ao menos um destinatário ativo"});
+        const sample=certificates.rows.length?certificates.rows:[{
+          tipo:"Certidão municipal",numero_certidao:"MODELO-HAIXEL",
+          data_validade:new Date().toISOString().slice(0,10),days:0,
+        }];
+        const template=cndAlertEmail({company:company.rows[0]?.nome||"Empresa ativa",items:sample,preview:true});
+        let enviados=0;
+        for(const {email} of recipients.rows){
+          const result=await sendResend({to:email,...template});
+          if(result.sent)enviados++;
+        }
+        return response.json({ok:true,enviados,message:enviados?
+          `Novo modelo enviado para ${enviados} destinatário(s)`:
+          "Novo modelo preparado. Configure a chave RESEND_API_KEY para realizar o envio."});
       }
       if (route[1] === "stats" && request.method === "GET") {
         const empresaId=Number(request.headers["x-empresa-id"]||request.query.empresaId||0);
@@ -276,7 +304,7 @@ export default async function handler(request, response) {
         return response.status(403).json({ error: "Acesso restrito" });
       if (route.length === 1 && request.method === "GET") {
         const result = await pool.query(
-          `SELECT u.id,u.username,u.nome,u.email,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
+          `SELECT u.id,u.username,u.nome,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
             EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
               AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
             eu.empresa_id,eu.permissoes FROM users u LEFT JOIN empresa_users eu ON eu.user_id=u.id
@@ -382,7 +410,7 @@ export default async function handler(request, response) {
     if (route[0] === "messages") {
       if (route[1] === "users" && request.method === "GET") {
         const result = await pool.query(
-          `SELECT u.id,u.username,u.nome,u.email,u.role,
+          `SELECT u.id,u.username,u.nome,u.role,
              EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
                AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
              COUNT(m.id) FILTER(WHERE m.read_at IS NULL)::int AS unread,

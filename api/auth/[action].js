@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 import { ensureSchema, pool } from "../_database.js";
+import {accessEmail,sendResend} from "../_email-templates.js";
 
 const COOKIE = "sid";
 const SESSION_HOURS = 8;
-async function sendAccessCode({to,name,code}){
+async function sendAccessCodeLegacy({to,name,code}){
   if(!process.env.RESEND_API_KEY) return {sent:false};
   const safeName=String(name||"").replace(/[<>&"']/g,"");
   const html=`<!doctype html><html><body style="margin:0;background:#061713;padding:36px 16px;font-family:Arial,sans-serif;color:#eafff8">
@@ -24,6 +25,11 @@ async function sendAccessCode({to,name,code}){
       to:[to],subject:`${code} é seu código de acesso · Haixel`,html})});
   if(!result.ok) throw new Error("Falha no serviço de e-mail");
   return {sent:true};
+}
+
+async function sendAccessCode({to,name,code}){
+  const template=accessEmail({name,code});
+  return sendResend({to,...template});
 }
 
 function hashPassword(password, saltHex) {
