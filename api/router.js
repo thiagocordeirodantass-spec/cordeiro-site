@@ -4,11 +4,16 @@ import {getCompanyCertificate} from "./_company-certificate.js";
 import {cndAlertEmail,sendResend} from "./_email-templates.js";
 
 const RELEASE={
-  version:"2026.07.26.11",
+  version:"2026.07.26.12",
   title:"Centrais fiscais e governança reconstruídas",
-  publishedAt:"2026-07-27T01:05:00-03:00",
+  publishedAt:"2026-07-26T23:55:00-03:00",
   summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
   items:[
+    {type:"fixed",title:"Resumo sempre acessível",text:"A lista de novidades agora rola internamente e mantém o cabeçalho e o botão de confirmação sempre visíveis."},
+    {type:"new",title:"Logout imediato na manutenção",text:"Ao ativar a manutenção, todas as sessões são invalidadas no servidor e removidas da interface automaticamente."},
+    {type:"improved",title:"Responsividade em todo o sistema",text:"Painéis, formulários, tabelas, indicadores e modais se reorganizam de desktop a celular sem criar rolagem lateral."},
+    {type:"fixed",title:"Barra superior reconstruída",text:"A navegação ganhou rolagem horizontal invisível, contexto da tela ativa e controles que não se sobrepõem."},
+    {type:"new",title:"Minha conta reformulada",text:"Perfil, foto, contatos e cartão profissional receberam uma composição mais clara, elegante e adaptável."},
     {type:"new",title:"Navegação no topo",text:"O menu principal agora ocupa a faixa superior e libera mais largura para tabelas e operações fiscais."},
     {type:"fixed",title:"Filtros de documentos estabilizados",text:"As abas que quebravam o layout foram substituídas por um seletor compacto e responsivo."},
     {type:"improved",title:"Monitor DF-e compacto",text:"Documentos emitidos e recebidos, filtros e ações ganharam uma composição menor e mais clara."},
@@ -153,6 +158,7 @@ export default async function handler(request, response) {
       const now=Date.now(),startTime=startsAt?new Date(startsAt).getTime():null,endTime=endsAt?new Date(endsAt).getTime():null;
       const scheduled=Boolean(enabled&&startTime&&Number.isFinite(startTime)&&startTime>now);
       const active=Boolean(enabled&&!scheduled&&(!endTime||!Number.isFinite(endTime)||endTime>now));
+      if(active)await pool.query("DELETE FROM sessions");
       return response.json({release:RELEASE,maintenance:{
         active,scheduled,
         title:process.env.MAINTENANCE_TITLE||"A Haixel está ficando ainda melhor",

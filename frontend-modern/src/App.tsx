@@ -2734,7 +2734,7 @@ function Profile({
     <>
       <Head
         tag="MINHA CONTA"
-        title="Perfil profissional"
+        title="Sua identidade na Haixel"
         text="Personalize como você aparece na Haixel e mantenha seus contatos atualizados."
       />
       <div className="profile-grid">
@@ -4839,6 +4839,12 @@ export default function App() {
     }),1000);
     return()=>window.clearInterval(timer);
   },[systemStatus?.maintenance.active,systemStatus?.release.version]);
+  useEffect(()=>{
+    if(!systemStatus?.maintenance.active||!user)return;
+    api("/api/auth/logout",{method:"POST"}).catch(()=>{});
+    setUser(null);
+    setCompany(null);
+  },[systemStatus?.maintenance.active,user?.id]);
   useEffect(() => {
     if (!user || !systemStatus) return;
     const status = systemStatus;
@@ -4929,6 +4935,10 @@ export default function App() {
           <button className="menu" onClick={() => setMobile(true)}>
             <Menu />
           </button>
+          <div className="top-context">
+            <small>HAIXEL · AMBIENTE FISCAL</small>
+            <b>{groups.flatMap(([,items])=>items).find(([p]:any)=>p===page)?.[1] || "Visão operacional"}</b>
+          </div>
           <div className="top-actions">
             <OnlinePresence />
             <button onClick={() => setDark((x) => !x)}>
