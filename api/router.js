@@ -2,6 +2,21 @@ import crypto from "node:crypto";
 import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
 
+const RELEASE={
+  version:"2026.07.26.5",
+  title:"A Haixel chegou com uma experiência fiscal renovada",
+  publishedAt:"2026-07-26T20:00:00-03:00",
+  summary:"Nova identidade, navegação guiada e melhorias importantes de segurança, estabilidade e gestão documental.",
+  items:[
+    {type:"new",title:"Nova identidade Haixel",text:"Nome, logo e experiência visual renovados em toda a plataforma."},
+    {type:"new",title:"Hub SEFAZ centralizado",text:"Certificado A1, política preventiva, fila, último NSU e diagnóstico agora ficam no mesmo centro de controle."},
+    {type:"new",title:"Documentos emitidos e recebidos",text:"Nova separação entre documentos emitidos pela empresa e documentos emitidos contra o CNPJ ativo."},
+    {type:"improved",title:"Proteção contra Consumo Indevido",text:"Fila exclusiva, NSU sequencial, pausas para cStat 137/656 e limite conservador de chaves por hora."},
+    {type:"fixed",title:"Leitura de certidões em PDF",text:"Corrigido o empacotamento do leitor serverless e do worker usado na extração de texto."},
+    {type:"fixed",title:"Foto de perfil",text:"Corrigida a alteração e remoção da imagem do usuário."},
+  ],
+};
+
 function parts(request) {
   const value = request.query.route;
   return Array.isArray(value) ? value : String(value || "").split("/").filter(Boolean);
@@ -66,8 +81,27 @@ function feedback(row) {
 
 export default async function handler(request, response) {
   try {
-    await ensureSchema();
     const route = parts(request);
+    if(route[0]==="system"&&request.method==="GET"){
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const active=!/^(0|false|no)$/i.test(configured);
+      return response.json({release:RELEASE,maintenance:{
+        active,
+        title:process.env.MAINTENANCE_TITLE||"A Haixel está ficando ainda melhor",
+        message:process.env.MAINTENANCE_MESSAGE||"Estamos implementando e validando novas funcionalidades com todo cuidado. O acesso será liberado assim que a atualização estiver concluída.",
+        startsAt:process.env.MAINTENANCE_START||null,
+        endsAt:process.env.MAINTENANCE_END||null,
+      }});
+    }
+    if(route[0]==="health"&&request.method==="GET"){
+      try{
+        await pool.query("SELECT 1");
+        return response.json({ok:true,database:true,time:new Date().toISOString()});
+      }catch{
+        return response.status(503).json({ok:false,database:false,error:"Falha ao conectar ao banco"});
+      }
+    }
+    await ensureSchema();
 
     if (route[0] === "news" && request.method === "GET")
       return response.json({ externos: [], curadas: [

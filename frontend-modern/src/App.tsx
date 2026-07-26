@@ -3467,40 +3467,28 @@ function ReleaseExperience({
 
 function MaintenanceNotice({
   maintenance,
-  open,
-  setOpen,
 }: {
   maintenance: SystemStatus["maintenance"];
-  open: boolean;
-  setOpen: (value: boolean) => void;
 }) {
   if (!maintenance.active) return null;
   return (
-    <>
-      <button className="maintenance-banner" onClick={() => setOpen(true)}>
-        <i><Wrench /></i>
-        <span><b>{maintenance.title}</b><small>{maintenance.message}</small></span>
-        <em>Ver aviso</em>
-      </button>
-      {open && (
-        <div className="experience-backdrop maintenance-backdrop" role="dialog" aria-modal="true">
-          <section className="maintenance-experience">
-            <button className="icon-button" onClick={() => setOpen(false)}><X /></button>
-            <div className="maintenance-symbol"><Wrench /></div>
-            <span className="eyebrow">SISTEMA EM ATUALIZAÇÃO</span>
-            <h2>{maintenance.title}</h2>
-            <p>{maintenance.message}</p>
-            {(maintenance.startsAt || maintenance.endsAt) && (
-              <div className="maintenance-window">
-                {maintenance.startsAt && <span><small>Início previsto</small><b>{new Date(maintenance.startsAt).toLocaleString("pt-BR")}</b></span>}
-                {maintenance.endsAt && <span><small>Conclusão prevista</small><b>{new Date(maintenance.endsAt).toLocaleString("pt-BR")}</b></span>}
-              </div>
-            )}
-            <button className="primary" onClick={() => setOpen(false)}>Continuar para o sistema</button>
-          </section>
-        </div>
-      )}
-    </>
+    <main className="maintenance-gate">
+      <div className="maintenance-grid" />
+      <section className="maintenance-experience" role="status">
+        <div className="maintenance-brand"><img src="/assets/haixel-logo.png" /><b>Haixel</b></div>
+        <div className="maintenance-symbol"><Wrench /></div>
+        <span className="eyebrow">ATUALIZAÇÃO EM ANDAMENTO</span>
+        <h2>{maintenance.title}</h2>
+        <p>{maintenance.message}</p>
+        {(maintenance.startsAt || maintenance.endsAt) && (
+          <div className="maintenance-window">
+            {maintenance.startsAt && <span><small>Início previsto</small><b>{new Date(maintenance.startsAt).toLocaleString("pt-BR")}</b></span>}
+            {maintenance.endsAt && <span><small>Conclusão prevista</small><b>{new Date(maintenance.endsAt).toLocaleString("pt-BR")}</b></span>}
+          </div>
+        )}
+        <div className="maintenance-live"><i /><span><b>Equipe trabalhando na atualização</b><small>Esta página verificará automaticamente quando o acesso for liberado.</small></span></div>
+      </section>
+    </main>
   );
 }
 
@@ -4448,7 +4436,6 @@ export default function App() {
     [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
     [showWelcome, setShowWelcome] = useState(false),
     [showRelease, setShowRelease] = useState(false),
-    [maintenanceOpen, setMaintenanceOpen] = useState(false),
     [notifications, setNotifications] =
       useState<AppNotification[]>(storedNotifications);
   const setMobile = (value: boolean) =>
@@ -4511,18 +4498,24 @@ export default function App() {
     localStorage.setItem("cordeiro.theme",dark?"dark":"light");
   }, [dark]);
   useEffect(() => {
-    if (!user) return;
-    api<SystemStatus>("/api/system").then((status) => {
+    const checkStatus = () => api<SystemStatus>("/api/system").then(setSystemStatus).catch(() => {});
+    checkStatus();
+    const timer = window.setInterval(checkStatus, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (!user || !systemStatus) return;
+    const status = systemStatus;
       setSystemStatus(status);
       const welcomeKey = `cordeiro.onboarding.${user.id}`;
       const releaseKey = `cordeiro.release.${user.id}`;
       const firstAccess = !user.onboarding_completed && localStorage.getItem(welcomeKey) !== "1";
       setShowWelcome(firstAccess);
       setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
-      setMaintenanceOpen(Boolean(status.maintenance.active));
-    }).catch(() => {});
-  }, [user]);
+  }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
+  if (systemStatus?.maintenance.active)
+    return <MaintenanceNotice maintenance={systemStatus.maintenance} />;
   if (checking)
     return (
       <div className="loading">
@@ -4648,13 +4641,6 @@ export default function App() {
         </main>
       </div>
       <Assistant />
-      {systemStatus && (
-        <MaintenanceNotice
-          maintenance={systemStatus.maintenance}
-          open={maintenanceOpen}
-          setOpen={setMaintenanceOpen}
-        />
-      )}
       {showWelcome && (
         <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
       )}

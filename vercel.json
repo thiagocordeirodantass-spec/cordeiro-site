@@ -13,6 +13,14 @@
   },
   "rewrites": [
     {
+      "source": "/api/system",
+      "destination": "/api/router?route=system"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/router?route=health"
+    },
+    {
       "source": "/api/users/:path*",
       "destination": "/api/router?route=users/:path*"
     },
