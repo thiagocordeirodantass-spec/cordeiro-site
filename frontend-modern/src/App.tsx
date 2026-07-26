@@ -91,6 +91,12 @@ const brl = (v: any) =>
     currency: "BRL",
   });
 const date = (v: any) => (v ? new Date(v).toLocaleDateString("pt-BR") : "—");
+const daysUntil=(value:any)=>{
+  if(!value)return null;
+  const parsed=new Date(String(value).includes("T")?value:`${value}T23:59:59`);
+  const time=parsed.getTime();
+  return Number.isFinite(time)?Math.ceil((time-Date.now())/86400000):null;
+};
 const sourceInfo=(value?:string)=>{
   const key=String(value||"system").toLowerCase();
   if(key==="upload")return {label:"Importação manual",tone:"manual"};
@@ -1424,15 +1430,15 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <Panel title="Vencimento próximo">
           {items.filter((item)=>{
             if(!item.data_validade) return false;
-            const days=Math.ceil((new Date(`${item.data_validade}T23:59:59`).getTime()-Date.now())/86400000);
-            return days>=0 && days<=Number(cndConfig?.prazo_alerta||10);
+            const days=daysUntil(item.data_validade);
+            return days!=null&&days>=0 && days<=Number(cndConfig?.prazo_alerta||10);
           }).slice(0,5).map(item=><div className="cnd-overview-row" key={item.id}>
             <b>{item.empresa_nome}</b><span>{typeLabel[item.tipo]||item.tipo}</span>
             <small>Validade: {date(item.data_validade)}</small>
           </div>)}
           {!items.some((item)=>{
-            const days=item.data_validade?Math.ceil((new Date(`${item.data_validade}T23:59:59`).getTime()-Date.now())/86400000):-1;
-            return days>=0&&days<=Number(cndConfig?.prazo_alerta||10);
+            const days=daysUntil(item.data_validade);
+            return days!=null&&days>=0&&days<=Number(cndConfig?.prazo_alerta||10);
           }) && <p className="muted">Nenhuma certidão próxima do vencimento</p>}
         </Panel>
         <Panel title="Certidões positivas">
@@ -1467,13 +1473,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div className="cnd-grid">
           {visiblePage.length ? (
             visiblePage.map((item) => {
-              const days = item.data_validade
-                ? Math.ceil(
-                    (new Date(`${item.data_validade}T23:59:59`).getTime() -
-                      Date.now()) /
-                      86400000,
-                  )
-                : null;
+              const days = daysUntil(item.data_validade);
               const expired = days != null && days < 0;
               return (
                 <article
@@ -1827,7 +1827,7 @@ function TurnstileBox({
   );
 }
 
-function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
+function SefazControlCenterLegacy({toast}:{toast:(s:string,e?:boolean)=>void}){
   const [data,setData]=useState<any>(null),[file,setFile]=useState<File|null>(null),
     [password,setPassword]=useState(""),[busy,setBusy]=useState(false),
     [section,setSection]=useState<"certificate"|"policy"|"rules">("certificate");
@@ -1933,6 +1933,53 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
     </div>}
     <footer><ShieldCheck/><p><b>Atenção:</b> outras aplicações que consultem o mesmo CNPJ também devem compartilhar a sequência do último NSU. A Haixel protege as chamadas feitas pela plataforma, mas não controla softwares externos.</p></footer>
   </section>
+}
+
+function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
+  const [data,setData]=useState<any>(null),[syncing,setSyncing]=useState(false);
+  const load=useCallback(async()=>{
+    try{
+      const me=await api<any>("/api/auth/me");
+      const sync=await api<any>("/api/sefaz/sync-state");
+      setData({company:me.user.empresa_ativa,sync});
+    }catch(error){toast((error as Error).message,true)}
+  },[toast]);
+  useEffect(()=>{load()},[load]);
+  async function synchronize(){
+    setSyncing(true);
+    try{
+      const now=new Date(),year=now.getFullYear(),month=String(now.getMonth()+1).padStart(2,"0");
+      const dateFrom=`${year}-${month}-01`,dateTo=new Date(year,now.getMonth()+1,0).toISOString().slice(0,10);
+      const result=await api<any>("/api/sefaz/cert/periodo-auto",{method:"POST",body:{dateFrom,dateTo}});
+      toast(`${result.documentos?.length||0} documento(s) recebido(s) pela SEFAZ`);
+      await load();
+    }catch(error){toast((error as Error).message,true)}finally{setSyncing(false)}
+  }
+  if(!data)return <section className="sefaz-modern loading-card"><RefreshCw className="spin"/><span>Preparando conexão fiscal...</span></section>;
+  const state=data.sync?.state||{},waiting=state.locked_until&&new Date(state.locked_until)>new Date();
+  return <section className="sefaz-modern">
+    <header>
+      <div className="sefaz-modern-title"><i><Network/></i><span><small>CONEXÃO FISCAL DA EMPRESA</small>
+        <h2>Integração SEFAZ</h2><p>{data.company?.nome||"Empresa ativa"}</p></span></div>
+      <span className={`sefaz-modern-health ${waiting?"waiting":""}`}><i/>
+        {waiting?"Retomada automática programada":"Conexão protegida"}</span>
+    </header>
+    <div className="sefaz-modern-flow">
+      {[["01","Receber documentos","Busca documentos emitidos pela empresa e contra o CNPJ.",CloudDownload],
+        ["02","Consultar uma chave","Localize NF-e ou CT-e informando a chave de acesso.",Search],
+        ["03","Organizar no cofre","Documentos válidos entram automaticamente na Central de Documentos.",Files]]
+        .map(([step,title,text,Icon]:any)=><article key={step}><em>{step}</em><i><Icon/></i>
+          <span><b>{title}</b><small>{text}</small></span></article>)}
+    </div>
+    <div className="sefaz-modern-action">
+      <span><ShieldCheck/><p><b>Proteção automática administrada pela Haixel</b>
+        <small>Os limites preventivos, pausas e a sequência de consultas são fixos no servidor e não podem ser alterados pelo usuário.</small></p></span>
+      <button className="primary" onClick={synchronize} disabled={syncing}>{syncing?<RefreshCw className="spin"/>:<CloudDownload/>}
+        {syncing?"Sincronizando...":"Sincronizar documentos"}</button>
+    </div>
+    {waiting&&<div className="sefaz-modern-wait"><Bell/><span><b>Sincronização em espera segura</b>
+      <small>A Haixel retomará automaticamente no horário permitido, sem reiniciar a sequência.</small></span></div>}
+  </section>;
 }
 
 function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
@@ -2988,7 +3035,9 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
             activeGuide==="documentos"?"Importe XMLs, sincronize documentos contra o CNPJ e use os filtros para conferir cada movimentação.":
             activeGuide==="sefaz"?"Valide o A1, preserve o último NSU e deixe as proteções preventivas cuidarem da fila.":
             "Importe o PDF completo, confira os campos reconhecidos e mantenha destinatários de alerta atualizados."}</p>
-          <button className="secondary" onClick={()=>setCategory("duvida")}><MessageCircle/> Ainda preciso de ajuda</button>
+          <button className="secondary" onClick={()=>window.dispatchEvent(new CustomEvent("haixel:ask",{
+            detail:`Preciso de ajuda com ${activeGuide}. Explique o passo a passo de forma simples.`,
+          }))}><Sparkles/> Perguntar à Haixel IA</button>
         </article>
       </section>
       <div className="support-kpis">
@@ -3183,6 +3232,14 @@ function Assistant() {
     [busy, setBusy] = useState(false),
     [aiEnabled, setAiEnabled] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    const ask=(event:Event)=>{
+      const question=String((event as CustomEvent).detail||"Como a Haixel pode me ajudar?");
+      setOpen(true);setText(question);
+    };
+    window.addEventListener("haixel:ask",ask);
+    return()=>window.removeEventListener("haixel:ask",ask);
+  },[]);
   useEffect(() => {
     if (open) {
       api<any>("/api/assistant/status")
@@ -3668,6 +3725,9 @@ function Messenger() {
       loadUsers();
     } catch {}
   };
+  useEffect(()=>{
+    if(open&&!selected&&users.length)openThread(users[0]);
+  },[open,selected,users]);
   const loadThread=useCallback(async()=>{
     if(!open||!selected?.id)return;
     try{setMessages(await api<any[]>(`/api/messages/thread/${selected.id}`));loadUsers()}catch{}
@@ -3829,6 +3889,11 @@ function Admin({
     [replicationOpen,setReplicationOpen]=useState(false),
     [companyQuery,setCompanyQuery]=useState(""),
     [companyView,setCompanyView]=useState<"cards"|"structure">("cards"),
+    [certificateCompany,setCertificateCompany]=useState<any>(null),
+    [certificateData,setCertificateData]=useState<any>(null),
+    [certificateFile,setCertificateFile]=useState<File|null>(null),
+    [certificatePassword,setCertificatePassword]=useState(""),
+    [certificateBusy,setCertificateBusy]=useState(false),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3879,6 +3944,27 @@ function Admin({
       setModuleCompany(company); setModuleData(data); setModuleTab("cnd");
       setReplicationOpen(false); setReplicateTargets([]);
     }catch(error){toast((error as Error).message,true)}
+  }
+  async function openCompanyCertificate(company:any){
+    setCertificateCompany(company);setCertificateData(null);setCertificateFile(null);setCertificatePassword("");
+    try{setCertificateData(await api<any>(`/api/empresas/${company.id}/certificado`))}
+    catch(error){setCertificateCompany(null);toast((error as Error).message,true)}
+  }
+  async function saveCompanyCertificate(){
+    if(!certificateFile||!certificatePassword)return toast("Selecione o PFX/P12 e informe a senha",true);
+    setCertificateBusy(true);
+    try{
+      const body=new FormData();body.set("certificate",certificateFile);body.set("password",certificatePassword);
+      await api(`/api/empresas/${certificateCompany.id}/certificado`,{method:"POST",body});
+      setCertificateData(await api<any>(`/api/empresas/${certificateCompany.id}/certificado`));
+      setCertificateFile(null);setCertificatePassword("");toast("Certificado validado e vinculado à empresa");
+    }catch(error){toast((error as Error).message,true)}finally{setCertificateBusy(false)}
+  }
+  async function removeCompanyCertificate(){
+    setCertificateBusy(true);
+    try{await api(`/api/empresas/${certificateCompany.id}/certificado`,{method:"DELETE"});
+      setCertificateData({configurado:false,certificado:null});toast("Certificado removido da empresa")}
+    catch(error){toast((error as Error).message,true)}finally{setCertificateBusy(false)}
   }
   async function saveModule(){
     try{
@@ -4149,6 +4235,9 @@ function Admin({
                     <button className="secondary" onClick={()=>openModules(company)}>
                       <Save /> Configurar módulos
                     </button>
+                    <button className="secondary certificate-action" onClick={()=>openCompanyCertificate(company)}>
+                      <ShieldCheck /> Certificado A1
+                    </button>
                     <button className="secondary" onClick={()=>setCompanyForm({...company})}>Editar</button>
                     {branches.length>0&&<button className="secondary" onClick={()=>setExpandedCompanies({
                       ...expandedCompanies,[company.id]:!expandedCompanies[company.id],
@@ -4162,6 +4251,7 @@ function Admin({
                         <i><Building2/></i>
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
                         <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
+                        <button className="secondary" onClick={()=>openCompanyCertificate(branch)}>Certificado</button>
                         <button className="secondary" onClick={()=>setCompanyForm({...branch})}>Editar</button>
                         <button className="secondary" onClick={()=>toggleCompany(branch)}>{branchInactive?"Reativar":"Inativar"}</button>
                         <button className="secondary danger" onClick={()=>deleteCompany(branch)}>Excluir</button>
@@ -4254,6 +4344,38 @@ function Admin({
           <Empty />
         )}
       </Panel>
+      {certificateCompany&&<div className="modal-backdrop">
+        <section className="feedback-modal company-certificate-modal">
+          <header><div className="certificate-modal-title"><i><ShieldCheck/></i><span>
+            <small>CERTIFICADO DIGITAL DA EMPRESA</small><h2>{certificateCompany.nome}</h2>
+            <p>CNPJ {certificateCompany.cnpj}</p></span></div>
+            <button className="square" onClick={()=>setCertificateCompany(null)}><X/></button></header>
+          {!certificateData?<div className="certificate-loading"><RefreshCw className="spin"/> Consultando o cofre...</div>:<>
+            <section className={`certificate-current ${certificateData.configurado?"configured":""}`}>
+              <i>{certificateData.configurado?<CheckCircle2/>:<ShieldCheck/>}</i><span>
+                <small>{certificateData.configurado?"CERTIFICADO VINCULADO":"AGUARDANDO CERTIFICADO"}</small>
+                <b>{certificateData.certificado?.arquivo_nome||"Nenhum PFX/P12 cadastrado"}</b>
+                <p>{certificateData.configurado?`Validade: ${date(certificateData.certificado?.validade_fim)} · uso exclusivo desta empresa`:
+                  "Adicione o certificado A1 correspondente ao CNPJ acima."}</p></span>
+            </section>
+            <section className="certificate-upload-zone">
+              <label><input type="file" accept=".pfx,.p12,application/x-pkcs12"
+                onChange={event=>setCertificateFile(event.target.files?.[0]||null)}/>
+                <UploadCloud/><span><b>{certificateFile?.name||"Selecionar PFX ou P12"}</b>
+                  <small>Arquivo criptografado do certificado A1</small></span></label>
+              <label><span>Senha do certificado</span><input type="password" value={certificatePassword}
+                onChange={event=>setCertificatePassword(event.target.value)} placeholder="Informe a senha do arquivo"/></label>
+              <div className="certificate-security-note"><ShieldCheck/><span><b>Armazenamento protegido</b>
+                <small>O CNPJ será validado antes da gravação. Arquivo e senha permanecem criptografados e amarrados a esta empresa.</small></span></div>
+            </section>
+          </>}
+          <footer><span>{certificateData?.configurado&&<button className="secondary danger" disabled={certificateBusy}
+            onClick={removeCompanyCertificate}><Trash2/> Remover certificado</button>}</span>
+            <div><button className="secondary" onClick={()=>setCertificateCompany(null)}>Fechar</button>
+              <button className="primary" disabled={certificateBusy||!certificateData} onClick={saveCompanyCertificate}>
+                {certificateBusy?<RefreshCw className="spin"/>:<Save/>} Validar e salvar</button></div></footer>
+        </section>
+      </div>}
       {moduleCompany&&moduleData&&<div className="modal-backdrop">
         <section className="feedback-modal module-modal">
           <header><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
@@ -4261,7 +4383,7 @@ function Admin({
             <button className="square" onClick={()=>setModuleCompany(null)}><X/></button>
           </header>
           <nav className="module-tabs">
-            {[["cnd","Certidões",ShieldCheck],["sefaz","SEFAZ",Network],["documentos","Documentos",Files],["alertas","Alertas",Bell]].map(([id,label,Icon]:any)=>
+            {[["cnd","Certidões",ShieldCheck],["documentos","Documentos",Files],["alertas","Comunicações",Bell]].map(([id,label,Icon]:any)=>
               <button className={moduleTab===id?"active":""} onClick={()=>setModuleTab(id)} key={id}>
                 <i><Icon/></i><span><b>{label}</b><small>{id==="cnd"?"Validade e avisos":id==="sefaz"?"Consulta e importação":id==="documentos"?"XML e armazenamento":"E-mails automáticos"}</small></span>
               </button>)}
@@ -4712,7 +4834,7 @@ export default function App() {
   useEffect(() => {
     const checkStatus = () => api<SystemStatus>("/api/system").then(setSystemStatus).catch(() => {});
     checkStatus();
-    const timer = window.setInterval(checkStatus, 30000);
+    const timer = window.setInterval(checkStatus, 3000);
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {

@@ -29,6 +29,9 @@ export default async function handler(req,res){
       if(auth.rows[0].role!=="admin")return res.status(403).json({error:"Apenas administradores podem configurar módulos"});
       const modulo=String(req.body?.modulo||"");
       if(!Object.hasOwn(defaults,modulo))return res.status(400).json({error:"Módulo inválido"});
+      if(modulo==="sefaz")return res.status(403).json({
+        error:"As proteções SEFAZ são fixas e administradas automaticamente pela Haixel",
+      });
       const config={...defaults[modulo],...(req.body?.configuracao||{})};
       await pool.query(`INSERT INTO empresa_module_config(empresa_id,modulo,configuracao,ativo)
         VALUES($1,$2,$3::jsonb,$4) ON CONFLICT(empresa_id,modulo) DO UPDATE SET

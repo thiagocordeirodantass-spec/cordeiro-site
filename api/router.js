@@ -4,11 +4,18 @@ import {getCompanyCertificate} from "./_company-certificate.js";
 import {cndAlertEmail,sendResend} from "./_email-templates.js";
 
 const RELEASE={
-  version:"2026.07.26.9",
+  version:"2026.07.26.10",
   title:"Centrais fiscais e governança reconstruídas",
-  publishedAt:"2026-07-26T23:55:00-03:00",
+  publishedAt:"2026-07-27T00:25:00-03:00",
   summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
   items:[
+    {type:"fixed",title:"Mensagens prontas para envio",text:"A conversa é selecionada automaticamente e o campo de composição também fica disponível no canal pessoal."},
+    {type:"fixed",title:"Situação da CND corrigida",text:"Datas ausentes ou inválidas não geram mais NaN; a interface apresenta uma situação segura e legível."},
+    {type:"new",title:"Certificado por empresa",text:"O A1 agora é administrado somente em Empresas e fica amarrado ao CNPJ da matriz ou filial."},
+    {type:"improved",title:"Hub SEFAZ simplificado",text:"Nova jornada operacional sem indicadores técnicos, certificado ou regras internas expostas."},
+    {type:"improved",title:"Proteções SEFAZ fixas",text:"Limites, lotes, pausas e sequência são controlados exclusivamente pelo servidor e não podem ser alterados."},
+    {type:"improved",title:"Configuração da Matriz renovada",text:"Nova navegação horizontal, campos amplos e organização por Certidões, Documentos e Comunicações."},
+    {type:"new",title:"Ajuda conectada à Haixel IA",text:"Os guias do suporte agora abrem a assistente com uma pergunta contextual pronta."},
     {type:"fixed",title:"CND visível após a importação",text:"O registro completo entra imediatamente na empresa ativa e as consultas dinâmicas não reutilizam listas antigas."},
     {type:"new",title:"Empresas e estrutura organizacional",text:"Busca rápida, mapa de matrizes e filiais, novos cartões e formulários de configuração."},
     {type:"improved",title:"Central de Documentos reconstruída",text:"Atalhos operacionais, pesquisa inteligente, exportação e nova experiência do cofre fiscal."},
@@ -128,7 +135,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -453,7 +460,7 @@ export default async function handler(request, response) {
              MAX(m.created_at) last_message_at
            FROM users u LEFT JOIN user_messages m
              ON m.sender_id=u.id AND m.recipient_id=$1
-           WHERE u.ativo=TRUE AND u.id<>$1 GROUP BY u.id
+           WHERE u.ativo=TRUE GROUP BY u.id
            ORDER BY unread DESC,last_message_at DESC NULLS LAST,u.nome`,
           [user.id],
         );
@@ -570,7 +577,7 @@ export default async function handler(request, response) {
       const moduleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
         WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
       const sefazConfig=moduleConfig.rows[0]?.configuracao||{};
-      const requestedBatch=Math.min(50,Math.max(1,Number(sefazConfig.lote_maximo)||50));
+      const requestedBatch=50;
       let result;
       try{result = await consultarPeriodoComCertificado({
         pfx: credentials.pfx,
@@ -646,7 +653,7 @@ export default async function handler(request, response) {
       if(!credentials)return response.status(503).json({error:"Anexe o certificado A1 na configuração da empresa"});
       const keyModuleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
         WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
-      const configuredLimit=Math.min(18,Math.max(1,Number(keyModuleConfig.rows[0]?.configuracao?.limite_chaves_hora)||18));
+      const configuredLimit=18;
       const rateState=await pool.query(`SELECT COUNT(*)::int used,
         GREATEST(0,CEIL(EXTRACT(EPOCH FROM (MIN(created_at)+INTERVAL '1 hour'-NOW()))))::int retry_after
         FROM sefaz_key_query_log WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,
