@@ -203,7 +203,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
