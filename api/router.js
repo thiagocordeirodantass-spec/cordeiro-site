@@ -408,6 +408,10 @@ export default async function handler(request, response) {
         return response.status(429).json({error:"Sincronização SEFAZ em espera. O sistema retomará automaticamente sem reiniciar o NSU.",
           state:state.rows[0]});
       }
+      const moduleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
+        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[user.empresa_ativa_id]);
+      const sefazConfig=moduleConfig.rows[0]?.configuracao||{};
+      const requestedBatch=Math.min(50,Math.max(1,Number(sefazConfig.lote_maximo)||50));
       let result;
       try{result = await consultarPeriodoComCertificado({
         pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
@@ -418,7 +422,7 @@ export default async function handler(request, response) {
         ultNSUInicial: claim.rows[0].ult_nsu || "0",
         dateFrom: request.body?.dateFrom,
         dateTo: request.body?.dateTo,
-        maxIteracoes: 5,
+        maxIteracoes: Math.max(1,Math.ceil(requestedBatch/50)),
       });}catch(error){
         const blocked=/cStat 656|Consumo Indevido/i.test(error.message||"");
         await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+($2::int*INTERVAL '1 minute'),
@@ -477,15 +481,18 @@ export default async function handler(request, response) {
     ) {
       if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
         return response.status(503).json({ error: "Certificado A1 não configurado" });
+      const keyModuleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
+        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[user.empresa_ativa_id]);
+      const configuredLimit=Math.min(18,Math.max(1,Number(keyModuleConfig.rows[0]?.configuracao?.limite_chaves_hora)||18));
       const rateState=await pool.query(`SELECT COUNT(*)::int used,
         GREATEST(0,CEIL(EXTRACT(EPOCH FROM (MIN(created_at)+INTERVAL '1 hour'-NOW()))))::int retry_after
         FROM sefaz_key_query_log WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,
         [user.empresa_ativa_id]);
-      if(Number(rateState.rows[0]?.used||0)>=18){
+      if(Number(rateState.rows[0]?.used||0)>=configuredLimit){
         const retryAfter=Math.max(1,Number(rateState.rows[0]?.retry_after||3600));
         response.setHeader("Retry-After",String(retryAfter));
         return response.status(429).json({
-          error:`Fila SEFAZ protegida: limite seguro de 18 consultas/hora atingido. Retomada em ${Math.ceil(retryAfter/60)} minuto(s).`,
+          error:`Fila SEFAZ protegida: limite seguro de ${configuredLimit} consultas/hora atingido. Retomada em ${Math.ceil(retryAfter/60)} minuto(s).`,
           code:"SEFAZ_SAFE_RATE_LIMIT",retryAfter,
         });
       }

@@ -3,7 +3,7 @@ import formidable from "formidable";
 import { PDFParse } from "pdf-parse";
 import { ensureSchema, pool } from "../_database.js";
 
-export const config={api:{bodyParser:false}};
+export const config={api:{bodyParser:false},maxDuration:60};
 function sid(req){return decodeURIComponent(String(req.headers.cookie||"").match(/(?:^|;\s*)sid=([^;]+)/)?.[1]||"");}
 function safeName(value){
   return String(value||"certidao.pdf").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
@@ -21,13 +21,19 @@ export default async function handler(req,res){
     await ensureSchema();
     const session=await pool.query("SELECT user_id,empresa_ativa_id FROM sessions WHERE id=$1 AND expires_at>NOW()",[sid(req)]);
     if(!session.rowCount) return res.status(401).json({error:"Não autenticado"});
-    const [fields,files]=await formidable({maxFileSize:15*1024*1024,filter:p=>p.mimetype==="application/pdf"}).parse(req);
+    const [fields,files]=await formidable({
+      maxFileSize:15*1024*1024,
+      allowEmptyFiles:false,
+      filter:part=>part.mimetype==="application/pdf"||/\.pdf$/i.test(part.originalFilename||""),
+    }).parse(req);
     const file=Array.isArray(files.pdf)?files.pdf[0]:files.pdf;
     if(!file) return res.status(400).json({error:"Selecione um PDF"});
     const empresaId=Number(req.headers["x-empresa-id"]||fields.empresaId?.[0]||session.rows[0].empresa_ativa_id);
     if(!empresaId) return res.status(400).json({error:"Selecione uma empresa"});
     stage="leitura do arquivo";
     const bytes=await fs.readFile(file.filepath);
+    if(bytes.length<5||bytes.subarray(0,5).toString("ascii")!=="%PDF-")
+      return res.status(422).json({error:"O arquivo enviado não é um PDF válido"});
     stage="extração do texto";
     parser=new PDFParse({data:bytes});
     const parsed=await parser.getText();
@@ -60,7 +66,7 @@ export default async function handler(req,res){
     stage="gravação da certidão";
     const saved=await pool.query(`INSERT INTO certidoes(user_id,empresa_id,empresa_nome,tipo,status,numero_certidao,
       data_emissao,data_validade,observacoes,pdf_data,pdf_name)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::bytea,$11) RETURNING id`,
       [session.rows[0].user_id,company.rows[0].id,company.rows[0].nome,tipo,status,numero,dataEmissao,dataValidade,
        `PDF lido integralmente. Diagnóstico automático: ${diagnostico}.`,bytes,safeName(file.originalFilename)]);
     const missing=[];if(!cnpj)missing.push("CNPJ");if(!dataEmissao)missing.push("data de emissão");

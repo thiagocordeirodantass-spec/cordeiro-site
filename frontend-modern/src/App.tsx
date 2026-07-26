@@ -614,13 +614,28 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
     .then(result=>{setData(result);if(notify)toast(`${result.items?.length||0} documento(s) emitido(s) atualizado(s)`)})
     .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,toast]);
   useEffect(()=>{load();const timer=window.setInterval(()=>load(false),30000);return()=>window.clearInterval(timer)},[load]);
+  const refreshIssued=async()=>{
+    setBusy(true);
+    try{
+      const [year,monthNumber]=month.split("-").map(Number);
+      const dateFrom=`${month}-01`;
+      const dateTo=new Date(Date.UTC(year,monthNumber,0)).toISOString().slice(0,10);
+      const sync=await api<any>("/api/sefaz/cert/periodo-auto",{method:"POST",body:{dateFrom,dateTo}});
+      await load(false);
+      toast(`${sync.documentos?.length||0} registro(s) recebido(s) por NSU; documentos emitidos atualizados`);
+    }catch(error){
+      const message=(error as Error).message;
+      toast(/espera|aguarde|bloque|656/i.test(message)?message:`Não foi possível sincronizar com a SEFAZ: ${message}`,true);
+      await load(false);
+    }finally{setBusy(false)}
+  };
   const stats=data.stats||{};
   return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
     text="NF-e, NFS-e e CT-e emitidos pelo CNPJ da empresa ativa, organizados automaticamente."
     action={<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
       <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.xlsx`)}><FileDown/> NFS-e Excel</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/csv?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.csv`)}><FileDown/> CSV</button>
-      <button className="primary" onClick={()=>load(true)} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Atualizar agora</button></div>}/>
+      <button className="primary" onClick={refreshIssued} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Buscar na SEFAZ</button></div>}/>
     <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
       <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
       <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
@@ -3788,7 +3803,16 @@ function Admin({
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,importar_automaticamente:e.target.checked}}})}/>Importar documentos automaticamente</label>
               <label>UF autora<input maxLength={2} value={moduleData.modulos.sefaz.uf}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,uf:e.target.value.toUpperCase()}}})}/></label>
-              <div className="secure-note"><ShieldCheck/> Somente consulta. Emissão, cancelamento e eventos permanecem bloqueados.</div>
+              <label>Estratégia de consulta<select value={moduleData.modulos.sefaz.modo_consulta||"nsu"}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,modo_consulta:e.target.value}}})}>
+                <option value="nsu">Lotes por NSU (recomendado)</option><option value="chave">Chaves individuais protegidas</option></select></label>
+              <label>Limite de chaves por hora<input type="number" min="1" max="18"
+                value={moduleData.modulos.sefaz.limite_chaves_hora??18}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,limite_chaves_hora:Math.min(18,Math.max(1,Number(e.target.value)))}}})}/></label>
+              <label>Registros por lote<input type="number" min="1" max="50"
+                value={moduleData.modulos.sefaz.lote_maximo??50}
+                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,lote_maximo:Math.min(50,Math.max(1,Number(e.target.value)))}}})}/></label>
+              <div className="secure-note"><ShieldCheck/><span><b>Proteção contra Consumo Indevido 656 ativa</b><small>Preserva o último NSU, impede sincronizações simultâneas, consulta em lotes e aplica pausa automática de 60 minutos quando solicitado pela SEFAZ.</small></span></div>
             </>}
             {moduleTab==="documentos"&&<>
               <h3>Armazenamento de documentos</h3>
@@ -3805,6 +3829,17 @@ function Admin({
                 <option value="diaria">Diária</option><option value="semanal">Semanal</option></select></label>
               <label>Horário<input type="time" value={moduleData.modulos.alertas.hora}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,hora:e.target.value}}})}/></label>
+              <div className="fixed-days">
+                <b>Dias fixos para execução</b>
+                <div>{["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"].map((label,index)=>{
+                  const selected=(moduleData.modulos.alertas.dias_semana||[]).includes(index);
+                  return <button type="button" className={selected?"active":""} key={label}
+                    onClick={()=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,
+                      dias_semana:selected?(moduleData.modulos.alertas.dias_semana||[]).filter((day:number)=>day!==index):
+                        [...(moduleData.modulos.alertas.dias_semana||[]),index].sort()}}})}>{label}</button>
+                })}</div>
+                <small>Escolha um ou vários dias; a rotina também respeitará o horário acima.</small>
+              </div>
               <div className="module-email-list"><b>Destinatários vinculados</b>
                 {moduleData.emails.length?moduleData.emails.map((item:any)=><span key={item.id}>{item.email}</span>):<small>Nenhum e-mail cadastrado para esta unidade.</small>}</div>
             </>}
