@@ -55,11 +55,18 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.26.15",
-  title:"Acesso e Hub Fiscal renovados",
-  publishedAt:"2026-07-26T22:10:00-03:00",
-  summary:"A entrada na plataforma e a operação de integrações fiscais agora têm uma experiência mais fluida, clara e segura.",
+  version:"2026.07.26.16",
+  title:"Hub SEFAZ e experiência operacional evoluídos",
+  publishedAt:"2026-07-26T23:20:00-03:00",
+  summary:"Monitoramento nacional, manutenção interativa, conhecimento e formulários administrativos receberam uma nova experiência.",
   items:[
+    {type:"new",title:"Radar SEFAZ nacional",text:"O Hub exibe todos os estados e ambientes retornados pelo monitor, com filtro, disponibilidade e atualização."},
+    {type:"improved",title:"Hub SEFAZ reconstruído",text:"Conexão, NSU, fila, ambiente, fluxo de captura e sincronização foram reorganizados em um novo centro operacional."},
+    {type:"improved",title:"Landing mais dinâmica",text:"Novos movimentos ambientais, cartões vivos e microinterações deixam a apresentação mais fluida."},
+    {type:"new",title:"Manutenção interativa",text:"O fundo reage ao cursor, permite voltar à landing e avisa antes de encerrar uma sessão ativa."},
+    {type:"improved",title:"Cockpit de conhecimento",text:"Guias, diagnóstico, Haixel IA e suporte humano ganharam uma visão mais rica e animada."},
+    {type:"improved",title:"Chamado compacto",text:"O formulário de atendimento agora permanece recolhido e se expande somente quando solicitado."},
+    {type:"improved",title:"Governança consistente",text:"Configuração de módulos e edição de usuários seguem a linguagem visual do cadastro de ambientes."},
     {type:"new",title:"Transição para o acesso",text:"O botão Acessar plataforma agora conduz ao login com uma animação fluida da identidade Haixel."},
     {type:"new",title:"Importação de XML em destaque",text:"A Central DF-e ganhou acesso direto para importar XMLs de NF-e, CT-e e NFS-e."},
     {type:"improved",title:"Hub Fiscal reconstruído",text:"Integrações, consulta por chave, fila, planilha e resultados foram organizados em uma nova estação operacional animada."},

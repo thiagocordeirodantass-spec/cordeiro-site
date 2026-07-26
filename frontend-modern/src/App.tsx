@@ -38,6 +38,7 @@ import {
   Save,
   Search,
   Send,
+  Settings,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -123,7 +124,7 @@ function Brand() {
     </div>
   );
 }
-function Landing({onAccess}:{onAccess:()=>void}) {
+function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
   const solutions=[
     {icon:Files,title:"Documentos fiscais",text:"Cofre centralizado para NF-e, CT-e e NFS-e, com pesquisa, XML e exportação."},
     {icon:ShieldCheck,title:"Regularidade CND",text:"Certidões, vencimentos e alertas organizados por matriz e filial."},
@@ -148,7 +149,8 @@ function Landing({onAccess}:{onAccess:()=>void}) {
   return <main className="landing">
     <header className="landing-nav">
       <Brand/><nav><a href="#solucoes">Soluções</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
-      <div><button className="landing-trial" onClick={onAccess}>Acessar plataforma <ArrowUpRight/></button></div>
+      <div>{maintenance&&<span className="landing-maintenance-pill"><Activity/> Manutenção</span>}
+        <button className="landing-trial" onClick={onAccess}>Acessar plataforma <ArrowUpRight/></button></div>
     </header>
     <section className="landing-hero">
       <div className="landing-hero-copy"><span><Sparkles/> GESTÃO FISCAL INTELIGENTE</span>
@@ -2037,10 +2039,19 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
   return <section className="sefaz-modern">
     <header>
       <div className="sefaz-modern-title"><i><Network/></i><span><small>CONEXÃO FISCAL DA EMPRESA</small>
-        <h2>Integração SEFAZ</h2><p>{data.company?.nome||"Empresa ativa"}</p></span></div>
+        <h2>Centro de operações SEFAZ</h2><p>{data.company?.nome||"Empresa ativa"} · {data.company?.cnpj||"CNPJ ativo"}</p></span></div>
       <span className={`sefaz-modern-health ${waiting?"waiting":""}`}><i/>
         {waiting?"Retomada automática programada":"Conexão protegida"}</span>
     </header>
+    <div className="sefaz-modern-command">
+      <div><span className="eyebrow">DISTRIBUIÇÃO NACIONAL DF-e</span><h3>Captura fiscal contínua, segura e rastreável.</h3>
+        <p>A Haixel preserva a sequência oficial, respeita as pausas da SEFAZ e organiza cada documento no cofre da empresa.</p></div>
+      <div className="sefaz-command-stats">
+        <span><small>Último NSU</small><b>{state.ult_nsu||state.ultimo_nsu||"—"}</b></span>
+        <span><small>Fila</small><b>{waiting?"Protegida":"Livre"}</b></span>
+        <span><small>Ambiente</small><b>{data.company?.ambiente==="homologacao"?"Homologação":"Produção"}</b></span>
+      </div>
+    </div>
     <div className="sefaz-modern-flow">
       {[["01","Receber documentos","Busca documentos emitidos pela empresa e contra o CNPJ.",CloudDownload],
         ["02","Consultar uma chave","Localize NF-e ou CT-e informando a chave de acesso.",Search],
@@ -2684,7 +2695,8 @@ function SefazBatch({ toast }: { toast: (s: string, e?: boolean) => void }) {
 
 function FiscalOperations() {
   const [monitor, setMonitor] = useState<any>(null),
-    [busy, setBusy] = useState(true);
+    [busy, setBusy] = useState(true),
+    [environment,setEnvironment]=useState("todos");
   const load = useCallback(async () => {
     setBusy(true);
     try {
@@ -2697,24 +2709,28 @@ function FiscalOperations() {
   useEffect(() => {
     load();
   }, [load]);
-  const visible = [...new Map((monitor?.ufs || []).map((item:any)=>[
+  const services = [...new Map((monitor?.ufs || []).map((item:any)=>[
     `${String(item.env||"").trim().toLowerCase()}-${String(item.uf||"").trim().toUpperCase()}`,
     {...item,uf:String(item.uf||"").trim().toUpperCase(),env:String(item.env||"").trim()},
-  ])).values()].slice(0,12) as any[];
+  ])).values()] as any[];
+  const environments=[...new Set(services.map(item=>item.env).filter(Boolean))];
+  const visible=environment==="todos"?services:services.filter(item=>item.env===environment);
   const onlineServices=visible.filter((item:any)=>item.ok).length;
   const offlineServices=visible.length-onlineServices;
   return (
-    <section className="fiscal-ops">
+    <section className="fiscal-ops sefaz-national-monitor">
       <div className="section-title">
-        <div>
-          <span className="eyebrow">OPERAÇÃO FISCAL</span>
-          <h2>Monitoramento SEFAZ</h2>
-          <p>Disponibilidade dos serviços fiscais por ambiente e estado.</p>
+        <div className="national-monitor-title"><i><Activity/></i><span>
+          <span className="eyebrow">RADAR NACIONAL</span>
+          <h2>Monitoramento SEFAZ por estado</h2>
+          <p>Disponibilidade dos serviços fiscais em todas as UFs retornadas pelo monitor oficial.</p></span>
         </div>
-        <button className="secondary" onClick={load}>
+        <div className="national-monitor-actions"><select value={environment} onChange={event=>setEnvironment(event.target.value)}>
+          <option value="todos">Todos os ambientes</option>{environments.map(env=><option value={env} key={env}>{env}</option>)}
+        </select><button className="secondary" onClick={load}>
           <RefreshCw className={busy ? "spin" : ""} />
           Atualizar
-        </button>
+        </button></div>
       </div>
       <div className="ops-kpis">
         <article>
@@ -2989,7 +3005,8 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [isAdmin, setIsAdmin] = useState(false),
     [editing, setEditing] = useState<any>(null),
     [reply, setReply] = useState(""),
-    [activeGuide,setActiveGuide]=useState("primeiros-passos");
+    [activeGuide,setActiveGuide]=useState("primeiros-passos"),
+    [ticketOpen,setTicketOpen]=useState(false);
   const load = useCallback(async () => {
     try {
       const all = await api<any[]>("/api/feedback");
@@ -3021,6 +3038,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
       });
       setMessage("");
       setSubject("");
+      setTicketOpen(false);
       toast("Chamado enviado para a equipe");
       load();
     } catch (e) {
@@ -3082,6 +3100,16 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </button>
         ))}
       </section>
+      <section className="knowledge-cockpit">
+        <header><div><Sparkles/><span><small>COCKPIT DE CONHECIMENTO</small><h2>Encontre respostas antes que a dúvida interrompa sua operação.</h2></span></div>
+          <em>Conteúdo contextual Haixel</em></header>
+        <div>{[
+          ["Base guiada","Jornadas práticas para configurar e operar cada módulo.",BookOpen],
+          ["Diagnóstico rápido","Orientações para XML, certificados, CND e consultas.",Activity],
+          ["Haixel IA","Pergunte em linguagem natural e continue do ponto em que parou.",Bot],
+          ["Suporte humano","Abra um chamado com histórico e acompanhe cada resposta.",MessageCircle],
+        ].map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span><ChevronRight/></article>)}</div>
+      </section>
       <section className="support-guide">
         <nav>
           {[["primeiros-passos","Primeiros passos",Rocket],["documentos","Documentos fiscais",Files],
@@ -3125,8 +3153,11 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
         ))}
       </div>
       <div className="feedback-grid">
-        <Panel title="Abrir novo chamado">
-          <form className="feedback-form" onSubmit={send}>
+        <section className={`panel support-compose ${ticketOpen?"open":""}`}>
+          <button type="button" className="support-compose-toggle" onClick={()=>setTicketOpen(value=>!value)}
+            aria-expanded={ticketOpen}><i><MessageCircle/></i><span><small>NOVO ATENDIMENTO</small><b>Abrir novo chamado</b>
+              <p>{ticketOpen?"Preencha os dados para enviar à equipe.":"Formulário compacto · clique para expandir"}</p></span><ChevronDown/></button>
+          {ticketOpen&&<form className="feedback-form" onSubmit={send}>
             <label>
               Categoria
               <select
@@ -3163,8 +3194,8 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
               {busy ? <RefreshCw className="spin" /> : <Send />}
               Enviar chamado
             </button>
-          </form>
-        </Panel>
+          </form>}
+        </section>
         <Panel title={isAdmin ? "Chamados recebidos" : "Meus chamados"}>
           <div className="support-filter">
             {["todos", "aberto", "em_analise", "resolvido"].map((status) => (
@@ -3738,13 +3769,22 @@ function ReleaseExperience({
 
 function MaintenanceNotice({
   maintenance,
+  onBack,
 }: {
   maintenance: SystemStatus["maintenance"];
+  onBack?:()=>void;
 }) {
   if (!maintenance.active) return null;
   return (
-    <main className="maintenance-gate">
+    <main className="maintenance-gate" onPointerMove={event=>{
+      const rect=event.currentTarget.getBoundingClientRect();
+      event.currentTarget.style.setProperty("--mx",`${event.clientX-rect.left}px`);
+      event.currentTarget.style.setProperty("--my",`${event.clientY-rect.top}px`);
+      event.currentTarget.style.setProperty("--rx",`${((event.clientY-rect.top)/rect.height-.5)*3}deg`);
+      event.currentTarget.style.setProperty("--ry",`${(.5-(event.clientX-rect.left)/rect.width)*4}deg`);
+    }}>
       <div className="maintenance-grid" />
+      <div className="maintenance-aurora"><i/><i/><i/></div>
       <section className="maintenance-experience" role="status">
         <div className="maintenance-brand"><img src="/assets/haixel-logo.png" /><b>Haixel</b></div>
         <div className="maintenance-worker" aria-label="Assistente Haixel trabalhando na atualização">
@@ -3763,9 +3803,17 @@ function MaintenanceNotice({
           </div>
         )}
         <div className="maintenance-live"><i /><span><b>Equipe trabalhando na atualização</b><small>Esta página verificará automaticamente quando o acesso for liberado.</small></span></div>
+        {onBack&&<button className="maintenance-back" onClick={onBack}><ChevronRight/> Voltar para a página inicial</button>}
       </section>
     </main>
   );
+}
+
+function MaintenanceRedirectNotice(){
+  return <div className="maintenance-redirect" role="alert"><section><i><Activity/></i><span>
+    <small>ATUALIZAÇÃO INICIADA</small><h2>Vamos levar você para a página inicial.</h2>
+    <p>O Hub entrou em manutenção e sua sessão será encerrada com segurança em alguns segundos.</p>
+    <em><i/> Salvando e encerrando o acesso...</em></span></section></div>;
 }
 
 function Messenger() {
@@ -4456,10 +4504,12 @@ function Admin({
       </div>}
       {moduleCompany&&moduleData&&<div className="modal-backdrop">
         <section className="feedback-modal module-modal">
-          <header><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
+          <header className="environment-modal-head"><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
             <h2>{moduleCompany.nome}</h2><p>CNPJ {moduleCompany.cnpj}</p></div>
             <button className="square" onClick={()=>setModuleCompany(null)}><X/></button>
           </header>
+          <div className="environment-form-intro"><i><Settings/></i><span><b>Configuração do ambiente fiscal</b>
+            <small>Defina documentos, certidões e comunicações desta unidade.</small></span></div>
           <nav className="module-tabs">
             {[["cnd","Certidões",ShieldCheck],["documentos","Documentos",Files],["alertas","Comunicações",Bell]].map(([id,label,Icon]:any)=>
               <button className={moduleTab===id?"active":""} onClick={()=>setModuleTab(id)} key={id}>
@@ -4700,7 +4750,7 @@ function Admin({
       {userForm && kind === "users" && (
         <div className="modal-backdrop">
           <form className="feedback-modal user-modal" onSubmit={saveUser}>
-            <header>
+            <header className="environment-modal-head">
               <i className="modal-hero-icon"><ShieldCheck /></i>
               <div>
                 <span className="eyebrow">IDENTIDADE & ACESSO</span>
@@ -4715,6 +4765,8 @@ function Admin({
                 <X />
               </button>
             </header>
+            <div className="environment-form-intro"><i><UserRound/></i><span><b>Identidade vinculada ao ambiente</b>
+              <small>Dados e permissões ficam organizados com a mesma estrutura das empresas.</small></span></div>
             <div className="user-modal-body">
             <section className="user-data-section">
               <header><span>01</span><div><b>Dados do usuário</b><small>Informações usadas para identificação e acesso.</small></div></header>
@@ -4926,9 +4978,10 @@ export default function App() {
   }, []);
   useEffect(()=>{
     if(systemStatus?.maintenance.active&&user){
-      api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
+      const timer=window.setTimeout(()=>api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
         setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");
-      });
+      }),3500);
+      return()=>window.clearTimeout(timer);
     }
     if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")
       setPublicView("landing");
@@ -4976,11 +5029,12 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
+  if(systemStatus?.maintenance.active&&user)return <MaintenanceRedirectNotice/>;
   if (!user) return <div className={`public-experience public-${publicView}${publicTransition?" is-transitioning":""}`}>
     <div className="public-view">{publicView==="landing"
-    ?<Landing onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
+    ?<Landing maintenance={systemStatus?.maintenance.active} onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
     :publicView==="maintenance"&&systemStatus?.maintenance.active
-      ?<MaintenanceNotice maintenance={systemStatus.maintenance}/>
+      ?<MaintenanceNotice maintenance={systemStatus.maintenance} onBack={()=>changePublicView("landing")}/>
       :<Login done={enter} initialMode={publicView==="register"?"register":"login"} onBack={()=>changePublicView("landing")}/>}</div>
     <div className="public-transition" aria-hidden="true">
       <span><img src="/assets/haixel-logo.png" alt=""/><b>Haixel</b><small>Preparando seu ambiente fiscal</small></span>
