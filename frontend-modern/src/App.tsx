@@ -126,8 +126,7 @@ function Brand() {
 }
 function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
   const [contact,setContact]=useState({nome:"",email:"",empresa:"",mensagem:""}),[contactBusy,setContactBusy]=useState(false),
-    [contactSent,setContactSent]=useState(false),[landingAiOpen,setLandingAiOpen]=useState(false),
-    [landingAiTopic,setLandingAiTopic]=useState("visao");
+    [contactSent,setContactSent]=useState(false),[landingAiTopic,setLandingAiTopic]=useState("visao");
   async function sendContact(event:React.FormEvent){
     event.preventDefault();setContactBusy(true);
     try{await api("/api/contact",{method:"POST",body:contact});setContactSent(true);setContact({nome:"",email:"",empresa:"",mensagem:""})}
@@ -193,6 +192,19 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     </section>
     <section className="landing-trust"><span>Uma plataforma para toda a rotina fiscal</span>
       <div><b>NF-e</b><b>CT-e</b><b>NFS-e</b><b>XML</b><b>CND</b><b>SEFAZ</b><b>Multiempresa</b></div></section>
+    <section className="landing-ai-showcase">
+      <div className="landing-ai-showcase-copy"><span>HAIXEL IA · GUIA PÚBLICO</span><h2>Entenda a plataforma conversando com a nossa inteligência.</h2>
+        <p>Explore os principais módulos antes de entrar. Para dados reais da empresa, a Haixel IA utiliza somente o ambiente autenticado e autorizado.</p>
+        <nav>{[["visao","Visão geral",Sparkles],["documentos","Documentos",Files],["cnd","CNDs",ShieldCheck],
+          ["sefaz","SEFAZ",Radar],["seguranca","Segurança",Network]].map(([id,label,Icon]:any)=>
+          <button className={landingAiTopic===id?"active":""} onClick={()=>setLandingAiTopic(id)} key={id}><Icon/>{label}</button>)}</nav>
+      </div>
+      <div className="landing-ai-showcase-panel">
+        <header><span><img src="/assets/macaco-ia.png" alt="Haixel IA"/><i/></span><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
+        <article><Sparkles/><p><b>{aiTopics[landingAiTopic][0]}</b>{aiTopics[landingAiTopic][1]}</p></article>
+        <footer><ShieldCheck/><span><b>Explicação pública e segura</b><small>Nenhum dado fiscal é exposto nesta página.</small></span></footer>
+      </div>
+    </section>
     <section className="landing-section" id="solucoes"><header><span>SOLUÇÕES CONECTADAS</span><h2>Menos retrabalho. Mais controle.</h2><p>Escolha uma tarefa e encontre tudo o que precisa no mesmo fluxo.</p></header>
       <div className="landing-solutions">{solutions.map(({icon:Icon,title,text},index)=><article key={title}><em>0{index+1}</em><i><Icon/></i><h3>{title}</h3><p>{text}</p></article>)}</div>
     </section>
@@ -231,16 +243,6 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     </section>
     <section className="landing-final"><span>UMA OPERAÇÃO MAIS CLARA COMEÇA AQUI</span><h2>Entre na Haixel e assuma o controle fiscal.</h2><p>Documentos, empresas, certidões, relatórios e monitoramento reunidos em um único ambiente.</p></section>
     <footer className="landing-footer"><Brand/><p>Inteligência fiscal para decisões seguras.</p><span>© {new Date().getFullYear()} Haixel Fiscal Tech</span></footer>
-    <button className="landing-ai-button" onClick={()=>setLandingAiOpen(value=>!value)} aria-label="Abrir guia Haixel IA">
-      <img src="/assets/macaco-ia.png" alt=""/><span><b>Haixel IA</b><small>Posso explicar a plataforma</small></span></button>
-    {landingAiOpen&&<aside className="landing-ai-guide">
-      <header><span><img src="/assets/macaco-ia.png" alt="Haixel IA"/><i/></span><div><b>Haixel IA</b><small>Guia público da plataforma</small></div>
-        <button onClick={()=>setLandingAiOpen(false)}><X/></button></header>
-      <div className="landing-ai-conversation"><span><Sparkles/><p><b>{aiTopics[landingAiTopic][0]}</b>{aiTopics[landingAiTopic][1]}</p></span></div>
-      <nav>{[["visao","Visão geral"],["documentos","Documentos"],["cnd","CNDs"],["sefaz","SEFAZ"],["seguranca","Segurança"]]
-        .map(([id,label])=><button className={landingAiTopic===id?"active":""} onClick={()=>setLandingAiTopic(id)} key={id}>{label}</button>)}</nav>
-      <footer><small>Para informações da sua empresa, acesse o ambiente autenticado.</small></footer>
-    </aside>}
   </main>;
 }
 function Login({ done,initialMode="login",onBack }: { done: (u: User) => void; initialMode?:"login"|"register"; onBack?:()=>void }) {

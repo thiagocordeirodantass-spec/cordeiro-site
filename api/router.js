@@ -3,6 +3,16 @@ import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
 import {cndAlertEmail,sendResend} from "./_email-templates.js";
 
+function temporaryPassword(length=18){
+  const groups=["ABCDEFGHJKLMNPQRSTUVWXYZ","abcdefghijkmnopqrstuvwxyz","23456789","!@#$%&*_-+="];
+  const all=groups.join(""),chars=groups.map(group=>group[crypto.randomInt(group.length)]);
+  while(chars.length<length)chars.push(all[crypto.randomInt(all.length)]);
+  for(let index=chars.length-1;index>0;index--){
+    const swap=crypto.randomInt(index+1);[chars[index],chars[swap]]=[chars[swap],chars[index]];
+  }
+  return chars.join("");
+}
+
 const RELEASE_ARCHIVE={
   version:"2026.07.26.12",
   title:"Centrais fiscais e governança reconstruídas",
@@ -68,6 +78,7 @@ const RELEASE={
     {type:"improved",title:"Empresas e acessos consistentes",text:"Mapa organizacional, Configuração da Matriz e Identidade e Acesso seguem o padrão visual de Novo Ambiente."},
     {type:"improved",title:"Central de suporte dedicada",text:"Suporte ganhou navegação própria, agente visual, conhecimento, chamados expansíveis e acompanhamento."},
     {type:"fixed",title:"Manutenção obrigatória em 10 segundos",text:"Usuários conectados recebem aviso vermelho, contagem regressiva e redirecionamento automático para a landing."},
+    {type:"fixed",title:"Senha temporária criptográfica",text:"Novas contas e redefinições recebem senhas totalmente aleatórias, longas e sem dados previsvisíveis do usuário."},
     {type:"new",title:"Cockpit Fiscal reconstruído",text:"Visão executiva, indicadores, prioridades, saúde operacional, radar e conhecimento agora formam uma central completa."},
     {type:"improved",title:"Soluções conectadas premium",text:"Os cartões da landing ganharam sombra em camadas, brilho, profundidade e movimentos mais fluidos."},
     {type:"improved",title:"Central de Documentos mais ambiciosa",text:"Cofre, navegação, ações, indicadores e tabelas receberam novas animações e hierarquia visual."},
@@ -433,7 +444,7 @@ export default async function handler(request, response) {
         const data = request.body || {};
         if (!data.username || !data.nome)
           return response.status(400).json({ error: "Nome e usuário obrigatórios" });
-        const password = `Cord@${crypto.randomBytes(6).toString("hex")}`;
+        const password = temporaryPassword();
         const secret = hash(password);
         const result = await pool.query(
           `INSERT INTO users
@@ -451,7 +462,7 @@ export default async function handler(request, response) {
       }
       const id = Number(route[1]);
       if (Number.isInteger(id) && route[2] === "reset-password" && request.method === "POST") {
-        const password = `Cord@${crypto.randomBytes(6).toString("hex")}`;
+        const password = temporaryPassword();
         const secret = hash(password);
         await pool.query(
           `UPDATE users SET password_hash=$2,password_salt=$3,primeiro_login=TRUE WHERE id=$1`,
