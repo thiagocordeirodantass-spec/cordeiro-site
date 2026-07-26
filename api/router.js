@@ -55,11 +55,15 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.26.14",
-  title:"Landing e experiência fiscal evoluídas",
-  publishedAt:"2026-07-26T21:10:00-03:00",
-  summary:"A apresentação da Haixel, a Central de Documentos e o reconhecimento de CNDs receberam uma evolução completa.",
+  version:"2026.07.26.15",
+  title:"Acesso e Hub Fiscal renovados",
+  publishedAt:"2026-07-26T22:10:00-03:00",
+  summary:"A entrada na plataforma e a operação de integrações fiscais agora têm uma experiência mais fluida, clara e segura.",
   items:[
+    {type:"new",title:"Transição para o acesso",text:"O botão Acessar plataforma agora conduz ao login com uma animação fluida da identidade Haixel."},
+    {type:"new",title:"Importação de XML em destaque",text:"A Central DF-e ganhou acesso direto para importar XMLs de NF-e, CT-e e NFS-e."},
+    {type:"improved",title:"Hub Fiscal reconstruído",text:"Integrações, consulta por chave, fila, planilha e resultados foram organizados em uma nova estação operacional animada."},
+    {type:"fixed",title:"Manutenção protegendo o acesso",text:"Durante atualizações, sessões são encerradas, a landing continua pública e o botão de acesso abre a tela de manutenção."},
     {type:"new",title:"Empresas compactas e expansíveis",text:"Cada matriz aparece resumida e abre detalhes, ações e filiais somente quando necessário."},
     {type:"new",title:"Documentos Fiscais reformulados",text:"Cofre, DF-e, importação, filtros, downloads e tabelas receberam uma interface operacional mais compacta e responsiva."},
     {type:"new",title:"Nova landing page Haixel",text:"A apresentação pública agora reúne soluções, recursos, segurança e acesso direto à plataforma."},
@@ -168,7 +172,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;

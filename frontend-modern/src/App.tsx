@@ -683,6 +683,7 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   return <><Head tag="CENTRAL DF-e" title="Documentos fiscais"
     text="Recebimento, custódia e acompanhamento dos documentos emitidos pela empresa e contra o seu CNPJ."
     action={section==="monitor"?<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
+      <button className="secondary issued-import-xml" onClick={()=>setSection("import")}><UploadCloud/> Importar XML</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?month=${month}`,`documentos-fiscais-${month}.xlsx`)}><FileDown/> Exportar Excel</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/lote?formato=xml&month=${month}`,`xml-fiscais-${month}.zip`)}><CloudDownload/> Baixar XMLs</button>
       <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<RefreshCw/>} {syncing?"Sincronizando...":"Buscar na SEFAZ"}</button></div>:undefined}/>
@@ -2296,8 +2297,19 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
       </nav>
       <div id="sefaz-security"><SefazControlCenter toast={toast}/></div>
-      <div className="fiscal-grid">
-        <Panel title="Consulta e importação de documentos">
+      <div className="fiscal-grid integration-query-module">
+        <Panel>
+          <header className="integration-query-head">
+            <div><i><Search/></i><span><small>ESTAÇÃO DE CONSULTA</small><h2>Consulta e importação de documentos</h2>
+              <p>Localize documentos oficiais pela chave, valide a origem e incorpore o XML à empresa ativa.</p></span></div>
+            <aside><span><i/> SEFAZ conectada</span><b>{informedKeys.length.toString().padStart(2,"0")}</b><small>chaves na fila</small></aside>
+          </header>
+          <div className="integration-query-workspace">
+            <aside className="integration-query-steps">
+              <span className="active"><em>01</em><b>Selecione</b><small>NF-e ou CT-e</small></span>
+              <span className={informedKeys.length?"active":""}><em>02</em><b>Informe</b><small>Chaves ou planilha</small></span>
+              <span className={results.length?"active":""}><em>03</em><b>Receba</b><small>Validação e XML</small></span>
+            </aside>
           <div className="query-box">
             <label>
               Documento
@@ -2326,8 +2338,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </label>
             <label className="spreadsheet-import">
               <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
-              <span className="spreadsheet-button"><FileSpreadsheet/><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><UploadCloud/></span>
-              <small>Excel, CSV ou TXT · todas as abas serão verificadas</small>
+              <span className="spreadsheet-button compact" title="Importar planilha" aria-label="Importar planilha"><FileSpreadsheet/></span>
+              <small>Importar Excel, CSV ou TXT</small>
             </label>
             {informedKeys.length>0&&<div className="sefaz-queue-estimate">
               <ShieldCheck/><span><b>Fila protegida · {safeQueriesPerHour} consultas por hora</b>
@@ -2338,6 +2350,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </button>
             {busy&&queueProgress.total>0&&<div className="sefaz-queue-progress"><span style={{width:`${queueProgress.done/queueProgress.total*100}%`}}/>
               <small>{queueProgress.done} de {queueProgress.total} processada(s)</small></div>}
+          </div>
           </div>
           {results.length > 0 && (
             <div className="batch-query-results">
@@ -4832,7 +4845,8 @@ export default function App() {
     [dark, setDark] = useState(()=>localStorage.getItem("cordeiro.theme")==="dark"),
     [note, setNote] = useState<{ s: string; e: boolean } | null>(null),
     [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
-    [publicView,setPublicView]=useState<"landing"|"login"|"register">("landing"),
+    [publicView,setPublicView]=useState<"landing"|"login"|"register"|"maintenance">("landing"),
+    [publicTransition,setPublicTransition]=useState(false),
     [showWelcome, setShowWelcome] = useState(false),
     [showRelease, setShowRelease] = useState(false),
     [maintenanceGrace,setMaintenanceGrace]=useState<number|null>(null),
@@ -4897,12 +4911,27 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("cordeiro.theme",dark?"dark":"light");
   }, [dark]);
+  const changePublicView=useCallback((next:"landing"|"login"|"register"|"maintenance")=>{
+    if(publicTransition||next===publicView)return;
+    setPublicTransition(true);
+    window.setTimeout(()=>setPublicView(next),380);
+    window.setTimeout(()=>setPublicTransition(false),860);
+  },[publicTransition,publicView]);
   useEffect(() => {
     const checkStatus = () => api<SystemStatus>("/api/system").then(setSystemStatus).catch(() => {});
     checkStatus();
     const timer = window.setInterval(checkStatus, 3000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(()=>{
+    if(systemStatus?.maintenance.active&&user){
+      api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
+        setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");
+      });
+    }
+    if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")
+      setPublicView("landing");
+  },[systemStatus?.maintenance.active,user,publicView]);
   useEffect(()=>{
     if(!systemStatus?.release.version)return;
     const key="haixel.runtime.version",previous=localStorage.getItem(key),currentVersion=systemStatus.release.version;
@@ -4939,8 +4968,6 @@ export default function App() {
       setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
   }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
-  if (systemStatus?.maintenance.active&&user)
-    return <MaintenanceNotice maintenance={systemStatus.maintenance} />;
   if (checking)
     return (
       <div className="loading">
@@ -4948,10 +4975,16 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
-  if (!user) return <>{publicView==="landing"
-    ?<Landing onAccess={()=>setPublicView("login")}/>
-    :<Login done={enter} initialMode={publicView} onBack={()=>setPublicView("landing")}/>}
-    {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</>;
+  if (!user) return <div className={`public-experience public-${publicView}${publicTransition?" is-transitioning":""}`}>
+    <div className="public-view">{publicView==="landing"
+    ?<Landing onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
+    :publicView==="maintenance"&&systemStatus?.maintenance.active
+      ?<MaintenanceNotice maintenance={systemStatus.maintenance}/>
+      :<Login done={enter} initialMode={publicView==="register"?"register":"login"} onBack={()=>changePublicView("landing")}/>}</div>
+    <div className="public-transition" aria-hidden="true">
+      <span><img src="/assets/haixel-logo.png" alt=""/><b>Haixel</b><small>Preparando seu ambiente fiscal</small></span>
+    </div>
+    {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</div>;
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);
