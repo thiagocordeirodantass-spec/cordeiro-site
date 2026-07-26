@@ -512,13 +512,15 @@ function Head({
 }
 function Panel({
   title,
+  className,
   children,
 }: {
   title?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="panel">
+    <section className={`panel${className ? ` ${className}` : ""}`}>
       {title && <h3>{title}</h3>}
       {children}
       {title === "Movimentação mensal" && <FiscalNews />}
@@ -812,15 +814,15 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
       <article><i><Bell/></i><span><b>Eventos e situações</b><small>Status fiscal destacado para acelerar conferências e tratar cancelamentos.</small></span></article>
       <article><i><FileDown/></i><span><b>Consulta e exportação</b><small>Planilha gerencial e arquivos XML disponíveis individualmente ou em lote.</small></span></article>
     </section>
-    <Panel><div className="issued-direction">
+    <Panel className="dfe-control-deck"><div className="issued-direction">
       <button className={direction==="outgoing"?"active":""} onClick={()=>setDirection("outgoing")}><Send/><span><b>Emitidas pela empresa</b><small>CNPJ ativo como emitente/prestador</small></span></button>
       <button className={direction==="incoming"?"active":""} onClick={()=>setDirection("incoming")}><CloudDownload/><span><b>Emitidas contra a empresa</b><small>CNPJ ativo como destinatário/tomador</small></span></button>
     </div><div className="dfe-query-bar"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)}
       placeholder="Buscar por fornecedor, cliente, CNPJ, número ou chave..."/></label>
       <select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Todas as situações</option>
         {statusOptions.map((status:any)=><option value={status} key={status}>{status}</option>)}</select>
-    </div><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
-      <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}>{label}</button>)}</div>
+    </div><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos",Files],["NFE","NF-e",FileText],["NFSE","NFS-e",FileSpreadsheet],["CTE","CT-e",CloudDownload]].map(([value,label,Icon]:any)=>
+      <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}><Icon/>{label}</button>)}</div>
       <small>{filtered.length} de {data.items?.length||0} documentos · atualização automática a cada 30 segundos</small></div>
       <div className="table dfe-table"><table><thead><tr><th>Documento</th><th>{direction==="incoming"?"Emitente / fornecedor":"Destinatário / cliente"}</th><th>Emissão</th><th>Valor</th><th>Situação</th><th>Origem</th><th>Arquivo</th></tr></thead>
         <tbody>{filtered.map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
@@ -3923,6 +3925,7 @@ function Messenger() {
     [text, setText] = useState(""),
     [attachment,setAttachment]=useState<File|null>(null),
     [sending,setSending]=useState(false),
+    [visibleProfile,setVisibleProfile]=useState<any>(null),
     [unread, setUnread] = useState(0);
   const threadRef=useRef<HTMLDivElement>(null);
   const loadUsers = useCallback(() => {
@@ -3957,7 +3960,11 @@ function Messenger() {
     if(!open||!selected?.id)return;
     loadThread();const timer=window.setInterval(loadThread,2500);return()=>window.clearInterval(timer);
   },[open,selected?.id,loadThread]);
-  useEffect(()=>{threadRef.current?.scrollTo({top:threadRef.current.scrollHeight,behavior:"smooth"})},[messages]);
+  useEffect(()=>{
+    const scroll=()=>{if(threadRef.current)threadRef.current.scrollTop=threadRef.current.scrollHeight};
+    scroll();const frame=window.requestAnimationFrame(scroll),timer=window.setTimeout(scroll,120);
+    return()=>{window.cancelAnimationFrame(frame);window.clearTimeout(timer)};
+  },[messages,open,selected?.id]);
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!selected || (!text.trim()&&!attachment)||sending) return;
@@ -4009,8 +4016,8 @@ function Messenger() {
                   onClick={() => openThread(userItem)}
                   key={userItem.id}
                 >
-                  <i>
-                    {String(userItem.nome || userItem.username)
+                  <i className={userItem.avatar_url?"has-photo":""}>
+                    {userItem.avatar_url?<img src={userItem.avatar_url} alt=""/>:String(userItem.nome || userItem.username)
                       .slice(0, 2)
                       .toUpperCase()}
                   </i>
@@ -4026,7 +4033,9 @@ function Messenger() {
               {selected ? (
                 <>
                   <div className="thread-title">
-                    <i>{String(activeSelected.nome||activeSelected.username).slice(0,2).toUpperCase()}<em className={activeSelected.online?"online":""}/></i>
+                    <i className={activeSelected.avatar_url?"has-photo":""} onClick={()=>setVisibleProfile(activeSelected)}>
+                      {activeSelected.avatar_url?<img src={activeSelected.avatar_url} alt=""/>:
+                        String(activeSelected.nome||activeSelected.username).slice(0,2).toUpperCase()}<em className={activeSelected.online?"online":""}/></i>
                     <span><b>{activeSelected.nome || activeSelected.username}</b>
                       <small>{activeSelected.online?"Online agora · respostas em tempo real":"Offline · receberá quando entrar"}</small></span>
                   </div>
@@ -4073,6 +4082,18 @@ function Messenger() {
           </div>
         </section>
       )}
+      {visibleProfile&&<div className="modal-backdrop public-profile-backdrop" onClick={()=>setVisibleProfile(null)}>
+        <section className="public-user-profile" onClick={event=>event.stopPropagation()}>
+          <button onClick={()=>setVisibleProfile(null)}><X/></button>
+          <span className={visibleProfile.avatar_url?"has-photo":""}>{visibleProfile.avatar_url?
+            <img src={visibleProfile.avatar_url} alt={visibleProfile.nome}/>:String(visibleProfile.nome||visibleProfile.username).slice(0,2).toUpperCase()}</span>
+          <small>PERFIL DA EQUIPE</small><h2>{visibleProfile.nome||visibleProfile.username}</h2>
+          <b>{visibleProfile.cargo||visibleProfile.role} {visibleProfile.area_atuacao?`· ${visibleProfile.area_atuacao}`:""}</b>
+          <p>{visibleProfile.bio||"Este usuário ainda não adicionou uma apresentação ao perfil."}</p>
+          <footer>{visibleProfile.linkedin_url&&<a href={visibleProfile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin/> LinkedIn</a>}
+            {visibleProfile.website_url&&<a href={visibleProfile.website_url} target="_blank" rel="noreferrer"><Link/> Website</a>}</footer>
+        </section>
+      </div>}
     </div>
   );
 }
@@ -4485,8 +4506,8 @@ function Admin({
                   key={userItem.id || index}
                 >
                   <header>
-                    <i>
-                      {String(userItem.nome || userItem.username)
+                    <i className={userItem.avatar_url?"has-photo":""}>
+                      {userItem.avatar_url?<img src={userItem.avatar_url} alt=""/>:String(userItem.nome || userItem.username)
                         .slice(0, 2)
                         .toUpperCase()}
                     </i>
@@ -4986,6 +5007,7 @@ export default function App() {
     [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
     [publicView,setPublicView]=useState<"landing"|"login"|"register"|"maintenance">("landing"),
     [publicTransition,setPublicTransition]=useState(false),
+    [maintenanceCelebration,setMaintenanceCelebration]=useState(false),
     [showWelcome, setShowWelcome] = useState(false),
     [showRelease, setShowRelease] = useState(false),
     [maintenanceGrace,setMaintenanceGrace]=useState<number|null>(null),
@@ -4997,7 +5019,8 @@ export default function App() {
     setNote({ s, e });
     setTimeout(() => setNote(null), 3500);
   }, []);
-  const presenceSnapshot=useRef<Set<number>|null>(null),newsSnapshot=useRef<Set<string>|null>(null);
+  const presenceSnapshot=useRef<Set<number>|null>(null),newsSnapshot=useRef<Set<string>|null>(null),
+    maintenanceWasActive=useRef(false);
   const pushPersistent=useCallback((item:Omit<AppNotification,"id"|"createdAt"|"read">)=>{
     setNotifications(current=>{
       const next=[{...item,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),read:false},...current]
@@ -5050,6 +5073,16 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("cordeiro.theme",dark?"dark":"light");
   }, [dark]);
+  useEffect(()=>{
+    const detect=(event:PointerEvent)=>{
+      document.documentElement.dataset.input=event.pointerType==="mouse"?"mouse":"touch";
+    };
+    const keyboard=()=>{if(!document.documentElement.dataset.input)
+      document.documentElement.dataset.input=window.matchMedia("(pointer:fine)").matches?"mouse":"touch"};
+    keyboard();window.addEventListener("pointerdown",detect,{passive:true});
+    window.addEventListener("pointermove",detect,{passive:true});
+    return()=>{window.removeEventListener("pointerdown",detect);window.removeEventListener("pointermove",detect)};
+  },[]);
   const changePublicView=useCallback((next:"landing"|"login"|"register"|"maintenance")=>{
     if(publicTransition||next===publicView)return;
     setPublicTransition(true);
@@ -5063,8 +5096,13 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
   useEffect(()=>{
-    if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")
-      setPublicView("landing");
+    if(systemStatus?.maintenance.active){maintenanceWasActive.current=true;return}
+    if(systemStatus&&!systemStatus.maintenance.active&&maintenanceWasActive.current){
+      maintenanceWasActive.current=false;setMaintenanceCelebration(true);setPublicTransition(true);
+      window.setTimeout(()=>setPublicView("landing"),650);
+      window.setTimeout(()=>{setPublicTransition(false);setMaintenanceCelebration(false)},1900);
+    }
+    if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")setPublicView("landing");
   },[systemStatus?.maintenance.active,publicView]);
   useEffect(()=>{
     if(!systemStatus?.release.version)return;
@@ -5115,14 +5153,16 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
-  if (!user) return <div className={`public-experience public-${publicView}${publicTransition?" is-transitioning":""}`}>
+  if (!user) return <div className={`public-experience public-${publicView}${publicTransition?" is-transitioning":""}${maintenanceCelebration?" maintenance-ended":""}`}>
     <div className="public-view">{publicView==="landing"
     ?<Landing maintenance={systemStatus?.maintenance.active} onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
     :publicView==="maintenance"&&systemStatus?.maintenance.active
       ?<MaintenanceNotice maintenance={systemStatus.maintenance} onBack={()=>changePublicView("landing")}/>
       :<Login done={enter} initialMode={publicView==="register"?"register":"login"} onBack={()=>changePublicView("landing")}/>}</div>
     <div className="public-transition" aria-hidden="true">
-      <span><img src="/assets/haixel-logo.png" alt=""/><b>Haixel</b><small>Preparando seu ambiente fiscal</small></span>
+      <span><img src={maintenanceCelebration?"/assets/macaco-ia.png":"/assets/haixel-logo.png"} alt=""/>
+        <b>{maintenanceCelebration?"Atualização concluída":"Haixel"}</b>
+        <small>{maintenanceCelebration?"A Haixel está pronta para você":"Preparando seu ambiente fiscal"}</small></span>
     </div>
     {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</div>;
   const go = (p: Page) => {

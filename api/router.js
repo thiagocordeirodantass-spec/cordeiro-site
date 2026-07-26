@@ -65,7 +65,7 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.27.18",
+  version:"2026.07.27.19",
   title:"Experiência Haixel integrada",
   publishedAt:"2026-07-27T00:45:00-03:00",
   summary:"Landing, documentos, integrações, empresas, acessos, suporte e manutenção agora formam uma experiência mais interativa e coerente.",
@@ -203,7 +203,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -428,17 +428,36 @@ export default async function handler(request, response) {
     }
 
     if (route[0] === "users") {
+      const publicUserId=Number(route[1]);
+      if(Number.isInteger(publicUserId)&&route[2]==="avatar"&&request.method==="GET"){
+        const photo=await pool.query("SELECT avatar_data,avatar_mime FROM users WHERE id=$1 AND ativo=TRUE",[publicUserId]);
+        if(!photo.rowCount||!photo.rows[0].avatar_data)return response.status(404).json({error:"Foto não cadastrada"});
+        response.setHeader("Content-Type",photo.rows[0].avatar_mime||"image/jpeg");
+        response.setHeader("Cache-Control","private, max-age=300");
+        return response.send(photo.rows[0].avatar_data);
+      }
+      if(Number.isInteger(publicUserId)&&route[2]==="profile"&&request.method==="GET"){
+        const profile=await pool.query(`SELECT id,username,nome,role,cargo,area_atuacao,bio,linkedin_url,
+          instagram_url,website_url,telefone,(avatar_data IS NOT NULL) has_avatar
+          FROM users WHERE id=$1 AND ativo=TRUE`,[publicUserId]);
+        if(!profile.rowCount)return response.status(404).json({error:"Usuário não encontrado"});
+        const row=profile.rows[0];return response.json({...row,
+          avatar_url:row.has_avatar?`/api/users/${row.id}/avatar`:null,has_avatar:undefined});
+      }
       if (user.role !== "admin")
         return response.status(403).json({ error: "Acesso restrito" });
       if (route.length === 1 && request.method === "GET") {
         const result = await pool.query(
           `SELECT u.id,u.username,u.nome,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
+            u.cargo,u.area_atuacao,u.bio,u.linkedin_url,u.instagram_url,u.website_url,u.telefone,
+            (u.avatar_data IS NOT NULL) has_avatar,
             EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
               AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
             eu.empresa_id,eu.permissoes FROM users u LEFT JOIN empresa_users eu ON eu.user_id=u.id
             ORDER BY u.nome,u.username`,
         );
-        return response.json({ users: result.rows });
+        return response.json({ users: result.rows.map(row=>({...row,
+          avatar_url:row.has_avatar?`/api/users/${row.id}/avatar`:null,has_avatar:undefined})) });
       }
       if (route.length === 1 && request.method === "POST") {
         const data = request.body || {};
@@ -543,7 +562,8 @@ export default async function handler(request, response) {
     if (route[0] === "messages") {
       if (route[1] === "users" && request.method === "GET") {
         const result = await pool.query(
-          `SELECT u.id,u.username,u.nome,u.role,
+          `SELECT u.id,u.username,u.nome,u.role,u.cargo,u.area_atuacao,u.bio,u.linkedin_url,
+             u.instagram_url,u.website_url,u.telefone,(u.avatar_data IS NOT NULL) has_avatar,
              EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
                AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
              COUNT(m.id) FILTER(WHERE m.read_at IS NULL)::int AS unread,
@@ -554,7 +574,8 @@ export default async function handler(request, response) {
            ORDER BY unread DESC,last_message_at DESC NULLS LAST,u.nome`,
           [user.id],
         );
-        return response.json(result.rows);
+        return response.json(result.rows.map(row=>({...row,
+          avatar_url:row.has_avatar?`/api/users/${row.id}/avatar`:null,has_avatar:undefined})));
       }
       if (Number.isInteger(Number(route[1])) && route[2] === "attachment" && request.method === "GET") {
         const result=await pool.query(`SELECT attachment_data,attachment_name,attachment_mime
