@@ -86,6 +86,7 @@ async function publicUser(user) {
     memberships,
     empresa_ativa_id: activeId,
     empresa_ativa: activeResult.rows[0] || null,
+    certificate_verified: user.auth_method === "certificate" || user.auth_method === "mtls",
     preferencias: {},
     cargo: user.cargo || "",
     area_atuacao: user.area_atuacao || "",
@@ -101,7 +102,7 @@ async function currentUser(request) {
   const token = cookie(request, COOKIE);
   if (!token) return null;
   const result = await pool.query(
-    `SELECT u.*
+    `SELECT u.*,s.auth_method,s.empresa_ativa_id
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.id = $1 AND s.expires_at > NOW() AND u.ativo = TRUE`,
@@ -157,19 +158,24 @@ export default async function handler(request, response) {
       if(!secretOk||!verified) return response.status(401).json({
         error:"O navegador não apresentou um certificado cliente válido",
       });
-      if(!subject.replace(/\D/g,"").includes("03857930000154"))
-        return response.status(403).json({error:"Certificado não autorizado para a INTECOM"});
-      const company=await pool.query("SELECT id FROM empresas WHERE cnpj='03857930000154' AND ativo=TRUE");
-      if(!company.rowCount) return response.status(403).json({error:"Empresa INTECOM desativada"});
-      const admin=await pool.query(`SELECT u.* FROM users u LEFT JOIN empresa_users eu
-        ON eu.user_id=u.id AND eu.empresa_id=$1 WHERE u.role='admin' AND u.ativo=TRUE
-        ORDER BY (eu.user_id IS NOT NULL) DESC,u.id LIMIT 1`,[company.rows[0].id]);
-      if(!admin.rowCount) return response.status(403).json({error:"Administrador não configurado"});
-      await createSession(request,response,admin.rows[0].id);
-      const token=String(response.getHeader("Set-Cookie")||"").match(/^sid=([^;]+)/)?.[1];
-      if(token) await pool.query(`UPDATE sessions SET empresa_ativa_id=$1,auth_method='certificate',
+      const token=cookie(request,COOKIE);
+      if(!token)return response.status(401).json({error:"Entre com usuário e senha antes de validar o certificado da empresa"});
+      const companyId=Number(request.query.empresaId);
+      const company=await pool.query("SELECT id,cnpj FROM empresas WHERE id=$1 AND ativo=TRUE",[companyId]);
+      if(!company.rowCount)return response.status(404).json({error:"Empresa não encontrada ou desativada"});
+      const companyCnpj=String(company.rows[0].cnpj||"").replace(/\D/g,"");
+      if(!companyCnpj||!subject.replace(/\D/g,"").includes(companyCnpj))
+        return response.status(403).json({error:"O certificado apresentado não corresponde ao CNPJ da empresa selecionada"});
+      const session=await pool.query("SELECT user_id FROM sessions WHERE id=$1 AND expires_at>NOW()",[token]);
+      if(!session.rowCount)return response.status(401).json({error:"Sessão expirada"});
+      const access=await pool.query(`SELECT u.role,eu.user_id membership FROM users u
+        LEFT JOIN empresa_users eu ON eu.user_id=u.id AND eu.empresa_id=$2 AND eu.ativo=TRUE
+        WHERE u.id=$1 AND u.ativo=TRUE`,[session.rows[0].user_id,companyId]);
+      if(!access.rowCount||(access.rows[0].role!=="admin"&&!access.rows[0].membership))
+        return response.status(403).json({error:"Usuário sem acesso à empresa deste certificado"});
+      await pool.query(`UPDATE sessions SET empresa_ativa_id=$1,auth_method='certificate',
         user_agent=COALESCE(user_agent,'') || $3 WHERE id=$2`,
-        [company.rows[0].id,token,` mTLS:${serial}`]);
+        [companyId,token,` mTLS:${serial}`]);
       const target=String(request.query.redirect||"/");
       return response.redirect(302,target.startsWith("/")&&!target.startsWith("//")?target:"/");
     }

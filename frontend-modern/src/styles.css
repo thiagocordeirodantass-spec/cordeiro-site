@@ -3669,4 +3669,33 @@ button.danger,.danger-button,.square.danger{background:#fff1f3!important;color:#
 .module-modal>footer button{min-height:48px!important;padding:0 20px!important;font-size:10px!important}
 .issued-actions button{min-height:46px!important;padding-inline:16px!important}
 @media(max-width:600px){.fixed-days>div{grid-template-columns:repeat(4,1fr)}}
+
+/* Ícones principais da navegação */
+.shell>aside nav section button{--nav-icon:#62dcb9;grid-template-columns:50px 1fr!important;min-height:64px!important;gap:13px!important;padding:7px 12px!important}
+.shell>aside nav section button .sidebar-icon{width:48px!important;height:48px!important;border:1px solid color-mix(in srgb,var(--nav-icon) 30%,transparent)!important;border-radius:14px!important;background:color-mix(in srgb,var(--nav-icon) 13%,transparent)!important;color:var(--nav-icon)!important}
+.shell>aside nav section button .sidebar-icon svg{box-sizing:content-box!important;width:25px!important;height:25px!important;padding:0!important;border-radius:0!important;background:transparent!important;color:inherit!important;stroke-width:2.25!important;box-shadow:none!important;transform:none!important}
+.shell>aside nav section:nth-of-type(1) button{--nav-icon:#55d9bd}
+.shell>aside nav section:nth-of-type(2) button:nth-of-type(1){--nav-icon:#65a9ff}
+.shell>aside nav section:nth-of-type(2) button:nth-of-type(2){--nav-icon:#b28bff}
+.shell>aside nav section:nth-of-type(2) button:nth-of-type(3){--nav-icon:#ffb45f}
+.shell>aside nav section:nth-of-type(2) button:nth-of-type(4){--nav-icon:#ff7fb0}
+.shell>aside nav section:nth-of-type(2) button:nth-of-type(5){--nav-icon:#55d99b}
+.shell>aside nav section:nth-of-type(3) button{--nav-icon:#4fd8d8}
+.shell>aside nav section:nth-of-type(4) button:nth-of-type(1){--nav-icon:#72a8ff}
+.shell>aside nav section:nth-of-type(4) button:nth-of-type(2){--nav-icon:#c38cff}
+.shell>aside nav section button:hover .sidebar-icon{border-color:color-mix(in srgb,var(--nav-icon) 55%,transparent)!important;background:color-mix(in srgb,var(--nav-icon) 20%,transparent)!important;color:var(--nav-icon)!important}
+.shell>aside nav section button.active .sidebar-icon{border-color:var(--nav-icon)!important;background:var(--nav-icon)!important;color:#071713!important;box-shadow:0 8px 20px color-mix(in srgb,var(--nav-icon) 28%,transparent)!important}
+
+/* Certidões com o mesmo padrão visual do seletor de dias fixos */
+.module-config.module-cnd>label{min-height:88px!important;padding:16px!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--field)!important;font-size:10px!important;font-weight:800!important}
+.module-config.module-cnd>label input:not([type=checkbox]),.module-config.module-cnd>label select{min-height:45px!important;padding:0 13px!important;border:1px solid var(--line)!important;border-radius:11px!important;background:var(--panel)!important;font-size:11px!important}
+.module-config.module-cnd>label.check{min-height:64px!important;padding:15px 16px!important;background:var(--field)!important;font-size:10px!important}
+.module-config.module-cnd>label.check input{width:20px!important;height:20px!important}
+.module-config.module-cnd>label:focus-within,.module-config.module-cnd>label:hover{border-color:var(--brand)!important;box-shadow:0 8px 22px color-mix(in srgb,var(--brand) 11%,transparent)!important}
+.mtls-company-card{grid-column:1/-1;display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:14px;padding:16px;border:1px solid color-mix(in srgb,var(--brand) 38%,var(--line));border-radius:15px;background:color-mix(in srgb,var(--brand) 7%,var(--field))}
+.mtls-company-card>i{display:grid;width:48px;height:48px;place-items:center;border-radius:13px;background:var(--brand);color:#fff}.mtls-company-card>i svg{width:23px}
+.mtls-company-card>span{display:grid;gap:4px}.mtls-company-card b{font-size:11px}.mtls-company-card small{max-width:480px;color:var(--muted);font-size:8px;line-height:1.5}
+.mtls-company-card>button{display:flex;align-items:center;gap:8px;min-height:46px;padding:0 16px;border:1px solid var(--brand);border-radius:12px;background:var(--panel);color:var(--brand);font-size:9px;font-weight:850}.mtls-company-card>button svg{width:17px}
+.issued-direction{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:17px}.issued-direction>button{display:grid;grid-template-columns:42px 1fr;align-items:center;gap:12px;min-height:70px;padding:12px 15px;border:1px solid var(--line);border-radius:15px;background:var(--field);color:var(--muted);text-align:left}.issued-direction>button>svg{grid-row:1;width:21px;height:21px;padding:10px;border-radius:12px;background:var(--panel);color:var(--brand)}.issued-direction>button>span{display:grid;gap:3px}.issued-direction b{color:var(--text);font-size:11px}.issued-direction small{font-size:8px}.issued-direction>button.active{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,var(--panel));box-shadow:0 9px 22px color-mix(in srgb,var(--brand) 10%,transparent)}.issued-direction>button.active>svg{background:var(--brand);color:#fff}
+@media(max-width:700px){.mtls-company-card{grid-template-columns:44px 1fr}.mtls-company-card>button{grid-column:1/-1;justify-content:center}.issued-direction{grid-template-columns:1fr}}
 .company-logo.intecom{width:62px!important;height:46px!important;padding:3px!important;overflow:hidden;border:1px solid #e0e0e0!important;border-radius:11px!important;background:#fff!important}.company-logo.intecom img{display:block;width:100%;height:100%;object-fit:contain}.company-branches .company-logo.intecom{width:42px!important;height:34px!important;padding:2px!important}.company-branches .company-logo.intecom img{width:100%;height:100%;object-fit:contain}

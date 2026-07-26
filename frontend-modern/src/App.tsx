@@ -109,7 +109,6 @@ function Brand() {
   );
 }
 function Login({ done }: { done: (u: User) => void }) {
-  const certificateInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"login" | "register" | "verify">("login"),
     [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
@@ -117,34 +116,9 @@ function Login({ done }: { done: (u: User) => void }) {
     [email, setEmail] = useState(""),
     [code, setCode] = useState(""),
     [devCode, setDevCode] = useState(""),
-    [certificate, setCertificate] = useState<File | null>(null),
-    [certificatePassword, setCertificatePassword] = useState(""),
     [remember,setRemember]=useState(()=>localStorage.getItem("cordeiro.remember")!=="0"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  async function loginWithCertificate() {
-    if (!certificate) {
-      certificateInput.current?.click();
-      return;
-    }
-    if (!certificatePassword) {
-      setError("Informe a senha do certificado digital.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const form = new FormData();
-      form.append("certificate", certificate);
-      form.append("password", certificatePassword);
-      await api("/api/auth/certificate-login", { method: "POST", body: form });
-      done((await api<{ user: User }>("/api/auth/me")).user);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -309,41 +283,6 @@ function Login({ done }: { done: (u: User) => void }) {
               "Validar e entrar"
             )}
           </button>
-          {mode === "login" && (
-            <div className="mtls-login">
-              <div className="auth-divider"><span>ou acesse com</span></div>
-              <input
-                ref={certificateInput}
-                className="certificate-file-input"
-                type="file"
-                accept=".pfx,.p12,application/x-pkcs12"
-                onChange={(event) => {
-                  setCertificate(event.target.files?.[0] || null);
-                  setError("");
-                }}
-              />
-              <button type="button" className="mtls-button" disabled={busy}
-                onClick={loginWithCertificate}>
-                <i><ShieldCheck /></i>
-                <span><b>Certificado digital INTECOM</b>
-                  <small>{certificate ? certificate.name : "Selecionar arquivo .PFX ou .P12"}</small></span>
-                <span className="mtls-arrow">→</span>
-              </button>
-              {certificate && (
-                <label className="certificate-password">
-                  Senha do certificado
-                  <input
-                    required
-                    type="password"
-                    value={certificatePassword}
-                    onChange={(event) => setCertificatePassword(event.target.value)}
-                    placeholder="Digite a senha do certificado"
-                  />
-                </label>
-              )}
-              <p><ShieldCheck /> O arquivo é processado somente para validar o acesso e não é salvo no servidor.</p>
-            </div>
-          )}
           <button
             type="button"
             className="auth-switch"
@@ -608,11 +547,12 @@ function FiscalFilters({
 
 function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
+    [direction,setDirection]=useState<"outgoing"|"incoming">("outgoing"),
     [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true);
-  const issuedParams=new URLSearchParams({month,...(kind?{kind}:{})});
+  const issuedParams=new URLSearchParams({month,direction,...(kind?{kind}:{})});
   const load=useCallback((notify=false)=>{setBusy(true);api<any>(`/api/docs/issued?${issuedParams}`)
     .then(result=>{setData(result);if(notify)toast(`${result.items?.length||0} documento(s) emitido(s) atualizado(s)`)})
-    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,toast]);
+    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,direction,toast]);
   useEffect(()=>{load();const timer=window.setInterval(()=>load(false),30000);return()=>window.clearInterval(timer)},[load]);
   const refreshIssued=async()=>{
     setBusy(true);
@@ -641,7 +581,10 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
       <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
     <div className="issued-kpis">{[["Total",stats.total||0,Files],["NF-e",stats.nfe||0,FileText],["NFS-e",stats.nfse||0,FileText],["CT-e",stats.cte||0,CloudDownload]]
       .map(([label,value,Icon]:any)=><article key={label}><i><Icon/></i><span><small>{label}</small><b>{value}</b></span></article>)}</div>
-    <Panel><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
+    <Panel><div className="issued-direction">
+      <button className={direction==="outgoing"?"active":""} onClick={()=>setDirection("outgoing")}><Send/><span><b>Emitidas pela empresa</b><small>CNPJ ativo como emitente/prestador</small></span></button>
+      <button className={direction==="incoming"?"active":""} onClick={()=>setDirection("incoming")}><CloudDownload/><span><b>Emitidas contra a empresa</b><small>CNPJ ativo como destinatário/tomador</small></span></button>
+    </div><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
       <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}>{label}</button>)}</div>
       <small>Competência {month.split("-").reverse().join("/")} · atualização automática a cada 30 segundos</small></div>
       <div className="table"><table><thead><tr><th>Documento</th><th>Destinatário</th><th>Emissão</th><th>Valor</th><th>Status</th><th>Origem</th><th>XML</th></tr></thead>
@@ -3768,7 +3711,7 @@ function Admin({
                 <i><Icon/></i><span><b>{label}</b><small>{id==="cnd"?"Validade e avisos":id==="sefaz"?"Consulta e importação":id==="documentos"?"XML e armazenamento":"E-mails automáticos"}</small></span>
               </button>)}
           </nav>
-          <div className="module-config">
+          <div className={`module-config module-${moduleTab}`}>
             {moduleTab==="cnd"&&<>
               <h3>Certidões e regularidade fiscal</h3>
               <label>Programação dos avisos<select value={moduleData.modulos.cnd.alerta_modo||"dias"}
@@ -3797,6 +3740,13 @@ function Admin({
             </>}
             {moduleTab==="sefaz"&&<>
               <h3>Consulta SEFAZ</h3>
+              <div className="mtls-company-card">
+                <i><ShieldCheck/></i><span><b>Certificado instalado na máquina</b>
+                  <small>O navegador apresentará o certificado ao canal mTLS. Nenhum arquivo ou senha será enviado ou armazenado.</small></span>
+                <button type="button" onClick={()=>window.location.assign(
+                  `/api/auth/mtls-login?empresaId=${moduleCompany.id}&redirect=${encodeURIComponent("/?mtls=verified")}`
+                )}><ShieldCheck/> Verificar certificado instalado</button>
+              </div>
               <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.consulta_automatica)}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,consulta_automatica:e.target.checked}}})}/>Consulta automática habilitada</label>
               <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.importar_automaticamente)}

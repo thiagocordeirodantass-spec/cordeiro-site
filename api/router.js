@@ -38,7 +38,7 @@ async function authenticated(request) {
   const sid = token(request);
   if (!sid) return null;
   const result = await pool.query(
-    `SELECT u.*,s.empresa_ativa_id FROM sessions s JOIN users u ON u.id=s.user_id
+    `SELECT u.*,s.empresa_ativa_id,s.auth_method FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.id=$1 AND s.expires_at>NOW() AND u.ativo=TRUE`,
     [sid],
   );
@@ -86,6 +86,7 @@ export default async function handler(request, response) {
 
     const user = await authenticated(request);
     if (!user) return response.status(401).json({ error: "Não autenticado" });
+    const activeEmpresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
 
     if(route[0]==="activity"&&request.method==="GET"){
       const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id);
@@ -393,23 +394,27 @@ export default async function handler(request, response) {
       route[2] === "periodo-auto" &&
       request.method === "POST"
     ) {
+      if(!["certificate","mtls"].includes(String(user.auth_method||"")))
+        return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de buscar na SEFAZ"});
       if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
         return response.status(503).json({ error: "Certificado A1 não configurado" });
+      if(!activeEmpresaId)
+        return response.status(400).json({error:"Selecione uma empresa antes de buscar documentos na SEFAZ"});
       const { consultarPeriodoComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
       await pool.query(`INSERT INTO sefaz_sync_state(empresa_id) VALUES($1)
-        ON CONFLICT(empresa_id) DO NOTHING`,[user.empresa_ativa_id]);
+        ON CONFLICT(empresa_id) DO NOTHING`,[activeEmpresaId]);
       const claim=await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+INTERVAL '5 minutes',
         last_status='processando',updated_at=NOW() WHERE empresa_id=$1
-        AND (locked_until IS NULL OR locked_until<=NOW()) RETURNING ult_nsu`,[user.empresa_ativa_id]);
+        AND (locked_until IS NULL OR locked_until<=NOW()) RETURNING ult_nsu`,[activeEmpresaId]);
       if(!claim.rowCount){
-        const state=await pool.query("SELECT ult_nsu,locked_until,last_status FROM sefaz_sync_state WHERE empresa_id=$1",[user.empresa_ativa_id]);
+        const state=await pool.query("SELECT ult_nsu,locked_until,last_status FROM sefaz_sync_state WHERE empresa_id=$1",[activeEmpresaId]);
         return response.status(429).json({error:"Sincronização SEFAZ em espera. O sistema retomará automaticamente sem reiniciar o NSU.",
           state:state.rows[0]});
       }
       const moduleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
-        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[user.empresa_ativa_id]);
+        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
       const sefazConfig=moduleConfig.rows[0]?.configuracao||{};
       const requestedBatch=Math.min(50,Math.max(1,Number(sefazConfig.lote_maximo)||50));
       let result;
@@ -427,7 +432,7 @@ export default async function handler(request, response) {
         const blocked=/cStat 656|Consumo Indevido/i.test(error.message||"");
         await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+($2::int*INTERVAL '1 minute'),
           last_status=$3,last_error=$4,updated_at=NOW() WHERE empresa_id=$1`,
-          [user.empresa_ativa_id,blocked?60:5,blocked?"bloqueado_656":"erro",String(error.message||error).slice(0,1000)]);
+          [activeEmpresaId,blocked?60:5,blocked?"bloqueado_656":"erro",String(error.message||error).slice(0,1000)]);
         throw error;
       }
       let saved=0;
@@ -439,7 +444,7 @@ export default async function handler(request, response) {
         const inserted=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
           SELECT $1,$2,$3::text,'importado',$4,'sefaz-mtls-auto',$5,$6
           WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
-          [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`,user.id]);
+          [activeEmpresaId,kind,chave,doc.xml,`${chave}.xml`,user.id]);
         const summary=fiscalSummary(doc.xml);
         await pool.query(`UPDATE documents SET numero=COALESCE($3,numero),serie=COALESCE($4,serie),data_emissao=COALESCE($5,data_emissao),
           valor_total=COALESCE($6,valor_total),remetente_nome=COALESCE($7,remetente_nome),
@@ -447,7 +452,7 @@ export default async function handler(request, response) {
           destinatario_doc=COALESCE($10,destinatario_doc),protocolo=COALESCE($11,protocolo),
           status='importado',xml_data=COALESCE($12,xml_data)
           WHERE empresa_id IS NOT DISTINCT FROM $1 AND chave=$2::text`,
-          [user.empresa_ativa_id,chave,summary.numero,summary.serie,summary.dataEmissao,summary.valor,
+          [activeEmpresaId,chave,summary.numero,summary.serie,summary.dataEmissao,summary.valor,
             summary.emitente,summary.emitenteDoc,summary.destinatario,summary.destinatarioDoc,summary.protocolo,doc.xml]);
         saved+=inserted.rowCount;
       }
@@ -457,7 +462,7 @@ export default async function handler(request, response) {
       await pool.query(`UPDATE sefaz_sync_state SET ult_nsu=$2,max_nsu=$3,
         locked_until=CASE WHEN $4 THEN NOW()+INTERVAL '1 hour' ELSE NOW() END,
         last_status=$5,last_error=NULL,updated_at=NOW() WHERE empresa_id=$1`,
-        [user.empresa_ativa_id,String(result.ultNSU||"0"),String(result.maxNSU||"0"),
+        [activeEmpresaId,String(result.ultNSU||"0"),String(result.maxNSU||"0"),
           Boolean(result.atingiuFim),result.atingiuFim?"aguardando_novos_documentos":"parcial"]);
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       return response.status(200).send(
@@ -479,15 +484,19 @@ export default async function handler(request, response) {
       ["nfe", "cte"].includes(route[1]) &&
       /^\d{44}$/.test(route[2] || "")
     ) {
+      if(!["certificate","mtls"].includes(String(user.auth_method||"")))
+        return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de consultar a SEFAZ"});
       if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
         return response.status(503).json({ error: "Certificado A1 não configurado" });
+      if(!activeEmpresaId)
+        return response.status(400).json({error:"Selecione uma empresa antes de consultar uma chave"});
       const keyModuleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
-        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[user.empresa_ativa_id]);
+        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
       const configuredLimit=Math.min(18,Math.max(1,Number(keyModuleConfig.rows[0]?.configuracao?.limite_chaves_hora)||18));
       const rateState=await pool.query(`SELECT COUNT(*)::int used,
         GREATEST(0,CEIL(EXTRACT(EPOCH FROM (MIN(created_at)+INTERVAL '1 hour'-NOW()))))::int retry_after
         FROM sefaz_key_query_log WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,
-        [user.empresa_ativa_id]);
+        [activeEmpresaId]);
       if(Number(rateState.rows[0]?.used||0)>=configuredLimit){
         const retryAfter=Math.max(1,Number(rateState.rows[0]?.retry_after||3600));
         response.setHeader("Retry-After",String(retryAfter));
@@ -497,7 +506,7 @@ export default async function handler(request, response) {
         });
       }
       await pool.query("INSERT INTO sefaz_key_query_log(empresa_id,chave) VALUES($1,$2)",
-        [user.empresa_ativa_id,route[2]]);
+        [activeEmpresaId,route[2]]);
       const { consultarChaveComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
@@ -521,7 +530,7 @@ export default async function handler(request, response) {
         const saved=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,source,created_by)
           SELECT $1,$2,$3::text,'cancelado','sefaz-consulta',$4
           WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)
-          RETURNING id`,[user.empresa_ativa_id,kind,route[2],user.id]);
+          RETURNING id`,[activeEmpresaId,kind,route[2],user.id]);
         return response.json({ok:true,status:"Documento cancelado registrado sem XML (cStat 653).",
           provider:"sefaz",chave:route[2],xml:null,cancelled:true,imported:Boolean(saved.rowCount)});
       }
@@ -539,7 +548,7 @@ export default async function handler(request, response) {
       await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
         SELECT $1,$2,$3::text,$4,$5,'sefaz-consulta',$6,$7
         WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
-        [user.empresa_ativa_id,kind,route[2],cancelled?"cancelado":"importado",xml,
+        [activeEmpresaId,kind,route[2],cancelled?"cancelado":"importado",xml,
           cancelled?null:`${route[2]}.xml`,user.id]);
       if(xml)await pool.query(`UPDATE documents SET numero=COALESCE($3,numero),serie=COALESCE($4,serie),data_emissao=COALESCE($5,data_emissao),
         valor_total=COALESCE($6,valor_total),remetente_nome=COALESCE($7,remetente_nome),
@@ -547,7 +556,7 @@ export default async function handler(request, response) {
         destinatario_doc=COALESCE($10,destinatario_doc),protocolo=COALESCE($11,protocolo),
         status='importado',xml_data=COALESCE($12,xml_data)
         WHERE empresa_id IS NOT DISTINCT FROM $1 AND chave=$2::text`,
-        [user.empresa_ativa_id,route[2],summary.numero,summary.serie,summary.dataEmissao,summary.valor,
+        [activeEmpresaId,route[2],summary.numero,summary.serie,summary.dataEmissao,summary.valor,
           summary.emitente,summary.emitenteDoc,summary.destinatario,summary.destinatarioDoc,summary.protocolo,xml]);
       return response.json({
         ok: true,
@@ -579,6 +588,7 @@ export default async function handler(request, response) {
         const activeCompanyId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
         if(!activeCompanyId)return response.status(400).json({error:"Selecione uma empresa no topo do sistema"});
         const kind=String(request.query.kind||"").toUpperCase();
+        const direction=String(request.query.direction||"outgoing")==="incoming"?"incoming":"outgoing";
         const month=/^\d{4}-\d{2}$/.test(String(request.query.month||""))?String(request.query.month):
           new Date().toISOString().slice(0,7);
         const company=await pool.query("SELECT regexp_replace(cnpj,'\\D','','g') cnpj,nome FROM empresas WHERE id=$1 AND ativo=TRUE",
@@ -586,17 +596,19 @@ export default async function handler(request, response) {
         if(!company.rowCount)return response.status(404).json({error:"Empresa ativa não encontrada"});
         const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.serie,d.data_emissao,d.valor_total,
           d.status,d.destinatario_nome,d.destinatario_doc,d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
-          FROM documents d WHERE (d.empresa_id=$1 OR regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3)
+          FROM documents d WHERE d.empresa_id=$1
+          AND (($5='outgoing' AND regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3)
+            OR ($5='incoming' AND regexp_replace(COALESCE(d.destinatario_doc,''),'\\D','','g')=$3))
           AND ($2='' OR d.kind=$2)
           AND COALESCE(d.data_emissao,d.created_at)::date>=($4||'-01')::date
           AND COALESCE(d.data_emissao,d.created_at)::date<(($4||'-01')::date+INTERVAL '1 month')
           ORDER BY d.data_emissao DESC NULLS LAST,d.created_at DESC LIMIT 10000`,
-          [activeCompanyId,kind,company.rows[0].cnpj,month]);
+          [activeCompanyId,kind,company.rows[0].cnpj,month,direction]);
         const stats=result.rows.reduce((summary,row)=>{
           summary.total++;const key=String(row.kind||"").toLowerCase();
           if(Object.hasOwn(summary,key))summary[key]++;return summary;
         },{total:0,nfe:0,nfse:0,cte:0});
-        return response.json({items:result.rows,stats,company:company.rows[0],month,
+        return response.json({items:result.rows,stats,company:company.rows[0],month,direction,
           connectors:{nfe:"nsu_protegido",cte:"aguardando_configuracao",nfse:"aguardando_provedor"}});
       }
       if(route[1]==="import-log"){

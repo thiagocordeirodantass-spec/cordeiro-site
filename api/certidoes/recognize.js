@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import formidable from "formidable";
-import { PDFParse } from "pdf-parse";
+import { DOMMatrix, ImageData, Path2D } from "@napi-rs/canvas";
 import { ensureSchema, pool } from "../_database.js";
 
 export const config={api:{bodyParser:false},maxDuration:60};
@@ -35,6 +35,10 @@ export default async function handler(req,res){
     if(bytes.length<5||bytes.subarray(0,5).toString("ascii")!=="%PDF-")
       return res.status(422).json({error:"O arquivo enviado não é um PDF válido"});
     stage="extração do texto";
+    globalThis.DOMMatrix??=DOMMatrix;
+    globalThis.ImageData??=ImageData;
+    globalThis.Path2D??=Path2D;
+    const {PDFParse}=await import("pdf-parse");
     parser=new PDFParse({data:bytes});
     const parsed=await parser.getText();
     await parser.destroy();
