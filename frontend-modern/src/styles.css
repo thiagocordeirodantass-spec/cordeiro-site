@@ -3698,4 +3698,18 @@ button.danger,.danger-button,.square.danger{background:#fff1f3!important;color:#
 .mtls-company-card>button{display:flex;align-items:center;gap:8px;min-height:46px;padding:0 16px;border:1px solid var(--brand);border-radius:12px;background:var(--panel);color:var(--brand);font-size:9px;font-weight:850}.mtls-company-card>button svg{width:17px}
 .issued-direction{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:17px}.issued-direction>button{display:grid;grid-template-columns:42px 1fr;align-items:center;gap:12px;min-height:70px;padding:12px 15px;border:1px solid var(--line);border-radius:15px;background:var(--field);color:var(--muted);text-align:left}.issued-direction>button>svg{grid-row:1;width:21px;height:21px;padding:10px;border-radius:12px;background:var(--panel);color:var(--brand)}.issued-direction>button>span{display:grid;gap:3px}.issued-direction b{color:var(--text);font-size:11px}.issued-direction small{font-size:8px}.issued-direction>button.active{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,var(--panel));box-shadow:0 9px 22px color-mix(in srgb,var(--brand) 10%,transparent)}.issued-direction>button.active>svg{background:var(--brand);color:#fff}
 @media(max-width:700px){.mtls-company-card{grid-template-columns:44px 1fr}.mtls-company-card>button{grid-column:1/-1;justify-content:center}.issued-direction{grid-template-columns:1fr}}
+
+/* Sidebar fixa, ocupando exatamente a tela e sem barras visíveis */
+.shell>aside{top:0!important;bottom:auto!important;height:100dvh!important;box-sizing:border-box!important;overflow:hidden!important}
+.shell>aside nav{overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;scrollbar-width:none!important;-ms-overflow-style:none!important}
+.shell>aside nav::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
+@media(max-height:850px) and (min-width:721px){
+  .shell>aside{padding-top:16px!important;padding-bottom:14px!important}
+  .shell>aside>header{padding-bottom:12px!important}
+  .shell nav section{margin-top:9px!important}
+  .shell>aside nav section button{min-height:53px!important;margin-top:2px!important;margin-bottom:2px!important}
+  .shell>aside nav section button .sidebar-icon{width:42px!important;height:42px!important}
+  .shell>aside nav section button .sidebar-icon svg{width:23px!important;height:23px!important}
+  .support-center{margin-top:8px!important;padding-top:10px!important;padding-bottom:10px!important}
+}
 .company-logo.intecom{width:62px!important;height:46px!important;padding:3px!important;overflow:hidden;border:1px solid #e0e0e0!important;border-radius:11px!important;background:#fff!important}.company-logo.intecom img{display:block;width:100%;height:100%;object-fit:contain}.company-branches .company-logo.intecom{width:42px!important;height:34px!important;padding:2px!important}.company-branches .company-logo.intecom img{width:100%;height:100%;object-fit:contain}
