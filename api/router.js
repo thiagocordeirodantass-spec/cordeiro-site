@@ -3,17 +3,17 @@ import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
 
 const RELEASE={
-  version:"2026.07.26.5",
-  title:"A Haixel chegou com uma experiência fiscal renovada",
+  version:"2026.07.26.6",
+  title:"Hub fiscal e experiência Haixel renovados",
   publishedAt:"2026-07-26T20:00:00-03:00",
-  summary:"Nova identidade, navegação guiada e melhorias importantes de segurança, estabilidade e gestão documental.",
+  summary:"Uma atualização visual e operacional para deixar consultas, importações e navegação mais simples e agradáveis.",
   items:[
-    {type:"new",title:"Nova identidade Haixel",text:"Nome, logo e experiência visual renovados em toda a plataforma."},
-    {type:"new",title:"Hub SEFAZ centralizado",text:"Certificado A1, política preventiva, fila, último NSU e diagnóstico agora ficam no mesmo centro de controle."},
-    {type:"new",title:"Documentos emitidos e recebidos",text:"Nova separação entre documentos emitidos pela empresa e documentos emitidos contra o CNPJ ativo."},
-    {type:"improved",title:"Proteção contra Consumo Indevido",text:"Fila exclusiva, NSU sequencial, pausas para cStat 137/656 e limite conservador de chaves por hora."},
-    {type:"fixed",title:"Leitura de certidões em PDF",text:"Corrigido o empacotamento do leitor serverless e do worker usado na extração de texto."},
-    {type:"fixed",title:"Foto de perfil",text:"Corrigida a alteração e remoção da imagem do usuário."},
+    {type:"new",title:"Hub de Integrações reconstruído",text:"Novo painel compacto, atalhos operacionais e organização visual dos serviços oficiais."},
+    {type:"new",title:"Importação dentro da Central DF-e",text:"XML de NF-e, CT-e e NFS-e agora é importado no mesmo módulo dos documentos emitidos e recebidos."},
+    {type:"improved",title:"Haixel IA renovada",text:"Assistente mais limpo, translúcido e alinhado à nova identidade da plataforma."},
+    {type:"improved",title:"Hub em tela fixa",text:"O sistema ocupa 100% da tela e mantém a navegação interna sem barras de rolagem visíveis."},
+    {type:"improved",title:"Manutenção animada",text:"A tela de atualização agora apresenta um personagem trabalhando no notebook e status automático."},
+    {type:"fixed",title:"Experiência responsiva",text:"Ajustes de altura, overflow e navegação em desktop, notebook e celular."},
   ],
 };
 
@@ -83,7 +83,7 @@ export default async function handler(request, response) {
   try {
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const active=!/^(0|false|no)$/i.test(configured);
       return response.json({release:RELEASE,maintenance:{
         active,

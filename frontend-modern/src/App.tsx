@@ -312,7 +312,6 @@ const groups = [
     [
       ["documents", "Central de documentos", Files],
       ["issued", "Documentos emitidos", Send],
-      ["import", "Central XML", UploadCloud],
       ["reports", "Inteligência fiscal", BarChart3],
       ["certificates", "Regularidade CND", ShieldCheck],
     ],
@@ -552,6 +551,7 @@ function FiscalFilters({
 
 function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
+    [section,setSection]=useState<"monitor"|"import">("monitor"),
     [direction,setDirection]=useState<"outgoing"|"incoming">("outgoing"),
     [query,setQuery]=useState(""),[statusFilter,setStatusFilter]=useState(""),
     [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true),
@@ -587,10 +587,15 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const statusOptions=[...new Set((data.items||[]).map((item:any)=>String(item.status||"").toLowerCase()).filter(Boolean))];
   return <><Head tag="CENTRAL DF-e" title="Documentos fiscais"
     text="Recebimento, custódia e acompanhamento dos documentos emitidos pela empresa e contra o seu CNPJ."
-    action={<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
+    action={section==="monitor"?<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
       <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?month=${month}`,`documentos-fiscais-${month}.xlsx`)}><FileDown/> Exportar Excel</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/lote?formato=xml&month=${month}`,`xml-fiscais-${month}.zip`)}><CloudDownload/> Baixar XMLs</button>
-      <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<RefreshCw/>} {syncing?"Sincronizando...":"Buscar na SEFAZ"}</button></div>}/>
+      <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<RefreshCw/>} {syncing?"Sincronizando...":"Buscar na SEFAZ"}</button></div>:undefined}/>
+    <nav className="dfe-module-nav">
+      <button className={section==="monitor"?"active":""} onClick={()=>setSection("monitor")}><Radar/><span><b>Monitor DF-e</b><small>Emitidos e recebidos</small></span></button>
+      <button className={section==="import"?"active":""} onClick={()=>setSection("import")}><UploadCloud/><span><b>Importar documentos</b><small>XML de NF-e, CT-e e NFS-e</small></span></button>
+    </nav>
+    {section==="import"?<Importer toast={toast} embedded done={()=>{setSection("monitor");load(true)}}/>:<>
     <section className="issued-hero dfe-hero"><div><i>{direction==="incoming"?<CloudDownload/>:<Send/>}</i><span>
       <small>{direction==="incoming"?"RECEBIMENTO FISCAL":"EMISSÕES PRÓPRIAS"}</small>
       <h2>{direction==="incoming"?"Documentos emitidos contra a empresa":"Documentos emitidos pela empresa"}</h2>
@@ -623,7 +628,7 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
           <td><span className={`source-badge ${sourceInfo(item.source).tone}`}><i/>{sourceInfo(item.source).label}</span></td>
           <td><button className="square" title={item.has_xml?"Baixar XML":"XML ainda não disponível"} disabled={!item.has_xml}
             onClick={()=>download(`/api/docs/${item.id}/xml`,`${item.chave||item.id}.xml`)}><FileDown/></button></td></tr>)}</tbody></table>
-        {!busy&&!filtered.length&&<Empty/>}</div></Panel>
+        {!busy&&!filtered.length&&<Empty/>}</div></Panel></>}
   </>;
 }
 
@@ -993,7 +998,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     </>
   );
 }
-function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; done:()=>void }) {
+function Importer({ toast,done,embedded=false }: { toast: (s: string, e?: boolean) => void; done:()=>void; embedded?:boolean }) {
   const [files, setFiles] = useState<File[]>([]),
     [drag, setDrag] = useState(false),
     [busy, setBusy] = useState(false),
@@ -1043,11 +1048,11 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
   }
   return (
     <>
-      <Head
+      {!embedded&&<Head
         tag="IMPORTAÇÃO"
         title="Importar documentos"
         text="Envie arquivos XML de NF-e, CT-e ou NFS-e para processamento."
-      />
+      />}
       <Panel>
         <label
           className={`drop ${drag ? "drag" : ""}`}
@@ -2077,40 +2082,23 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   return (
     <>
       <Head
-        tag="DOCUMENTOS OFICIAIS"
-        title="SEFAZ e NFS-e Nacional"
-        text="Consulte chaves e baixe XML usando as integrações configuradas para a empresa."
+        tag="HUB FISCAL"
+        title="Integrações e documentos oficiais"
+        text="Conectores, certificado, consultas e monitoramento organizados em um único centro operacional."
       />
-      <section className="sefaz-command">
-        <div className="sefaz-command-icon">
-          <CloudDownload />
-        </div>
-        <div>
-          <span className="eyebrow">HUB DE INTEGRAÇÕES FISCAIS</span>
-          <h2>Consulta segura e sincronização automática</h2>
-          <p>
-            Consulte chaves avulsas ou importe uma planilha. Somente XMLs completos são integrados;
-            qualquer inconsistência permanece registrada no log.
-            retorno e integra os documentos automaticamente.
-          </p>
-        </div>
-        <div className="sefaz-command-status">
-          <span>
-            <i /> mTLS protegido
-          </span>
-          <span>
-            <i /> Integração ativa
-          </span>
-        </div>
+      <section className="integration-hub-hero">
+        <div className="integration-hub-copy"><i><Network/></i><div><span className="eyebrow">OPERAÇÃO CONECTADA</span>
+          <h2>Seu ecossistema fiscal, simples de operar</h2>
+          <p>Acesse os serviços oficiais, acompanhe a proteção do certificado e envie consultas sem navegar por telas dispersas.</p></div></div>
+        <div className="integration-live"><span><i/> Ambiente protegido</span><small>Fila, NSU e limites preventivos ativos</small></div>
       </section>
-      <section className="sefaz-flow">
-        {[
-          ["01","Carregue as chaves","Cole manualmente ou importe uma planilha Excel/CSV."],
-          ["02","Validação oficial","A consulta mTLS busca o XML diretamente na SEFAZ."],
-          ["03","Importação segura","Somente documentos completos entram na Central."],
-        ].map(([number,title,text])=><article key={number}><b>{number}</b><span><strong>{title}</strong><small>{text}</small></span></article>)}
-      </section>
-      <SefazControlCenter toast={toast}/>
+      <nav className="integration-launchpad">
+        <button onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Consultar chave</b><small>NF-e e CT-e oficiais</small></span><ArrowUpRight/></button>
+        <button onClick={()=>document.getElementById("sefaz-security")?.scrollIntoView({behavior:"smooth"})}><i className="green"><ShieldCheck/></i><span><b>Certificado A1</b><small>Cofre e política SEFAZ</small></span><ArrowUpRight/></button>
+        <button onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Monitor fiscal</b><small>Disponibilidade e serviços</small></span><ArrowUpRight/></button>
+        <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
+      </nav>
+      <div id="sefaz-security"><SefazControlCenter toast={toast}/></div>
       <div className="fiscal-grid">
         <Panel title="Consulta e importação de documentos">
           <div className="query-box">
@@ -3144,15 +3132,15 @@ function Assistant() {
           <X />
         ) : (
           <>
-            <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
-            <span><b>IA fiscal</b><small>Como posso ajudar?</small></span>
+            <img src="/assets/haixel-logo.png" alt="Haixel IA" />
+            <span><b>Haixel IA</b><small>Assistente fiscal</small></span>
           </>
         )}
       </button>
       {open && (
         <section className="assistant">
           <header>
-            <span className="assistant-avatar"><img src="/assets/macaco-ia.png" alt="Macaquinho da IA" /></span>
+            <span className="assistant-avatar"><img src="/assets/haixel-logo.png" alt="Haixel IA" /></span>
             <div>
               <b>Haixel IA <em>Beta</em></b>
               <small>
@@ -3199,7 +3187,7 @@ function Assistant() {
               >
                 {m.role !== "user" && (
                   <i>
-                    <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
+                    <img src="/assets/haixel-logo.png" alt="Haixel IA" />
                   </i>
                 )}
                 <span>{m.content}</span>
@@ -3208,7 +3196,7 @@ function Assistant() {
             {busy && (
               <div className="bot-message typing">
                 <i>
-                  <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
+                  <img src="/assets/haixel-logo.png" alt="Haixel IA" />
                 </i>
                 <span>
                   <b />
@@ -3351,7 +3339,7 @@ function WelcomeExperience({
       Icon: Send,
     },
     {
-      page: "import" as Page,
+      page: "issued" as Page,
       title: "Central XML",
       tag: "IMPORTAÇÃO",
       text: "Importe XML e PDF, extraia informações e incorpore documentos à base fiscal sem digitação repetitiva.",
