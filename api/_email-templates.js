@@ -25,11 +25,33 @@ function shell({eyebrow,title,intro,content,footer}){
   </body></html>`;
 }
 
+function shellV2({eyebrow,title,intro,content,footer}){
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+  <body style="margin:0;background:#edf3f1;font-family:Inter,Segoe UI,Arial,sans-serif;color:#13241f">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:34px 12px;background:#edf3f1"><tr><td align="center">
+      <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;overflow:hidden;border:1px solid #d8e5e0;border-radius:22px;background:#fff;box-shadow:0 24px 70px rgba(5,48,36,.13)">
+        <tr><td style="height:6px;background:#35c99d;font-size:0">&nbsp;</td></tr>
+        <tr><td style="padding:25px 30px;background:#071f19">
+          <table role="presentation" width="100%"><tr><td><table role="presentation" cellspacing="0" cellpadding="0"><tr>
+            <td><div style="width:46px;height:46px;border:1px solid rgba(117,235,200,.25);border-radius:13px;background:#0d3429;overflow:hidden"><img src="https://cordeiro-site.vercel.app/assets/haixel-logo.png" width="46" height="46" alt="Haixel" style="display:block;width:46px;height:46px;object-fit:contain"></div></td>
+            <td style="padding-left:12px"><strong style="display:block;color:#f2fffb;font-size:18px">Haixel</strong><span style="display:block;margin-top:3px;color:#71cdb1;font-size:9px;font-weight:700;letter-spacing:1.5px">FISCAL TECH</span></td>
+          </tr></table></td><td align="right"><span style="display:inline-block;padding:7px 10px;border:1px solid rgba(116,227,194,.24);border-radius:999px;background:rgba(255,255,255,.05);color:#83ddc1;font-size:9px;font-weight:800;letter-spacing:1.2px">${eyebrow}</span></td></tr></table>
+        </td></tr>
+        <tr><td style="padding:32px 32px 12px"><h1 style="margin:0 0 10px;color:#10251e;font-size:29px;line-height:1.15;letter-spacing:-.7px">${title}</h1><p style="margin:0;max-width:540px;color:#647970;font-size:14px;line-height:1.7">${intro}</p></td></tr>
+        <tr><td style="padding:20px 32px 34px">${content}</td></tr>
+        <tr><td style="padding:20px 32px;border-top:1px solid #e0ebe7;background:#f7faf9;color:#7d9089;font-size:11px;line-height:1.65">${footer}
+          <table role="presentation" width="100%" style="margin-top:14px"><tr><td><strong style="color:#13775b">Haixel</strong><span style="color:#9aaca5"> · Fiscal Tech</span></td><td align="right"><a href="https://cordeiro-site.vercel.app" style="color:#13775b;text-decoration:none;font-weight:700">Acessar plataforma →</a></td></tr></table>
+        </td></tr>
+      </table>
+    </td></tr></table>
+  </body></html>`;
+}
+
 export function accessEmail({name,code,expiresMin=15}){
   const safeName=esc(name||"");
   return {
     subject:`${code} · seu código de acesso Haixel`,
-    html:shell({
+    html:shellV2({
       eyebrow:"ACESSO SEGURO",
       title:`Olá${safeName?`, ${safeName}`:""}. Confirme sua identidade.`,
       intro:"Use o código abaixo para concluir seu cadastro com segurança. Ele é pessoal e expira automaticamente.",
@@ -58,7 +80,7 @@ export function cndAlertEmail({company,items,preview=false}){
   }).join("");
   return {
     subject:`${preview?"Prévia · ":""}Regularidade CND · ${company}`,
-    html:shell({
+    html:shellV2({
       eyebrow:preview?"PRÉVIA DO ALERTA":"REGULARIDADE FISCAL",
       title:preview?"Este é o novo alerta de CND.":"Existem certidões que precisam de atenção.",
       intro:`A Haixel encontrou ${items.length} certidão(ões) vencida(s) ou próxima(s) do vencimento em ${esc(company)}.`,

@@ -1435,7 +1435,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
             const days=daysUntil(item.data_validade);
             return days!=null&&days>=0 && days<=Number(cndConfig?.prazo_alerta||10);
           }).slice(0,5).map(item=><div className="cnd-overview-row" key={item.id}>
-            <b>{item.empresa_nome}</b><span>{typeLabel[item.tipo]||item.tipo}</span>
+            <b>{typeLabel[item.tipo]||item.tipo}</b><span>{item.empresa_nome}</span>
             <small>Validade: {date(item.data_validade)}</small>
           </div>)}
           {!items.some((item)=>{
@@ -1445,8 +1445,8 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
         </Panel>
         <Panel title="Certidões positivas">
           {items.filter(item=>item.status==="positiva").slice(0,5).map(item=>
-            <div className="cnd-overview-row" key={item.id}><b>{item.empresa_nome}</b>
-              <span>{typeLabel[item.tipo]||item.tipo}</span><small>Validade: {date(item.data_validade)}</small>
+            <div className="cnd-overview-row" key={item.id}><b>{typeLabel[item.tipo]||item.tipo}</b>
+              <span>{item.empresa_nome}</span><small>Validade: {date(item.data_validade)}</small>
             </div>)}
           {!items.some(item=>item.status==="positiva")&&<p className="muted">Nenhuma certidão positiva</p>}
         </Panel>
@@ -1500,8 +1500,8 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
                           : "Positiva com efeitos"}
                     </span>
                   </header>
-                  <small>{typeLabel[item.tipo] || item.tipo}</small>
-                  <h3>{item.empresa_nome}</h3>
+                  <small>{item.empresa_nome}</small>
+                  <h3>{typeLabel[item.tipo] || item.tipo}</h3>
                   <p>{item.numero_certidao || "Sem número informado"}</p>
                   <dl>
                     <div>
@@ -2215,7 +2215,10 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
       </section>
       <nav className="integration-launchpad">
         <button onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Chave de acesso</b><small>Consultar NF-e ou CT-e</small></span><ArrowUpRight/></button>
-        <button onClick={()=>document.querySelector<HTMLInputElement>(".spreadsheet-import input")?.click()}><i className="green"><FileSpreadsheet/></i><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><ArrowUpRight/></button>
+        <button className="spreadsheet-icon-action" title="Importar planilha" aria-label="Importar planilha"
+          onClick={()=>document.querySelector<HTMLInputElement>(".spreadsheet-import input")?.click()}>
+          <i className="green"><FileSpreadsheet/></i>
+        </button>
         <button onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Monitoramento SEFAZ</b><small>Disponibilidade dos serviços</small></span><ArrowUpRight/></button>
         <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
       </nav>
@@ -2607,7 +2610,12 @@ function FiscalOperations() {
   useEffect(() => {
     load();
   }, [load]);
-  const visible = (monitor?.ufs || []).slice(0, 12);
+  const visible = [...new Map((monitor?.ufs || []).map((item:any)=>[
+    `${String(item.env||"").trim().toLowerCase()}-${String(item.uf||"").trim().toUpperCase()}`,
+    {...item,uf:String(item.uf||"").trim().toUpperCase(),env:String(item.env||"").trim()},
+  ])).values()].slice(0,12) as any[];
+  const onlineServices=visible.filter((item:any)=>item.ok).length;
+  const offlineServices=visible.length-onlineServices;
   return (
     <section className="fiscal-ops">
       <div className="section-title">
@@ -2624,11 +2632,11 @@ function FiscalOperations() {
       <div className="ops-kpis">
         <article>
           <small>Serviços online</small>
-          <b className="ok-text">{monitor?.online ?? "—"}</b>
+          <b className="ok-text">{busy ? "—" : onlineServices}</b>
         </article>
         <article>
           <small>Serviços offline</small>
-          <b className="bad-text">{monitor?.offline ?? "—"}</b>
+          <b className="bad-text">{busy ? "—" : offlineServices}</b>
         </article>
         <article>
           <small>Última verificação</small>

@@ -3,7 +3,7 @@ import { ensureSchema, pool } from "./_database.js";
 import {getCompanyCertificate} from "./_company-certificate.js";
 import {cndAlertEmail,sendResend} from "./_email-templates.js";
 
-const RELEASE={
+const RELEASE_ARCHIVE={
   version:"2026.07.26.12",
   title:"Centrais fiscais e governança reconstruídas",
   publishedAt:"2026-07-26T23:55:00-03:00",
@@ -51,6 +51,19 @@ const RELEASE={
     {type:"new",title:"Governança de empresas",text:"Nova visão para matrizes, filiais, ambientes ativos e configurações fiscais."},
     {type:"fixed",title:"Foto de usuário ajustada",text:"Imagens agora preenchem o avatar proporcionalmente, com recorte central e sem deformação."},
     {type:"improved",title:"Experiência visual consistente",text:"Cartões, tabelas, indicadores e ações seguem a mesma linguagem dinâmica da Haixel."},
+  ],
+};
+
+const RELEASE={
+  version:"2026.07.26.13",
+  title:"Estrutura empresarial mais clara e produtiva",
+  publishedAt:"2026-07-26T19:10:00-03:00",
+  summary:"A gestão de matrizes e filiais ficou compacta, expansível e mais simples de operar.",
+  items:[
+    {type:"new",title:"Empresas compactas e expansíveis",text:"Cada matriz aparece resumida e abre detalhes, ações e filiais somente quando necessário."},
+    {type:"improved",title:"Barra lateral restaurada",text:"A navegação principal voltou para a lateral esquerda, preservando mais contexto entre os módulos."},
+    {type:"improved",title:"Gestão de filiais organizada",text:"Unidades vinculadas, certificados, módulos e cadastros permanecem acessíveis dentro da empresa correspondente."},
+    {type:"fixed",title:"Ciclo de atualização corrigido",text:"O sistema volta a exibir manutenção durante a publicação e apresenta este resumo após a liberação."},
   ],
 };
 
@@ -151,7 +164,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -411,9 +424,14 @@ export default async function handler(request, response) {
            WHERE id=$1 RETURNING id,username,nome,email,role,ativo,ultimo_login`,
           [id, data.nome || null, data.email || null, data.role || null, data.ativo ?? null],
         );
-        if(data.empresaId&&data.permissoes)await pool.query(
-          "UPDATE empresa_users SET permissoes=$3::jsonb WHERE empresa_id=$1 AND user_id=$2",
-          [data.empresaId,id,JSON.stringify(data.permissoes)]);
+        const companyId=Number(data.empresaId||request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
+        if(companyId&&data.permissoes)await pool.query(
+          `INSERT INTO empresa_users(empresa_id,user_id,papel,permissoes,ativo)
+           VALUES($1,$2,$3,$4::jsonb,TRUE)
+           ON CONFLICT(empresa_id,user_id) DO UPDATE
+           SET papel=EXCLUDED.papel,permissoes=EXCLUDED.permissoes,ativo=TRUE`,
+          [companyId,id,data.role||"operador",JSON.stringify(data.permissoes)]);
+        if(!result.rowCount)return response.status(404).json({error:"Usuário não encontrado"});
         return response.json(result.rows[0]);
       }
       if(route[1]==="activity"&&request.method==="GET"){
@@ -477,7 +495,7 @@ export default async function handler(request, response) {
              MAX(m.created_at) last_message_at
            FROM users u LEFT JOIN user_messages m
              ON m.sender_id=u.id AND m.recipient_id=$1
-           WHERE u.ativo=TRUE GROUP BY u.id
+           WHERE u.ativo=TRUE AND u.id<>$1 GROUP BY u.id
            ORDER BY unread DESC,last_message_at DESC NULLS LAST,u.nome`,
           [user.id],
         );
@@ -525,6 +543,11 @@ export default async function handler(request, response) {
             return response.status(413).json({error:"O anexo deve ter até 2,5 MB"});
           attachmentSize=attachmentData.length;
         }
+        if(recipient===Number(user.id))
+          return response.status(400).json({error:"Não é possível enviar mensagens para você mesmo"});
+        const recipientUser=await pool.query("SELECT id FROM users WHERE id=$1 AND ativo=TRUE",[recipient]);
+        if(!recipientUser.rowCount)
+          return response.status(404).json({error:"Destinatário não encontrado ou inativo"});
         if (!recipient || (!content&&!attachmentData))
           return response.status(400).json({ error: "Destinatário e mensagem ou anexo obrigatórios" });
         const result = await pool.query(
