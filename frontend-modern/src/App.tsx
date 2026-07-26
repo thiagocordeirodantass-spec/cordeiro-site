@@ -123,8 +123,58 @@ function Brand() {
     </div>
   );
 }
-function Login({ done }: { done: (u: User) => void }) {
-  const [mode, setMode] = useState<"login" | "register" | "verify">("login"),
+function Landing({onAccess,onTrial}:{onAccess:()=>void;onTrial:()=>void}) {
+  const solutions=[
+    {icon:Files,title:"Documentos fiscais",text:"Cofre centralizado para NF-e, CT-e e NFS-e, com pesquisa, XML e exportação."},
+    {icon:ShieldCheck,title:"Regularidade CND",text:"Certidões, vencimentos e alertas organizados por matriz e filial."},
+    {icon:Building2,title:"Gestão multiempresa",text:"Ambientes, usuários, certificados e permissões em uma única estrutura."},
+  ];
+  const features=[
+    [CloudDownload,"Captura e custódia de XMLs"],[Radar,"Monitoramento SEFAZ"],
+    [BarChart3,"Relatórios gerenciais"],[Bot,"Haixel IA fiscal"],
+    [Users,"Acessos por empresa"],[Bell,"Alertas automáticos"],
+  ] as any[];
+  return <main className="landing">
+    <header className="landing-nav">
+      <Brand/><nav><a href="#solucoes">Soluções</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
+      <div><button className="landing-login" onClick={onAccess}>Acessar</button>
+        <button className="landing-trial" onClick={onTrial}>Experimente grátis <ArrowUpRight/></button></div>
+    </header>
+    <section className="landing-hero">
+      <div className="landing-hero-copy"><span><Sparkles/> GESTÃO FISCAL INTELIGENTE</span>
+        <h1>Controle fiscal claro para empresas que querem <em>avançar.</em></h1>
+        <p>Documentos, certidões, SEFAZ e empresas reunidos em uma plataforma segura, rápida e preparada para a sua operação.</p>
+        <div><button className="landing-trial" onClick={onTrial}>Começar gratuitamente <ArrowUpRight/></button>
+          <button className="landing-demo" onClick={onAccess}><ShieldCheck/> Já tenho acesso</button></div>
+        <small><CheckCircle2/> Acesso web <CheckCircle2/> Sem instalação <CheckCircle2/> Dados protegidos</small>
+      </div>
+      <div className="landing-product">
+        <div className="landing-product-bar"><i/><i/><i/><span>Haixel · Visão fiscal</span></div>
+        <div className="landing-product-body"><aside><img src="/assets/haixel-logo.png"/>{[LayoutDashboard,Files,ShieldCheck,Building2,BarChart3].map((Icon,index)=><i className={index===1?"active":""} key={index}><Icon/></i>)}</aside>
+          <section><header><span><small>DOCUMENTOS FISCAIS</small><b>Central DF-e</b></span><i><Bell/></i></header>
+            <div className="landing-product-kpis"><article><small>Documentos</small><b>1.284</b></article><article><small>XMLs protegidos</small><b>98,7%</b></article><article><small>Alertas</small><b>03</b></article></div>
+            <div className="landing-product-chart"><span/><span/><span/><span/><span/><span/><span/></div>
+            <div className="landing-product-list">{["NF-e 000.184","CT-e 001.029","NFS-e 000.447"].map((item,index)=><article key={item}><i><FileText/></i><b>{item}</b><small>{index?"Recebido":"Autorizado"}</small></article>)}</div>
+          </section></div>
+      </div>
+    </section>
+    <section className="landing-trust"><span>Uma plataforma para toda a rotina fiscal</span>
+      <div><b>NF-e</b><b>CT-e</b><b>NFS-e</b><b>XML</b><b>CND</b><b>SEFAZ</b><b>Multiempresa</b></div></section>
+    <section className="landing-section" id="solucoes"><header><span>SOLUÇÕES CONECTADAS</span><h2>Menos retrabalho. Mais controle.</h2><p>Escolha uma tarefa e encontre tudo o que precisa no mesmo fluxo.</p></header>
+      <div className="landing-solutions">{solutions.map(({icon:Icon,title,text},index)=><article key={title}><em>0{index+1}</em><i><Icon/></i><h3>{title}</h3><p>{text}</p><button onClick={onTrial}>Conhecer solução <ChevronRight/></button></article>)}</div>
+    </section>
+    <section className="landing-dark" id="recursos"><div><span>PLATAFORMA COMPLETA</span><h2>A operação fiscal vista por inteiro.</h2><p>Recursos conectados para consultar, organizar, acompanhar e decidir com segurança.</p>
+      <button className="landing-trial" onClick={onTrial}>Experimentar agora <ArrowUpRight/></button></div>
+      <div className="landing-features">{features.map(([Icon,title])=><article key={title}><i><Icon/></i><b>{title}</b><CheckCircle2/></article>)}</div></section>
+    <section className="landing-security" id="seguranca"><div><i><ShieldCheck/></i><span><small>SEGURANÇA EM TODAS AS CAMADAS</small><h2>Seus dados fiscais tratados com responsabilidade.</h2><p>Controle de acesso, sessões protegidas, certificado A1 por empresa e rastreabilidade das operações.</p></span></div>
+      <aside><strong>100% web</strong><span>Acesse de qualquer dispositivo</span><strong>Multiempresa</strong><span>Permissões por ambiente</span></aside></section>
+    <section className="landing-final"><span>PRONTO PARA SIMPLIFICAR?</span><h2>Sua gestão fiscal começa aqui.</h2><p>Experimente a Haixel e centralize sua operação em poucos minutos.</p>
+      <div><button className="landing-trial" onClick={onTrial}>Experimente grátis <ArrowUpRight/></button><button className="landing-demo" onClick={onAccess}>Acessar minha conta</button></div></section>
+    <footer className="landing-footer"><Brand/><p>Inteligência fiscal para decisões seguras.</p><span>© {new Date().getFullYear()} Haixel Fiscal Tech</span></footer>
+  </main>;
+}
+function Login({ done,initialMode="login",onBack }: { done: (u: User) => void; initialMode?:"login"|"register"; onBack?:()=>void }) {
+  const [mode, setMode] = useState<"login" | "register" | "verify">(initialMode),
     [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
     [name, setName] = useState(""),
@@ -188,6 +238,7 @@ function Login({ done }: { done: (u: User) => void }) {
       </section>
       <section className="login-side">
         <form className="auth-card" onSubmit={submit}>
+          {onBack&&<button type="button" className="auth-back" onClick={onBack}>← Voltar para o site</button>}
           <div className="mobile-brand">
             <Brand />
           </div>
@@ -4759,6 +4810,7 @@ export default function App() {
     [dark, setDark] = useState(()=>localStorage.getItem("cordeiro.theme")==="dark"),
     [note, setNote] = useState<{ s: string; e: boolean } | null>(null),
     [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
+    [publicView,setPublicView]=useState<"landing"|"login"|"register">("landing"),
     [showWelcome, setShowWelcome] = useState(false),
     [showRelease, setShowRelease] = useState(false),
     [maintenanceGrace,setMaintenanceGrace]=useState<number|null>(null),
@@ -4854,12 +4906,6 @@ export default function App() {
     }),1000);
     return()=>window.clearInterval(timer);
   },[systemStatus?.maintenance.active,systemStatus?.release.version]);
-  useEffect(()=>{
-    if(!systemStatus?.maintenance.active||!user)return;
-    api("/api/auth/logout",{method:"POST"}).catch(()=>{});
-    setUser(null);
-    setCompany(null);
-  },[systemStatus?.maintenance.active,user?.id]);
   useEffect(() => {
     if (!user || !systemStatus) return;
     const status = systemStatus;
@@ -4871,7 +4917,7 @@ export default function App() {
       setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
   }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
-  if (systemStatus?.maintenance.active)
+  if (systemStatus?.maintenance.active&&user)
     return <MaintenanceNotice maintenance={systemStatus.maintenance} />;
   if (checking)
     return (
@@ -4880,8 +4926,10 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
-  if (!user) return <><Login done={enter}/>{systemStatus?.maintenance.scheduled&&
-    <MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</>;
+  if (!user) return <>{publicView==="landing"
+    ?<Landing onAccess={()=>setPublicView("login")} onTrial={()=>setPublicView("register")}/>
+    :<Login done={enter} initialMode={publicView} onBack={()=>setPublicView("landing")}/>}
+    {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</>;
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);

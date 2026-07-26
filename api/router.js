@@ -61,6 +61,8 @@ const RELEASE={
   summary:"A gestão de matrizes e filiais ficou compacta, expansível e mais simples de operar.",
   items:[
     {type:"new",title:"Empresas compactas e expansíveis",text:"Cada matriz aparece resumida e abre detalhes, ações e filiais somente quando necessário."},
+    {type:"new",title:"Documentos Fiscais reformulados",text:"Cofre, DF-e, importação, filtros, downloads e tabelas receberam uma interface operacional mais compacta e responsiva."},
+    {type:"new",title:"Nova landing page Haixel",text:"A apresentação pública agora reúne soluções, recursos, segurança e acessos diretos para login ou experiência gratuita."},
     {type:"improved",title:"Barra lateral restaurada",text:"A navegação principal voltou para a lateral esquerda, preservando mais contexto entre os módulos."},
     {type:"improved",title:"Gestão de filiais organizada",text:"Unidades vinculadas, certificados, módulos e cadastros permanecem acessíveis dentro da empresa correspondente."},
     {type:"fixed",title:"Ciclo de atualização corrigido",text:"O sistema volta a exibir manutenção durante a publicação e apresenta este resumo após a liberação."},
@@ -164,7 +166,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
