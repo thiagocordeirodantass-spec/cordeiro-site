@@ -93,6 +93,36 @@ function feedback(row) {
   };
 }
 
+async function dispatchCndAlerts(){
+  const config=(await pool.query("SELECT * FROM cnd_config WHERE id=1")).rows[0];
+  if(!config?.alertas_ativos)return {ok:true,skipped:"alerts_disabled"};
+  const result=await pool.query(`SELECT d.email,e.id empresa_id,e.nome empresa_nome,c.tipo,c.numero_certidao,c.data_validade,
+    (c.data_validade-CURRENT_DATE)::int days
+    FROM cnd_destinatarios d JOIN empresas e ON e.id=d.empresa_id
+    JOIN certidoes c ON c.empresa_id=e.id
+    WHERE d.ativo=TRUE AND c.data_validade IS NOT NULL
+      AND ((c.data_validade<CURRENT_DATE AND $2::boolean)
+        OR (c.data_validade BETWEEN CURRENT_DATE AND CURRENT_DATE+$1::int AND $3::boolean)
+        OR (c.status='positiva' AND $4::boolean))
+    ORDER BY d.email,e.id,c.data_validade`,[
+      Number(config.prazo_alerta||10),Boolean(config.alerta_vencidas),
+      Boolean(config.alerta_vencimento),Boolean(config.alerta_positivas),
+    ]);
+  const groups=new Map();
+  for(const row of result.rows){
+    const key=`${row.email}:${row.empresa_id}`;
+    if(!groups.has(key))groups.set(key,{email:row.email,company:row.empresa_nome,items:[]});
+    groups.get(key).items.push(row);
+  }
+  let sent=0;
+  for(const group of groups.values()){
+    const template=cndAlertEmail(group);
+    const delivery=await sendResend({to:group.email,...template});
+    if(delivery.sent)sent++;
+  }
+  return {ok:true,groups:groups.size,sent};
+}
+
 export default async function handler(request, response) {
   try {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
@@ -121,6 +151,12 @@ export default async function handler(request, response) {
       }
     }
     await ensureSchema();
+    if(route[0]==="certidoes"&&route[1]==="dispatch-alerts"&&request.method==="GET"){
+      const secret=String(process.env.CRON_SECRET||"");
+      if(secret&&String(request.headers.authorization||"")!==`Bearer ${secret}`)
+        return response.status(401).json({error:"Não autorizado"});
+      return response.json(await dispatchCndAlerts());
+    }
 
     if (route[0] === "news" && request.method === "GET")
       return response.json({ externos: [], curadas: [
