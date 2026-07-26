@@ -3313,6 +3313,9 @@ function Admin({
     [expandedCompanies,setExpandedCompanies]=useState<Record<number,boolean>>({}),
     [replicateTargets,setReplicateTargets]=useState<number[]>([]),
     [replicationOpen,setReplicationOpen]=useState(false),
+    [companyCertificateFile,setCompanyCertificateFile]=useState<File|null>(null),
+    [companyCertificatePassword,setCompanyCertificatePassword]=useState(""),
+    [companyCertificateBusy,setCompanyCertificateBusy]=useState(false),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3359,10 +3362,38 @@ function Admin({
   }
   async function openModules(company:any){
     try{
-      const data=await api<any>(`/api/empresas/${company.id}/modulos`);
-      setModuleCompany(company); setModuleData(data); setModuleTab("cnd");
+      const [data,certificate]=await Promise.all([
+        api<any>(`/api/empresas/${company.id}/modulos`),
+        api<any>(`/api/empresas/${company.id}/certificado`),
+      ]);
+      setModuleCompany(company); setModuleData({...data,certificate}); setModuleTab("cnd");
+      setCompanyCertificateFile(null);setCompanyCertificatePassword("");
       setReplicationOpen(false); setReplicateTargets([]);
     }catch(error){toast((error as Error).message,true)}
+  }
+  async function saveCompanyCertificate(){
+    if(!companyCertificateFile||!companyCertificatePassword)
+      return toast("Selecione o arquivo PFX/P12 e informe a senha",true);
+    setCompanyCertificateBusy(true);
+    try{
+      const body=new FormData();
+      body.set("certificate",companyCertificateFile);
+      body.set("password",companyCertificatePassword);
+      const certificate=await api<any>(`/api/empresas/${moduleCompany.id}/certificado`,{method:"POST",body});
+      setModuleData({...moduleData,certificate});
+      setCompanyCertificateFile(null);setCompanyCertificatePassword("");
+      toast("Certificado validado e vinculado à empresa");
+    }catch(error){toast((error as Error).message,true)}
+    finally{setCompanyCertificateBusy(false)}
+  }
+  async function removeCompanyCertificate(){
+    setCompanyCertificateBusy(true);
+    try{
+      await api(`/api/empresas/${moduleCompany.id}/certificado`,{method:"DELETE"});
+      setModuleData({...moduleData,certificate:{configurado:false,certificado:null}});
+      toast("Certificado removido da empresa");
+    }catch(error){toast((error as Error).message,true)}
+    finally{setCompanyCertificateBusy(false)}
   }
   async function saveModule(){
     try{
@@ -3741,11 +3772,21 @@ function Admin({
             {moduleTab==="sefaz"&&<>
               <h3>Consulta SEFAZ</h3>
               <div className="mtls-company-card">
-                <i><ShieldCheck/></i><span><b>Certificado instalado na máquina</b>
-                  <small>O navegador apresentará o certificado ao canal mTLS. Nenhum arquivo ou senha será enviado ou armazenado.</small></span>
-                <button type="button" onClick={()=>window.location.assign(
-                  `/api/auth/mtls-login?empresaId=${moduleCompany.id}&redirect=${encodeURIComponent("/?mtls=verified")}`
-                )}><ShieldCheck/> Verificar certificado instalado</button>
+                <i><ShieldCheck/></i><span><b>Certificado digital A1 da empresa</b>
+                  <small>{moduleData.certificate?.configurado
+                    ? `${moduleData.certificate.certificado?.arquivo_nome} · válido até ${date(moduleData.certificate.certificado?.validade_fim)}`
+                    :"Anexe o arquivo PFX/P12 e informe a senha. O certificado será validado pelo CNPJ da empresa."}</small></span>
+                <div className="company-certificate-fields">
+                  <label><input type="file" accept=".pfx,.p12,application/x-pkcs12"
+                    onChange={e=>setCompanyCertificateFile(e.target.files?.[0]||null)}/>
+                    <span>{companyCertificateFile?.name||"Selecionar PFX/P12"}</span></label>
+                  <input type="password" value={companyCertificatePassword}
+                    onChange={e=>setCompanyCertificatePassword(e.target.value)} placeholder="Senha do certificado"/>
+                  <button type="button" disabled={companyCertificateBusy} onClick={saveCompanyCertificate}>
+                    {companyCertificateBusy?<RefreshCw className="spin"/>:<Save/>} Validar e salvar</button>
+                  {moduleData.certificate?.configurado&&<button type="button" className="danger"
+                    disabled={companyCertificateBusy} onClick={removeCompanyCertificate}><Trash2/> Remover</button>}
+                </div>
               </div>
               <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.consulta_automatica)}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,consulta_automatica:e.target.checked}}})}/>Consulta automática habilitada</label>

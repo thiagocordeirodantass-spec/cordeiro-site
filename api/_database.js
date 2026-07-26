@@ -255,6 +255,16 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS sefaz_key_query_rate_idx
         ON sefaz_key_query_log(empresa_id, created_at DESC);
+      CREATE TABLE IF NOT EXISTS empresa_certificados (
+        empresa_id BIGINT PRIMARY KEY REFERENCES empresas(id) ON DELETE CASCADE,
+        encrypted_payload BYTEA NOT NULL,
+        arquivo_nome TEXT,
+        titular TEXT,
+        cnpj TEXT,
+        validade_inicio TIMESTAMPTZ,
+        validade_fim TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       INSERT INTO cnd_destinatarios(empresa_id,email)
       SELECT id,v.email FROM empresas CROSS JOIN (VALUES
         ('raul.guilherme25@gmail.com'),('thiagocordeirodantass@gmail.com')

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { ensureSchema, pool } from "./_database.js";
+import {getCompanyCertificate} from "./_company-certificate.js";
 
 function parts(request) {
   const value = request.query.route;
@@ -396,10 +397,10 @@ export default async function handler(request, response) {
     ) {
       if(!["certificate","mtls"].includes(String(user.auth_method||"")))
         return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de buscar na SEFAZ"});
-      if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
-        return response.status(503).json({ error: "Certificado A1 não configurado" });
       if(!activeEmpresaId)
         return response.status(400).json({error:"Selecione uma empresa antes de buscar documentos na SEFAZ"});
+      const credentials=await getCompanyCertificate(activeEmpresaId);
+      if(!credentials)return response.status(503).json({error:"Anexe o certificado A1 na configuração da empresa"});
       const { consultarPeriodoComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
@@ -419,11 +420,11 @@ export default async function handler(request, response) {
       const requestedBatch=Math.min(50,Math.max(1,Number(sefazConfig.lote_maximo)||50));
       let result;
       try{result = await consultarPeriodoComCertificado({
-        pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
-        passphrase: process.env.SEFAZ_PFX_PASSWORD,
+        pfx: credentials.pfx,
+        passphrase: credentials.passphrase,
         uf: process.env.SEFAZ_UF || "MG",
         ambiente: "producao",
-        cnpjOuCpf: process.env.SEFAZ_CNPJ,
+        cnpjOuCpf: credentials.cnpj||process.env.SEFAZ_CNPJ,
         ultNSUInicial: claim.rows[0].ult_nsu || "0",
         dateFrom: request.body?.dateFrom,
         dateTo: request.body?.dateTo,
@@ -486,10 +487,10 @@ export default async function handler(request, response) {
     ) {
       if(!["certificate","mtls"].includes(String(user.auth_method||"")))
         return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de consultar a SEFAZ"});
-      if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
-        return response.status(503).json({ error: "Certificado A1 não configurado" });
       if(!activeEmpresaId)
         return response.status(400).json({error:"Selecione uma empresa antes de consultar uma chave"});
+      const credentials=await getCompanyCertificate(activeEmpresaId);
+      if(!credentials)return response.status(503).json({error:"Anexe o certificado A1 na configuração da empresa"});
       const keyModuleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
         WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
       const configuredLimit=Math.min(18,Math.max(1,Number(keyModuleConfig.rows[0]?.configuracao?.limite_chaves_hora)||18));
@@ -513,11 +514,11 @@ export default async function handler(request, response) {
       let xml=null,cancelled=false;
       try{
         xml = await consultarChaveComCertificado({
-          pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
-          passphrase: process.env.SEFAZ_PFX_PASSWORD,
+          pfx: credentials.pfx,
+          passphrase: credentials.passphrase,
           uf: process.env.SEFAZ_UF || "MG",
           ambiente: "producao",
-          cnpjOuCpf: process.env.SEFAZ_CNPJ,
+          cnpjOuCpf: credentials.cnpj||process.env.SEFAZ_CNPJ,
           chave: route[2],
         });
       }catch(error){
