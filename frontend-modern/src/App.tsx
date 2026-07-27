@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CheckCircle2,
   CheckCheck,
+  Clock3,
   CloudDownload,
   FileDown,
   FileSpreadsheet,
@@ -19,10 +20,12 @@ import {
   Files,
   Gauge,
   GraduationCap,
+  Headphones,
   LayoutDashboard,
   Laptop,
   Lightbulb,
   Network,
+  Newspaper,
   Link,
   Linkedin,
   LogOut,
@@ -70,7 +73,8 @@ type Page =
   | "feedback"
   | "profile"
   | "companies"
-  | "users";
+  | "users"
+  | "time";
 type AppNotification = {
   id: number;
   title: string;
@@ -99,9 +103,32 @@ const daysUntil=(value:any)=>{
   const time=parsed.getTime();
   return Number.isFinite(time)?Math.ceil((time-Date.now())/86400000):null;
 };
+const playMaintenanceCompleteChime=()=>{
+  try{
+    const AudioContextClass=window.AudioContext||(window as any).webkitAudioContext;
+    if(!AudioContextClass)return;
+    const context=new AudioContextClass();
+    const play=()=>{
+      const notes=[523.25,659.25,783.99];
+      notes.forEach((frequency,index)=>{
+        const oscillator=context.createOscillator(),gain=context.createGain();
+        const start=context.currentTime+index*.12;
+        oscillator.type="sine";oscillator.frequency.setValueAtTime(frequency,start);
+        gain.gain.setValueAtTime(0,start);
+        gain.gain.linearRampToValueAtTime(.055,start+.025);
+        gain.gain.exponentialRampToValueAtTime(.001,start+.34);
+        oscillator.connect(gain);gain.connect(context.destination);
+        oscillator.start(start);oscillator.stop(start+.36);
+      });
+      window.setTimeout(()=>context.close().catch(()=>{}),900);
+    };
+    if(context.state==="suspended")context.resume().then(play).catch(()=>context.close().catch(()=>{}));
+    else play();
+  }catch{}
+};
 const sourceInfo=(value?:string)=>{
   const key=String(value||"system").toLowerCase();
-  if(key==="upload")return {label:"Importação manual",tone:"manual"};
+  if(key==="upload")return {label:"Importado manualmente",tone:"manual"};
   if(key==="paste")return {label:"Inclusão manual",tone:"manual"};
   if(key.includes("mtls-auto"))return {label:"SEFAZ automática",tone:"automatic"};
   if(key.includes("sefaz"))return {label:"Consulta por chave",tone:"sefaz"};
@@ -128,6 +155,32 @@ function HaixelAiMark({small=false}:{small?:boolean}) {
   return <span className={`haixel-ai-mark${small?" small":""}`} aria-label="Haixel IA">
     <i/><i/><strong>H</strong><em>AI</em>
   </span>;
+}
+function ExcelMark(){
+  return <span className="excel-mark" aria-hidden="true"><b>X</b><i/><i/><i/></span>;
+}
+function CursorParticles({scope}:{scope:string}){
+  const [particles,setParticles]=useState<Array<{id:number;x:number;y:number;dx:number;dy:number;size:number}>>([]);
+  const sequence=useRef(0),lastMove=useRef(0);
+  useEffect(()=>{
+    const spawn=(event:PointerEvent,count:number)=>{
+      const target=event.target as Element|null,host=target?.closest(scope) as HTMLElement|null;
+      if(!host||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+      const rect=host.getBoundingClientRect(),created=Array.from({length:count},()=>({
+        id:++sequence.current,x:event.clientX-rect.left,y:event.clientY-rect.top,
+        dx:(Math.random()-.5)*70,dy:(Math.random()-.7)*70,size:3+Math.random()*6,
+      }));
+      setParticles(current=>[...current.slice(-55),...created]);
+      window.setTimeout(()=>setParticles(current=>current.filter(item=>!created.some(value=>value.id===item.id))),850);
+    };
+    const down=(event:PointerEvent)=>spawn(event,9);
+    const move=(event:PointerEvent)=>{if(!(event.buttons&1)||Date.now()-lastMove.current<38)return;lastMove.current=Date.now();spawn(event,2)};
+    window.addEventListener("pointerdown",down,{passive:true});window.addEventListener("pointermove",move,{passive:true});
+    return()=>{window.removeEventListener("pointerdown",down);window.removeEventListener("pointermove",move)};
+  },[scope]);
+  return <div className="cursor-particles" aria-hidden="true">{particles.map(item=>
+    <i key={item.id} style={{left:item.x,top:item.y,width:item.size,height:item.size,
+      "--particle-x":`${item.dx}px`,"--particle-y":`${item.dy}px`} as React.CSSProperties}/>)}</div>;
 }
 function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
   const [contact,setContact]=useState({nome:"",email:"",empresa:"",mensagem:""}),[contactBusy,setContactBusy]=useState(false),
@@ -170,6 +223,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     event.currentTarget.style.setProperty("--landing-x",`${event.clientX-rect.left}px`);
     event.currentTarget.style.setProperty("--landing-y",`${event.clientY+window.scrollY}px`);
   }}>
+    <CursorParticles scope=".landing"/>
     <div className="landing-cursor-light" aria-hidden="true"/>
     <header className="landing-nav">
       <Brand/><nav><a href="#solucoes">Soluções</a><a href="#haixel-ia">Haixel IA</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
@@ -180,7 +234,6 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
       <div className="landing-hero-copy"><span><Sparkles/> GESTÃO FISCAL INTELIGENTE</span>
         <h1>Controle fiscal claro para empresas que querem <em>avançar.</em></h1>
         <p>Documentos, certidões, SEFAZ e empresas reunidos em uma plataforma segura, rápida e preparada para a sua operação.</p>
-        <div><a className="landing-demo" href="#haixel-ia"><Bot/> Conversar com a Haixel IA</a></div>
         <small><CheckCircle2/> Acesso web <CheckCircle2/> Sem instalação <CheckCircle2/> Dados protegidos</small>
       </div>
       <div className="landing-product">
@@ -294,7 +347,11 @@ function Login({ done,initialMode="login",onBack }: { done: (u: User) => void; i
     }
   }
   return (
-    <main className="login">
+    <main className="login" onPointerMove={event=>{
+      const rect=event.currentTarget.getBoundingClientRect();
+      event.currentTarget.style.setProperty("--hub-x",`${event.clientX-rect.left}px`);
+      event.currentTarget.style.setProperty("--hub-y",`${event.clientY-rect.top}px`);
+    }}>
       <section className="login-art">
         <Brand />
         <div>
@@ -313,7 +370,14 @@ function Login({ done,initialMode="login",onBack }: { done: (u: User) => void; i
           </small>
         </div>
       </section>
-      <section className="login-side">
+      <section className="login-side" onPointerMove={event=>{
+        const rect=event.currentTarget.getBoundingClientRect();
+        event.currentTarget.style.setProperty("--login-x",`${event.clientX-rect.left}px`);
+        event.currentTarget.style.setProperty("--login-y",`${event.clientY-rect.top}px`);
+        event.currentTarget.style.setProperty("--login-rx",`${((event.clientY-rect.top)/rect.height-.5)*2}deg`);
+        event.currentTarget.style.setProperty("--login-ry",`${(.5-(event.clientX-rect.left)/rect.width)*3}deg`);
+      }}>
+        <CursorParticles scope=".login-side"/>
         <form className="auth-card" onSubmit={submit}>
           {onBack&&<button type="button" className="auth-back" onClick={onBack}>← Voltar para o site</button>}
           <div className="mobile-brand">
@@ -465,7 +529,7 @@ const groups = [
 ] as any[];
 
 function DocumentHub({toast,initial="archive"}:{toast:(s:string,e?:boolean)=>void;initial?:"archive"|"dfe"}) {
-  const [mode,setMode]=useState<"archive"|"dfe">(initial);
+  const [mode,setMode]=useState<"archive"|"dfe"|"monitor">(initial);
   return <section className="unified-document-hub">
     <header className="document-nexus">
       <div className="document-nexus-copy"><span className="eyebrow">CENTRAL DOCUMENTAL HAIXEL</span>
@@ -482,12 +546,13 @@ function DocumentHub({toast,initial="archive"}:{toast:(s:string,e?:boolean)=>voi
       </div>
     </header>
     <div className="document-workspace-switch">
-      <span><small>ÁREA DE TRABALHO</small><b>{mode==="archive"?"Cofre documental":"Fluxo DF-e"}</b></span>
+      <span><small>ÁREA DOCUMENTAL</small><b>{mode==="archive"?"Cofre e auditoria":mode==="monitor"?"Monitor DF-e":"Importação XML"}</b></span>
       <nav>
         <button className={mode==="archive"?"active":""} onClick={()=>setMode("archive")}><Files/><span>
           <b>Cofre e auditoria</b><small>Pesquisar, conferir e exportar</small></span></button>
-        <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
-          <b>Monitor e importação</b><small>Emitidos, recebidos e SEFAZ</small></span></button>
+        {false && <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
+          <b>Monitor e importaÃ§Ã£o</b><small>Emitidos, recebidos e SEFAZ</small></span></button>
+        }
       </nav>
     </div>
     <div className="document-workspace" key={mode}>{mode==="archive"?<Documents toast={toast}/>:<IssuedDocuments toast={toast}/>}</div>
@@ -572,7 +637,7 @@ function Dashboard() {
         <div><span className="eyebrow">COMANDO FISCAL EM TEMPO REAL</span><h2>Da visão geral à próxima ação.</h2>
           <p>Acompanhe o que entrou, identifique riscos e continue a rotina sem alternar entre várias telas.</p>
           <div><span><i/> Operação acompanhada</span><span><ShieldCheck/> Ambiente protegido</span></div></div>
-        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><HaixelAiMark/><b>HAIXEL</b><small>RADAR ATIVO</small></span></div>
+        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><i className="service-symbol news"><Newspaper/></i><b>NOTÍCIAS</b><small>RADAR ATIVO</small></span></div>
       </section>
       <div className="cockpit-metrics">{metrics.map(([label,value,Icon,tone]:any,index)=><article className={tone} key={label}
         style={{animationDelay:`${index*.08}s`}}><i><Icon/></i><span><small>{label}</small><b>{loadingStats?"—":value}</b><em>Empresa ativa</em></span></article>)}</div>
@@ -748,11 +813,11 @@ function FiscalFilters({
   );
 }
 
-function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
+function IssuedDocuments({toast,initialSection="monitor"}:{toast:(s:string,e?:boolean)=>void;initialSection?:"monitor"|"import"}){
   const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
-    [section,setSection]=useState<"monitor"|"import">("monitor"),
+    [section,setSection]=useState<"monitor"|"import">(initialSection),
     [direction,setDirection]=useState<"outgoing"|"incoming">("outgoing"),
-    [query,setQuery]=useState(""),[statusFilter,setStatusFilter]=useState(""),
+    [query,setQuery]=useState(""),
     [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true),
     [syncing,setSyncing]=useState(false),issuedSyncRef=useRef(false);
   const issuedParams=new URLSearchParams({month,direction,...(kind?{kind}:{})});
@@ -780,21 +845,15 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
   const filtered=(data.items||[]).filter((item:any)=>{
     const content=[item.kind,item.numero,item.chave,item.remetente_nome,item.remetente_doc,
       item.destinatario_nome,item.destinatario_doc,item.status].join(" ").toLowerCase();
-    return (!query||content.includes(query.toLowerCase()))&&
-      (!statusFilter||String(item.status||"").toLowerCase()===statusFilter);
+    return !query||content.includes(query.toLowerCase());
   });
-  const statusOptions=[...new Set((data.items||[]).map((item:any)=>String(item.status||"").toLowerCase()).filter(Boolean))];
   return <><Head tag="CENTRAL DF-e" title="Documentos fiscais"
     text="Recebimento, custódia e acompanhamento dos documentos emitidos pela empresa e contra o seu CNPJ."
     action={section==="monitor"?<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
       <button className="secondary issued-import-xml" onClick={()=>setSection("import")}><UploadCloud/> Importar XML</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?month=${month}`,`documentos-fiscais-${month}.xlsx`)}><FileDown/> Exportar Excel</button>
       <button className="secondary" onClick={()=>download(`/api/relatorio/lote?formato=xml&month=${month}`,`xml-fiscais-${month}.zip`)}><CloudDownload/> Baixar XMLs</button>
-      <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<RefreshCw/>} {syncing?"Sincronizando...":"Buscar na SEFAZ"}</button></div>:undefined}/>
-    <nav className="dfe-module-nav">
-      <button className={section==="monitor"?"active":""} onClick={()=>setSection("monitor")}><Radar/><span><b>Monitor DF-e</b><small>Emitidos e recebidos</small></span></button>
-      <button className={section==="import"?"active":""} onClick={()=>setSection("import")}><UploadCloud/><span><b>Importar documentos</b><small>XML de NF-e, CT-e e NFS-e</small></span></button>
-    </nav>
+          <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<Search/>} {syncing?"Consultando SEFAZ...":"Consultar SEFAZ agora"}</button></div>:undefined}/>
     {section==="import"?<Importer toast={toast} embedded done={()=>{setSection("monitor");load(true)}}/>:<>
     <section className="dfe-command-board">
       <div><span className="eyebrow">OPERAÇÃO DOCUMENTAL</span><h2>Visão unificada do ciclo fiscal</h2>
@@ -805,7 +864,7 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
         <span><small>Movimentação</small><b>{brl(stats.valor||0)}</b></span>
       </div>
     </section>
-    <section className="issued-hero dfe-hero"><div><i>{direction==="incoming"?<CloudDownload/>:<Send/>}</i><span>
+    <section key={`hero-${direction}`} className={`issued-hero dfe-hero direction-page direction-${direction}`}><div><i>{direction==="incoming"?<CloudDownload/>:<Send/>}</i><span>
       <small>{direction==="incoming"?"RECEBIMENTO FISCAL":"EMISSÕES PRÓPRIAS"}</small>
       <h2>{direction==="incoming"?"Documentos emitidos contra a empresa":"Documentos emitidos pela empresa"}</h2>
       <p>Informações centralizadas por CNPJ, com captura segura, consulta e custódia do arquivo fiscal.</p></span></div>
@@ -819,17 +878,15 @@ function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
       <article><i><Bell/></i><span><b>Eventos e situações</b><small>Status fiscal destacado para acelerar conferências e tratar cancelamentos.</small></span></article>
       <article><i><FileDown/></i><span><b>Consulta e exportação</b><small>Planilha gerencial e arquivos XML disponíveis individualmente ou em lote.</small></span></article>
     </section>
-    <Panel className="dfe-control-deck"><div className="issued-direction">
-      <button className={direction==="outgoing"?"active":""} onClick={()=>setDirection("outgoing")}><Send/><span><b>Emitidas pela empresa</b><small>CNPJ ativo como emitente/prestador</small></span></button>
-      <button className={direction==="incoming"?"active":""} onClick={()=>setDirection("incoming")}><CloudDownload/><span><b>Emitidas contra a empresa</b><small>CNPJ ativo como destinatário/tomador</small></span></button>
-    </div><div className="dfe-query-bar"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)}
+    <Panel className={`dfe-control-deck direction-${direction}`}><div key={`query-${direction}`} className="dfe-query-bar direction-page"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)}
       placeholder="Buscar por fornecedor, cliente, CNPJ, número ou chave..."/></label>
-      <select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Todas as situações</option>
-        {statusOptions.map((status:any)=><option value={status} key={status}>{status}</option>)}</select>
-    </div><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos",Files],["NFE","NF-e",FileText],["NFSE","NFS-e",FileSpreadsheet],["CTE","CT-e",CloudDownload]].map(([value,label,Icon]:any)=>
+    </div><div className="issued-toolbar"><div className={`issued-direction direction-${direction}`}>
+      <button className={direction==="outgoing"?"active":""} aria-pressed={direction==="outgoing"} onClick={()=>setDirection("outgoing")} title="CNPJ ativo como emitente ou prestador"><Send/><span><b>Emitidas</b><small>Pela empresa</small></span></button>
+      <button className={direction==="incoming"?"active":""} aria-pressed={direction==="incoming"} onClick={()=>setDirection("incoming")} title="CNPJ ativo como destinatário ou tomador"><CloudDownload/><span><b>Recebidas</b><small>Contra a empresa</small></span></button>
+    </div><div className="doc-tabs">{[["","Todos",Files],["NFE","NF-e",FileText],["NFSE","NFS-e",FileSpreadsheet],["CTE","CT-e",CloudDownload]].map(([value,label,Icon]:any)=>
       <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}><Icon/>{label}</button>)}</div>
       <small>{filtered.length} de {data.items?.length||0} documentos · atualização automática a cada 30 segundos</small></div>
-      <div className="table dfe-table"><table><thead><tr><th>Documento</th><th>{direction==="incoming"?"Emitente / fornecedor":"Destinatário / cliente"}</th><th>Emissão</th><th>Valor</th><th>Situação</th><th>Origem</th><th>Arquivo</th></tr></thead>
+      <div key={`table-${direction}-${kind||"all"}`} className="table dfe-table direction-page kind-page"><table><thead><tr><th>Documento</th><th>{direction==="incoming"?"Emitente / fornecedor":"Destinatário / cliente"}</th><th>Emissão</th><th>Valor</th><th>Situação</th><th>Origem</th><th>Arquivo</th></tr></thead>
         <tbody>{filtered.map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
           <td>{direction==="incoming"?(item.remetente_nome||"Não identificado"):(item.destinatario_nome||"Não identificado")}
             <small>{direction==="incoming"?(item.remetente_doc||""):(item.destinatario_doc||"")}</small></td><td>{date(item.data_emissao)}</td>
@@ -851,6 +908,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [total,setTotal]=useState(0),
     [pages,setPages]=useState(1),
     [stats,setStats]=useState<any>({}),
+    [syncing,setSyncing]=useState(false),
     [busy, setBusy] = useState(true),
     [selected, setSelected] = useState<any>(null),
     [pendingDelete,setPendingDelete]=useState<any>(null),
@@ -936,6 +994,14 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
       setSelectedIds([]);setConfirmBatchDelete(false);toast(`${result.deleted} documento(s) e XML(s) excluído(s)`);load();
     }catch(error){toast((error as Error).message,true)}
   }
+  async function consultSefaz(){
+    setSyncing(true);
+    try{
+      const now=new Date(),month=now.toISOString().slice(0,7),dateFrom=`${month}-01`,dateTo=now.toISOString().slice(0,10);
+      const result=await api<any>("/api/sefaz/cert/periodo-auto",{method:"POST",body:{dateFrom,dateTo}});
+      toast(`${result.documentos?.length||0} documento(s) consultado(s) na SEFAZ`);load();
+    }catch(error){toast(`Não foi possível consultar a SEFAZ: ${(error as Error).message}`,true)}finally{setSyncing(false)}
+  }
   return (
     <>
       <Head
@@ -943,14 +1009,10 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
         title="Central de documentos"
         text={`${total} registros encontrados · página ${page} de ${pages}`}
       />
-      <section className="document-vault-hero">
-        <div><i><Files/></i><span><small>COFRE FISCAL DIGITAL</small><h2>Documentos organizados e prontos para conferência</h2>
-          <p>Pesquise, audite, exporte e gerencie XMLs oficiais da empresa ativa em uma única visão.</p></span></div>
-        <div><span><ShieldCheck/><b>Custódia protegida</b></span><span><Activity/><b>Rastreabilidade ativa</b></span></div>
-      </section>
-      <section className="document-action-deck">
+      <section className="document-action-deck"><button className="vault-summary-card" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}><i className="teal"><Files/></i><span><b>Cofre e auditoria</b><small>Pesquisar, conferir e exportar</small></span><ChevronRight/></button>
         <button onClick={()=>setShowFilters(true)}><i className="blue"><Search/></i><span><b>Pesquisa inteligente</b><small>Cruze chave, CNPJ, período e situação</small></span><ChevronRight/></button>
         <button onClick={load}><i className="green"><RefreshCw className={busy?"spin":""}/></i><span><b>Atualizar cofre</b><small>Carregue os registros mais recentes</small></span><ChevronRight/></button>
+        <button onClick={consultSefaz} disabled={syncing}><i className="amber"><Search className={syncing?"spin":""}/></i><span><b>{syncing?"Consultando SEFAZ...":"Consultar SEFAZ"}</b><small>Emitidos e recebidos do CNPJ ativo</small></span><ChevronRight/></button>
         <button onClick={()=>download(`/api/relatorio/lote?formato=xml&${exportParams}`,"documentos-xml.zip")}><i className="violet"><CloudDownload/></i><span><b>Pacote de XMLs</b><small>Exporte o resultado da consulta</small></span><ChevronRight/></button>
       </section>
       <div className="kpis document-kpis">{[
@@ -1338,6 +1400,81 @@ function Importer({ toast,done,embedded=false }: { toast: (s: string, e?: boolea
     </>
   );
 }
+function TimeControl({ toast }: { toast: (s: string, e?: boolean) => void }) {
+  type Punch = { id:string; at:string; type:string };
+  const [records,setRecords]=useState<Punch[]>(()=>{try{return JSON.parse(localStorage.getItem("haixel.time.records")||"[]")}catch{return []}});
+  const [targetHours,setTargetHours]=useState(()=>localStorage.getItem("haixel.time.target")||"8");
+  const [bankTarget,setBankTarget]=useState(()=>localStorage.getItem("haixel.time.bank-target")||"10");
+  const [bankDeadline,setBankDeadline]=useState(()=>localStorage.getItem("haixel.time.bank-deadline")||`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}-15`);
+  const [closeDay,setCloseDay]=useState(()=>localStorage.getItem("haixel.time.close-day")||"25");
+  const [noticeEmail,setNoticeEmail]=useState(()=>localStorage.getItem("haixel.time.email")||"");
+  const [manualDate,setManualDate]=useState(()=>new Date().toISOString().slice(0,10));
+  const [manualEntry,setManualEntry]=useState("");
+  const [manualExit,setManualExit]=useState("");
+  const [punchType,setPunchType]=useState("Entrada");
+  const [entryTime,setEntryTime]=useState("");
+  const [exitTime,setExitTime]=useState("");
+  const [lunchStart,setLunchStart]=useState("");
+  const [lunchEnd,setLunchEnd]=useState("");
+  const [scheduleStart,setScheduleStart]=useState(()=>localStorage.getItem("haixel.time.start")||"08:00");
+  const [scheduleEnd,setScheduleEnd]=useState(()=>localStorage.getItem("haixel.time.end")||"17:00");
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{localStorage.setItem("haixel.time.records",JSON.stringify(records))},[records]);
+  useEffect(()=>{localStorage.setItem("haixel.time.target",targetHours);localStorage.setItem("haixel.time.bank-target",bankTarget);localStorage.setItem("haixel.time.bank-deadline",bankDeadline);localStorage.setItem("haixel.time.close-day",closeDay);localStorage.setItem("haixel.time.email",noticeEmail);localStorage.setItem("haixel.time.start",scheduleStart);localStorage.setItem("haixel.time.end",scheduleEnd)},[targetHours,bankTarget,bankDeadline,closeDay,noticeEmail,scheduleStart,scheduleEnd]);
+  useEffect(()=>{const timer=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(timer)},[]);
+  const today=now.toISOString().slice(0,10);
+  const todayRecords=records.filter(item=>item.at.slice(0,10)===today);
+  const monthRecords=records.filter(r=>r.at.slice(0,7)===today.slice(0,7));
+  const elapsedHours=todayRecords.length>=2?(Date.now()-new Date(todayRecords[0].at).getTime())/3600000:0;
+  const remainingSeconds=Math.max(0,Math.round((Number(targetHours||8)-elapsedHours)*3600));
+  const remainingLabel=`${String(Math.floor(remainingSeconds/3600)).padStart(2,"0")}:${String(Math.floor(remainingSeconds%3600/60)).padStart(2,"0")}:${String(remainingSeconds%60).padStart(2,"0")}`;
+  const deadlineDays=Math.max(0,Math.ceil((new Date(`${bankDeadline}T23:59:59`).getTime()-Date.now())/86400000));
+  const bankDone=Math.min(Number(bankTarget||0),monthRecords.length*2);
+  const bankLeft=Math.max(0,Number(bankTarget||0)-bankDone);
+  const nextType=["Entrada","Saída intervalo","Retorno","Saída"][todayRecords.length%4];
+  const punch=()=>{
+    if(todayRecords.length>=4){toast("Limite diário atingido: são permitidas apenas 4 marcações",true);return}
+    const at=new Date().toISOString();
+    setRecords(items=>[...items,{id:crypto.randomUUID(),at,type:punchType}]);
+    try{const C=window.AudioContext||(window as any).webkitAudioContext;if(C){const c=new C(),o=c.createOscillator(),g=c.createGain();o.frequency.value=nextType==="Saída"?520:740;g.gain.setValueAtTime(.0001,c.currentTime);g.gain.exponentialRampToValueAtTime(.12,c.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+.22);o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.24)}}catch{}
+    toast(`${nextType} registrada às ${new Date(at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`);
+  };
+  const saveManualTimes=()=>{
+    if(!manualDate||(!manualEntry&&!manualExit)){toast("Informe a data e pelo menos um horário",true);return}
+    const add:any[]=[];
+    if(manualEntry)add.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${manualEntry}:00`).toISOString(),type:"Entrada (manual)"});
+    if(manualExit)add.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${manualExit}:00`).toISOString(),type:"Saída (manual)"});
+    setRecords(items=>[...items.filter(item=>!(item.at.slice(0,10)===manualDate&&item.type.includes("(manual)"))),...add].sort((a,b)=>a.at.localeCompare(b.at)));
+    toast("Horários manuais salvos");
+  };
+  const saveManual=()=>{
+    if(!manualDate||(!entryTime&&!lunchStart&&!lunchEnd&&!exitTime)){toast("Informe os horários da jornada",true);return}
+    const existingForDay=records.filter(item=>item.at.slice(0,10)===manualDate&&!item.type.includes("manual")).length;
+    if(existingForDay+(entryTime?1:0)+(lunchStart?1:0)+(lunchEnd?1:0)+(exitTime?1:0)>4){toast("Informe no máximo 4 marcações por dia",true);return}
+    const additions:Punch[]=[];
+    if(entryTime)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${entryTime}:00`).toISOString(),type:"Entrada (manual)"});
+    if(exitTime)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${exitTime}:00`).toISOString(),type:"Saída (manual)"});
+    if(lunchStart)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${lunchStart}:00`).toISOString(),type:"Saída almoço (manual)"});
+    if(lunchEnd)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${lunchEnd}:00`).toISOString(),type:"Retorno almoço (manual)"});
+    setRecords(items=>[...items.filter(item=>!(item.at.slice(0,10)===manualDate&&item.type.includes("manual"))),...additions].sort((a,b)=>a.at.localeCompare(b.at)));
+    toast("Horários personalizados salvos");
+  };
+  const editPunch=(item:Punch)=>{const current=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});const value=window.prompt(`Novo horário para ${item.type}`,current);if(!value||!/^[0-2]\d:[0-5]\d$/.test(value))return;const nextAt=new Date(`${item.at.slice(0,10)}T${value}:00`).toISOString();setRecords(items=>items.map(row=>row.id===item.id?{...row,at:nextAt}:row));toast("Horário atualizado")};
+  const exportCsv=()=>{const csv=["Data;Horário;Evento",...records.map(r=>`${new Date(r.at).toLocaleDateString("pt-BR")};${new Date(r.at).toLocaleTimeString("pt-BR")};${r.type}`)].join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="cartao-de-ponto.csv";a.click();URL.revokeObjectURL(a.href);toast("Relatório exportado")};
+  const week=["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map((label,index)=>({label,hours:monthRecords.filter(r=>new Date(r.at).getDay()===(index+1)%7).length*2}));
+  return <section className="time-control-page">
+    <article className="time-schedule-card"><div><span className="eyebrow">PLANEJAMENTO DO BANCO</span><h2>Meta de horas extras</h2><p>Defina o total de horas e até quando deseja cumprir a meta.</p></div><div className="time-schedule-fields"><label>Meta de banco (h)<input type="number" min="0" step="0.5" value={bankTarget} onChange={e=>setBankTarget(e.target.value)}/></label><label>Data limite<input type="date" value={bankDeadline} onChange={e=>setBankDeadline(e.target.value)}/></label><div className="time-schedule-result"><strong>{bankLeft.toFixed(1)}h</strong><span>faltam · {deadlineDays} dia(s) restantes</span></div></div></article>
+    <article className="time-bank-target"><div><span className="eyebrow">META DO BANCO DE HORAS</span><h2>Planeje suas horas extras</h2><p>Defina sua meta personalizada e acompanhe automaticamente o saldo.</p></div><div className="time-bank-form"><label>Meta (horas)<input type="number" min="0" max="300" step="0.5" value={bankTarget} onChange={e=>setBankTarget(e.target.value)}/></label><button className="primary" onClick={()=>toast(`Meta de ${bankTarget}h salva`)}><Save/> Salvar meta</button><strong>Saldo: {Math.min(Number(bankTarget),monthRecords.length*2).toFixed(1)}h · Falta: {Math.max(0,Number(bankTarget)-monthRecords.length*2).toFixed(1)}h</strong></div></article>
+    <article className="time-chart-card"><div><span className="eyebrow">ANÁLISE DA JORNADA</span><h2>Horas trabalhadas na semana</h2><p>Compare as marcações com sua meta diária personalizada.</p></div><div className="time-bars">{week.map(item=><div className="time-bar-col" key={item.label}><span>{item.hours?`${item.hours}h`:"—"}</span><i style={{height:`${Math.max(8,Math.min(100,item.hours/8*100))}%`}}/><small>{item.label}</small></div>)}</div></article>
+    <div className="time-control-hero"><div><span className="eyebrow">GESTÃO DE JORNADA</span><h1>Controle de ponto</h1><p>Registre a jornada e acompanhe quanto falta para concluir o expediente.</p></div><div className="time-live"><Clock3/><strong>{remainingLabel}</strong><small>tempo restante do expediente</small></div></div>
+    <div className="time-kpis"><article><small>Hoje</small><b>{todayRecords.length?`${todayRecords.length} marcações` : "Nenhuma marcação"}</b><span>Jornada em andamento</span></article><article><small>Horas no mês</small><b>{(monthRecords.length*2).toFixed(1).replace(".",",")}h</b><span>Apuração automática</span></article><article><small>Banco de horas</small><b className="ok-text">+02:40</b><span>Saldo acumulado</span></article><article><small>Pendências</small><b>{records.length?0:1}</b><span>Sem inconsistências</span></article></div>
+    <div className="time-grid"><article className="time-punch-card"><div className="time-punch-ring"><Clock3/></div><span className="eyebrow">PRÓXIMA MARCAÇÃO</span><h2>{nextType}</h2><p>Registre agora ou informe manualmente os horários em que entrou e saiu.</p><button className="primary time-punch-button" onClick={punch}><Clock3/> Registrar ponto</button><div className="time-manual"><label>Data<input type="date" value={manualDate} onChange={e=>setManualDate(e.target.value)}/></label><label>Entrada<input type="time" value={entryTime} onChange={e=>setEntryTime(e.target.value)}/></label><label>Saída<input type="time" value={exitTime} onChange={e=>setExitTime(e.target.value)}/></label><button className="secondary" onClick={saveManual}>Salvar horários</button></div><small className="time-secure"><ShieldCheck/> Registro protegido no histórico do usuário</small></article><article className="time-summary-card"><div className="section-title"><div><span className="eyebrow">JORNADA DE HOJE</span><h2>Resumo do dia</h2></div><span className="status-pill ok">Em aberto</span></div><div className="time-timeline">{todayRecords.length?todayRecords.map(item=><div key={item.id}><i/><span><b>{item.type}</b><small>{new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</small></span></div>):<div className="empty-state"><Clock3/><span>Nenhuma marcação hoje</span></div>}</div></article></div>
+    <article className="time-report-card"><div><span className="eyebrow">CONFIGURAÇÃO DA JORNADA</span><h2>Metas, banco e avisos</h2><p>Personalize meta diária, horário previsto, fechamento do banco e e-mail de lembrete.</p></div><div className="time-settings"><label>Meta diária (h)<input type="number" min="1" max="24" value={targetHours} onChange={e=>setTargetHours(e.target.value)}/></label><label>Banco fecha dia<input type="number" min="1" max="31" value={closeDay} onChange={e=>setCloseDay(e.target.value)}/></label><label>Início previsto<input type="time" value={scheduleStart} onChange={e=>setScheduleStart(e.target.value)}/></label><label>Fim previsto<input type="time" value={scheduleEnd} onChange={e=>setScheduleEnd(e.target.value)}/></label><label className="wide">E-mail para notificações<input type="email" placeholder="colaborador@empresa.com.br" value={noticeEmail} onChange={e=>setNoticeEmail(e.target.value)}/></label><button className="secondary" onClick={()=>toast(noticeEmail?`Avisos configurados para ${noticeEmail}`:"Informe um e-mail para ativar os avisos",!noticeEmail)}><Bell/> Ativar avisos por e-mail</button></div></article>
+    <article className="time-report-card"><div><span className="eyebrow">RELATÓRIOS</span><h2>Cartão de ponto e apurações</h2><p>Exporte o histórico, horas extras e saldo do banco.</p></div><div className="time-report-actions"><button className="secondary" onClick={exportCsv}><FileDown/> Exportar CSV</button><button className="secondary" onClick={()=>toast("Relatório mensal preparado") }><BarChart3/> Relatório mensal</button><button className="secondary" onClick={()=>toast("Cartão de ponto aberto") }><FileText/> Cartão de ponto</button></div></article>
+    <div className="time-footnote"><ShieldCheck/> Módulo preparado para jornadas, escalas e Portaria 671. Integração de colaboradores e aprovação depende da configuração administrativa.</div>
+  </section>;
+}
+
 function Reports({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [format, setFormat] = useState("xlsx"),
     [type, setType] = useState("completo");
@@ -1459,7 +1596,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       if (cndPdf) {
         const pdfBody = new FormData();
         pdfBody.set("pdf", cndPdf);
-        await api(`/api/certidoes/${saved.id || form.id}/pdf`, {
+        await api(`/api/cnd-pdf?id=${saved.id || form.id}`, {
           method: "POST",
           body: pdfBody,
         });
@@ -2116,7 +2253,7 @@ function SefazControlCenterLegacy({toast}:{toast:(s:string,e?:boolean)=>void}){
 }
 
 function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
-  const [data,setData]=useState<any>(null),[syncing,setSyncing]=useState(false);
+  const [data,setData]=useState<any>(null);
   const load=useCallback(async()=>{
     try{
       const me=await api<any>("/api/auth/me");
@@ -2125,16 +2262,6 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
     }catch(error){toast((error as Error).message,true)}
   },[toast]);
   useEffect(()=>{load()},[load]);
-  async function synchronize(){
-    setSyncing(true);
-    try{
-      const now=new Date(),year=now.getFullYear(),month=String(now.getMonth()+1).padStart(2,"0");
-      const dateFrom=`${year}-${month}-01`,dateTo=new Date(year,now.getMonth()+1,0).toISOString().slice(0,10);
-      const result=await api<any>("/api/sefaz/cert/periodo-auto",{method:"POST",body:{dateFrom,dateTo}});
-      toast(`${result.documentos?.length||0} documento(s) recebido(s) pela SEFAZ`);
-      await load();
-    }catch(error){toast((error as Error).message,true)}finally{setSyncing(false)}
-  }
   if(!data)return <section className="sefaz-modern loading-card"><RefreshCw className="spin"/><span>Preparando conexão fiscal...</span></section>;
   const state=data.sync?.state||{},waiting=state.locked_until&&new Date(state.locked_until)>new Date();
   return <section className="sefaz-modern">
@@ -2162,9 +2289,7 @@ function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
     </div>
     <div className="sefaz-modern-action">
       <span><ShieldCheck/><p><b>Proteção automática administrada pela Haixel</b>
-        <small>Os limites preventivos, pausas e a sequência de consultas são fixos no servidor e não podem ser alterados pelo usuário.</small></p></span>
-      <button className="primary" onClick={synchronize} disabled={syncing}>{syncing?<RefreshCw className="spin"/>:<CloudDownload/>}
-        {syncing?"Sincronizando...":"Sincronizar documentos"}</button>
+        <small>Use “Buscar na SEFAZ” no Monitor DF-e para receber documentos por período e “Consultar e importar” para chaves específicas.</small></p></span>
     </div>
     {waiting&&<div className="sefaz-modern-wait"><Bell/><span><b>Sincronização em espera segura</b>
       <small>A Haixel retomará automaticamente no horário permitido, sem reiniciar a sequência.</small></span></div>}
@@ -2176,6 +2301,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [kind, setKind] = useState("nfe"),
     [provider] = useState("sefaz"),
     [results, setResults] = useState<any[]>([]),
+    [queryHistory,setQueryHistory]=useState<any[]>(()=>{try{return JSON.parse(localStorage.getItem("cordeiro.sefaz.query-history")||"[]")}catch{return []}}),
+    [historyFrom,setHistoryFrom]=useState(""),[historyTo,setHistoryTo]=useState(""),
     [queueProgress,setQueueProgress]=useState({done:0,total:0}),
     [hubSection,setHubSection]=useState<"connection"|"query"|"monitor">("connection"),
     [busy, setBusy] = useState(false),
@@ -2184,6 +2311,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [sitekeyInput, setSitekeyInput] = useState("0x4AAAAAAD9QFuEXmAjhoAuE");
   const keyInput = useRef<HTMLTextAreaElement>(null);
   useEffect(()=>{localStorage.setItem("cordeiro.sefaz.queue",key)},[key]);
+  useEffect(()=>{localStorage.setItem("cordeiro.sefaz.query-history",JSON.stringify(queryHistory.slice(-500)))},[queryHistory]);
+  const visibleHistory=queryHistory;
   const informedKeys=[...new Set(key.split(/[\s,;]+/).map(value=>value.replace(/\D/g,"")).filter(Boolean))];
   const safeQueriesPerHour=18;
   const estimatedMinutes=Math.ceil(informedKeys.length/safeQueriesPerHour*60);
@@ -2320,7 +2449,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
               };
             }
           })()];
-        collected.push(...responses);
+        const stamped=responses.map(item=>({...item,consultedAt:new Date().toISOString()}));
+        collected.push(...stamped);setQueryHistory(current=>[...current,...stamped].slice(-500));
         setResults([...collected]);
         setQueueProgress({done:index+1,total:keys.length});
         const remaining=keys.slice(index+1);
@@ -2422,9 +2552,10 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <div className="query-box">
             <div className="query-source-note"><ShieldCheck/><span><small>Consulta protegida pela fonte oficial</small>
               <b>SEFAZ · Distribuição DF-e</b><em><i/> Ambiente protegido</em></span>
-              <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Tipo de documento">
-                <option value="nfe">NF-e</option><option value="cte">CT-e</option>
-              </select></div>
+              <div className="query-kind-toggle" aria-label="Tipo de documento">
+                <button type="button" className={kind==="nfe"?"active":""} aria-pressed={kind==="nfe"} onClick={()=>setKind("nfe")}>NF-e</button>
+                <button type="button" className={kind==="cte"?"active":""} aria-pressed={kind==="cte"} onClick={()=>setKind("cte")}>CT-e</button>
+              </div></div>
             <label className="query-key-entry">
               Chave de acesso
               <textarea
@@ -2441,31 +2572,33 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 chave(s) informada(s)
               </small>
             </label>
-            <label className="spreadsheet-import">
-              <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
-              <span className="spreadsheet-button compact" title="Importar Excel, CSV ou TXT" aria-label="Importar Excel, CSV ou TXT"><FileSpreadsheet/></span>
-            </label>
+            <div className="query-actions">
+              <label className="spreadsheet-import" title="Importar Excel, CSV ou TXT">
+                <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
+                <span className="spreadsheet-button compact" aria-label="Importar Excel, CSV ou TXT"><ExcelMark/></span>
+              </label>
+              <button className="primary" onClick={consult} disabled={busy}>
+                {busy ? <RefreshCw className="spin" /> : <CloudDownload />}<span>Consultar e importar</span>
+              </button>
+            </div>
             {informedKeys.length>0&&<div className="sefaz-queue-estimate">
               <ShieldCheck/><span><b>Fila protegida · {safeQueriesPerHour} consultas por hora</b>
                 <small>Estimativa: {durationLabel(estimatedMinutes)} · processamento sequencial com retomada</small></span>
             </div>}
-            <button className="primary" onClick={consult} disabled={busy}>
-              {busy ? <RefreshCw className="spin" /> : <CloudDownload />}Consultar e importar
-            </button>
             {busy&&queueProgress.total>0&&<div className="sefaz-queue-progress"><span style={{width:`${queueProgress.done/queueProgress.total*100}%`}}/>
               <small>{queueProgress.done} de {queueProgress.total} processada(s)</small></div>}
           </div>
           </div>
-          {results.length > 0 && (
+          {(visibleHistory.length > 0 || results.length > 0) && (
             <div className="batch-query-results">
               <header>
-                <b>Log de validação e importação</b>
+                <b>Log de documentos importados</b>
                 <span>
-                  {results.filter((item) => item.ok).length}/{results.length}{" "}
-                  localizados
+                  {visibleHistory.filter((item) => item.ok).length}/{visibleHistory.length}{" "}
+                  importados
                 </span>
               </header>
-              {results.map((item) => (
+              {visibleHistory.map((item) => (
                 <div
                   className={`consult-result ${item.ok ? "" : "failed"}`}
                   key={item.key}
@@ -2474,15 +2607,15 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                   <div>
                     <b>
                       {item.ok
-                        ? "Documento localizado"
-                        : "Não foi possível consultar"}
+                        ? "Documento importado para a Central"
+                        : "Documento não importado"}
                     </b>
                     <small>
                       {item.ok
                         ? item.data?.status ||
                           item.data?.situacao ||
                           "Consulta concluída"
-                        : item.error}{" "}
+                        : `Motivo: ${item.error||"A fonte fiscal não retornou o documento"}`}{" "}
                       {item.provider ? `· ${item.provider} ` : ""}· chave{" "}
                       {item.key.slice(0, 6)}…{item.key.slice(-6)}
                     </small>
@@ -3103,7 +3236,8 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [editing, setEditing] = useState<any>(null),
     [reply, setReply] = useState(""),
     [activeGuide,setActiveGuide]=useState("primeiros-passos"),
-    [ticketOpen,setTicketOpen]=useState(false);
+    [ticketOpen,setTicketOpen]=useState(false),
+    [supportOnline,setSupportOnline]=useState(false);
   const load = useCallback(async () => {
     try {
       const all = await api<any[]>("/api/feedback");
@@ -3121,6 +3255,12 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(()=>{
+    const check=()=>api<any[]>("/api/messages/users").then(users=>setSupportOnline(users.some(item=>
+      Boolean(item.online)&&["admin","suporte","support"].includes(String(item.role||item.cargo||"").toLowerCase())
+    ))).catch(()=>setSupportOnline(false));
+    check();const timer=window.setInterval(check,15000);return()=>window.clearInterval(timer);
+  },[]);
   async function send(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -3183,8 +3323,12 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div><span><small>SUPORTE DEDICADO HAIXEL</small>
           <h2>{isAdmin?"Operação de atendimento":"Olá. Como podemos ajudar hoje?"}</h2>
           <p>Encontre orientação, converse com a Haixel IA ou abra um chamado acompanhado pela nossa equipe.</p>
-          <div><span className="support-availability"><i/> EQUIPE DISPONÍVEL</span><em>Histórico protegido por usuário</em></div></span></div>
-        <aside className="support-agent"><i/><i/><span><HaixelAiMark/><b>Haixel</b><small>SUPORTE CONECTADO</small></span></aside>
+          <div><button type="button" className="support-new-ticket" onClick={()=>{
+            setTicketOpen(true);
+            window.setTimeout(()=>document.getElementById("novo-atendimento")?.scrollIntoView({behavior:"smooth",block:"center"}),60);
+          }}><MessageCircle/><span><small>NOVO ATENDIMENTO</small><b>Abrir novo chamado</b></span><ChevronRight/></button>
+            <span className={`support-availability ${supportOnline?"online":"offline"}`}><i/> {supportOnline?"EQUIPE DISPONÍVEL":"EQUIPE INDISPONÍVEL"}</span></div></span></div>
+        <aside className="support-agent"><i/><i/><span><i className="service-symbol support"><Headphones/></i><b>SUPORTE</b><small>ATENDIMENTO CONECTADO</small></span></aside>
       </section>
       <section className="support-channels" aria-label="Atalhos de atendimento">
         {[
@@ -3251,7 +3395,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
         ))}
       </div>
       <div className="feedback-grid">
-        <section className={`panel support-compose ${ticketOpen?"open":""}`}>
+        <section id="novo-atendimento" className={`panel support-compose ${ticketOpen?"open":""}`}>
           <button type="button" className="support-compose-toggle" onClick={()=>setTicketOpen(value=>!value)}
             aria-expanded={ticketOpen}><i><MessageCircle/></i><span><small>NOVO ATENDIMENTO</small><b>Abrir novo chamado</b>
               <p>{ticketOpen?"Preencha os dados para enviar à equipe.":"Formulário compacto · clique para expandir"}</p></span><ChevronDown/></button>
@@ -3678,6 +3822,20 @@ function MaintenanceCountdown({maintenance}:{maintenance:SystemStatus["maintenan
 }
 
 function MaintenanceActivationCountdown({seconds}:{seconds:number}){
+  useEffect(()=>{
+    try{
+      const AudioContextClass=window.AudioContext||(window as any).webkitAudioContext;
+      if(!AudioContextClass)return;
+      const context=new AudioContextClass(),oscillator=context.createOscillator(),gain=context.createGain();
+      oscillator.type="sine";oscillator.frequency.value=seconds<=3?880:620;
+      gain.gain.setValueAtTime(.0001,context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(seconds<=3?.16:.09,context.currentTime+.012);
+      gain.gain.exponentialRampToValueAtTime(.0001,context.currentTime+.13);
+      oscillator.connect(gain);gain.connect(context.destination);context.resume().catch(()=>{});
+      oscillator.start();oscillator.stop(context.currentTime+.14);
+      oscillator.onended=()=>context.close();
+    }catch{}
+  },[seconds]);
   return <aside className="maintenance-red-alert" role="alert" aria-live="assertive">
     <div className="maintenance-red-icon"><Bot/><i/></div>
     <span><small>ATENÇÃO · ATUALIZAÇÃO DO SISTEMA</small>
@@ -4182,7 +4340,7 @@ function Admin({
     }catch(error){toast((error as Error).message,true)}
   }
   async function openCompanyCertificate(company:any){
-    setCertificateCompany(company);setCertificateData(null);setCertificateFile(null);setCertificatePassword("");
+    setCompanyForm(null);setModuleCompany(null);setCertificateCompany(company);setCertificateData(null);setCertificateFile(null);setCertificatePassword("");
     try{setCertificateData(await api<any>(`/api/empresas/${company.id}/certificado`))}
     catch(error){setCertificateCompany(null);toast((error as Error).message,true)}
   }
@@ -4588,7 +4746,7 @@ function Admin({
                 onChange={event=>setCertificateFile(event.target.files?.[0]||null)}/>
                 <UploadCloud/><span><b>{certificateFile?.name||"Selecionar PFX ou P12"}</b>
                   <small>Arquivo criptografado do certificado A1</small></span></label>
-              <label><span>Senha do certificado</span><input type="password" value={certificatePassword}
+              <label><span>Senha do certificado</span><input type="password" name="company-certificate-password" autoComplete="new-password" value={certificatePassword}
                 onChange={event=>setCertificatePassword(event.target.value)} placeholder="Informe a senha do arquivo"/></label>
               <div className="certificate-security-note"><ShieldCheck/><span><b>Armazenamento protegido</b>
                 <small>O CNPJ será validado antes da gravação. Arquivo e senha permanecem criptografados e amarrados a esta empresa.</small></span></div>
@@ -5018,7 +5176,8 @@ export default function App() {
     setTimeout(() => setNote(null), 3500);
   }, []);
   const presenceSnapshot=useRef<Set<number>|null>(null),newsSnapshot=useRef<Set<string>|null>(null),
-    maintenanceWasActive=useRef(false);
+    maintenanceWasActive=useRef(false),
+    maintenanceLandingDismissed=useRef(false);
   const pushPersistent=useCallback((item:Omit<AppNotification,"id"|"createdAt"|"read">)=>{
     setNotifications(current=>{
       const next=[{...item,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),read:false},...current]
@@ -5062,10 +5221,13 @@ export default function App() {
     setCompany(c);
   }, []);
   useEffect(() => {
-    api<{ user: User }>("/api/auth/me")
-      .then((r) => enter(r.user))
-      .catch(() => {})
-      .finally(() => setChecking(false));
+    Promise.allSettled([
+      api<{ user: User }>("/api/auth/me"),
+      api<SystemStatus>("/api/system"),
+    ]).then(([authResult,statusResult])=>{
+      if(authResult.status==="fulfilled")enter(authResult.value.user);
+      if(statusResult.status==="fulfilled")setSystemStatus(statusResult.value);
+    }).finally(() => setChecking(false));
   }, [enter]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -5073,11 +5235,14 @@ export default function App() {
   }, [dark]);
   useEffect(()=>{
     const detect=(event:PointerEvent)=>{
-      document.documentElement.dataset.input=event.pointerType==="mouse"?"mouse":"touch";
+      if(event.pointerType==="mouse")document.documentElement.dataset.input="mouse";
+      else if(event.pointerType==="touch"||event.pointerType==="pen")document.documentElement.dataset.input="touch";
     };
-    const keyboard=()=>{if(!document.documentElement.dataset.input)
-      document.documentElement.dataset.input=window.matchMedia("(pointer:fine)").matches?"mouse":"touch"};
-    keyboard();window.addEventListener("pointerdown",detect,{passive:true});
+    const initial=()=>{if(!document.documentElement.dataset.input){
+      const coarse=window.matchMedia("(pointer:coarse)").matches||navigator.maxTouchPoints>0;
+      document.documentElement.dataset.input=coarse?"touch":"mouse";
+    }};
+    initial();window.addEventListener("pointerdown",detect,{passive:true});
     window.addEventListener("pointermove",detect,{passive:true});
     return()=>{window.removeEventListener("pointerdown",detect);window.removeEventListener("pointermove",detect)};
   },[]);
@@ -5094,14 +5259,18 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
   useEffect(()=>{
-    if(systemStatus?.maintenance.active){maintenanceWasActive.current=true;return}
+    if(systemStatus?.maintenance.active){
+      maintenanceWasActive.current=true;
+      return;
+    }
+    maintenanceLandingDismissed.current=false;
     if(systemStatus&&!systemStatus.maintenance.active&&maintenanceWasActive.current){
-      maintenanceWasActive.current=false;setMaintenanceCelebration(true);setPublicTransition(true);
+      maintenanceWasActive.current=false;playMaintenanceCompleteChime();setMaintenanceCelebration(true);setPublicTransition(true);
       window.setTimeout(()=>setPublicView("landing"),650);
       window.setTimeout(()=>{setPublicTransition(false);setMaintenanceCelebration(false)},1900);
     }
     if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")setPublicView("landing");
-  },[systemStatus?.maintenance.active,publicView]);
+  },[systemStatus?.maintenance.active]);
   useEffect(()=>{
     if(!systemStatus?.release.version)return;
     const key="haixel.runtime.version",previous=localStorage.getItem(key),currentVersion=systemStatus.release.version;
@@ -5142,7 +5311,7 @@ export default function App() {
       const releaseKey = `cordeiro.release.${user.id}`;
       const firstAccess = !user.onboarding_completed && localStorage.getItem(welcomeKey) !== "1";
       setShowWelcome(firstAccess);
-      setShowRelease(!firstAccess && localStorage.getItem(releaseKey) !== status.release.version);
+      setShowRelease(sessionStorage.getItem("haixel.updated") === "1" || localStorage.getItem(releaseKey) !== status.release.version);
   }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
   if (checking)
@@ -5156,7 +5325,12 @@ export default function App() {
     <div className="public-view">{publicView==="landing"
     ?<Landing maintenance={systemStatus?.maintenance.active} onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
     :publicView==="maintenance"&&systemStatus?.maintenance.active
-      ?<MaintenanceNotice maintenance={systemStatus.maintenance} onBack={()=>changePublicView("landing")}/>
+      ?<MaintenanceNotice maintenance={systemStatus.maintenance} onBack={()=>{
+        maintenanceLandingDismissed.current=true;
+        setPublicTransition(true);
+        window.setTimeout(()=>setPublicView("landing"),260);
+        window.setTimeout(()=>setPublicTransition(false),760);
+      }}/>
       :<Login done={enter} initialMode={publicView==="register"?"register":"login"} onBack={()=>changePublicView("landing")}/>}</div>
     <div className="public-transition" aria-hidden="true">
       <span>{maintenanceCelebration?<HaixelAiMark/>:<img src="/assets/haixel-logo.png" alt=""/>}
@@ -5196,7 +5370,7 @@ export default function App() {
         <nav>
           {groups.map(
             ([group, items]) =>
-              (group !== "Governança" || admin) && (
+              (group !== "Governança" || admin || group === "Governança") && (
                 <section key={group}>
                   <small>{group}</small>
                   {items.map(([p, label, Icon]: any) => (

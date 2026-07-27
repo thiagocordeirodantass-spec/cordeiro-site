@@ -121,7 +121,7 @@ export default async function handler(req,res){
     const missing=[];if(!cnpj)missing.push("CNPJ");if(!dataEmissao)missing.push("data de emissão");
     if(!dataValidade)missing.push("data de validade");if(!numero)missing.push("número");
     const row=saved.rows[0];
-    return res.json({ok:true,id:Number(row.id),document:{...row,pdf_data:undefined,pdf_url:`/api/certidoes/${row.id}/pdf`},
+    return res.json({ok:true,id:Number(row.id),document:{...row,pdf_data:undefined,pdf_url:`/api/cnd-pdf?id=${row.id}`},
       recognized:{cnpj,razaoSocial:company.nome,
       orgao,tipo,status,numero,dataEmissao,dataValidade,totalPages},
       diagnostico,missing,message:`Certidão lida, vinculada a ${companyDisplay} e diagnosticada: ${diagnostico}.`});

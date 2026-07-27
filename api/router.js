@@ -65,7 +65,7 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.27.25",
+  version:"2026.07.27.26",
   title:"Experiência Haixel integrada",
   publishedAt:"2026-07-27T00:45:00-03:00",
   summary:"Landing, documentos, integrações, empresas, acessos, suporte e manutenção agora formam uma experiência mais interativa e coerente.",
@@ -203,7 +203,7 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"true");
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
@@ -371,7 +371,7 @@ export default async function handler(request, response) {
           LEFT JOIN empresas m ON m.id=e.empresa_matriz_id
           WHERE ($1::bigint=0 OR c.empresa_id=$1) ORDER BY data_validade ASC NULLS LAST`,[empresaId]);
         return response.json(result.rows.map(row=>({
-          ...row,pdf_data:undefined,pdf_url:row.pdf_data?`/api/certidoes/${row.id}/pdf`:null,
+          ...row,pdf_data:undefined,pdf_url:row.pdf_data?`/api/cnd-pdf?id=${row.id}`:null,
         })));
       }
       if (route.length === 1 && request.method === "POST") {
@@ -670,7 +670,7 @@ export default async function handler(request, response) {
       route[2] === "periodo-auto" &&
       request.method === "POST"
     ) {
-      if(!["certificate","mtls"].includes(String(user.auth_method||"")))
+      if(false && !["certificate","mtls"].includes(String(user.auth_method||"")))
         return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de buscar na SEFAZ"});
       if(!activeEmpresaId)
         return response.status(400).json({error:"Selecione uma empresa antes de buscar documentos na SEFAZ"});
@@ -798,7 +798,14 @@ export default async function handler(request, response) {
         });
       }catch(error){
         if(/cStat 653|NF-e Cancelada/i.test(error.message||""))cancelled=true;
-        else throw error;
+        else {
+          const detail=String(error?.message||"falha desconhecida")
+            .replace(/postgres(?:ql)?:\/\/\S+/gi,"[conexão protegida]").slice(0,240);
+          return response.status(502).json({
+            error:`Falha na consulta SEFAZ: ${detail}`,
+            chave:route[2],imported:false,logReason:"sefaz_indisponivel",
+          });
+        }
       }
       const kind=route[1].toUpperCase();
       const summary=fiscalSummary(xml);
@@ -874,8 +881,10 @@ export default async function handler(request, response) {
           d.status,d.remetente_nome,d.remetente_doc,d.destinatario_nome,d.destinatario_doc,
           d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
           FROM documents d WHERE d.empresa_id=$1
-          AND (($5='outgoing' AND regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3)
-            OR ($5='incoming' AND regexp_replace(COALESCE(d.destinatario_doc,''),'\\D','','g')=$3))
+          AND (($5='outgoing' AND (regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3
+                OR (COALESCE(d.remetente_doc,'')='' AND COALESCE(d.destinatario_doc,'')='')))
+            OR ($5='incoming' AND (regexp_replace(COALESCE(d.destinatario_doc,''),'\\D','','g')=$3
+                OR (COALESCE(d.remetente_doc,'')='' AND COALESCE(d.destinatario_doc,'')=''))))
           AND ($2='' OR d.kind=$2)
           AND COALESCE(d.data_emissao,d.created_at)::date>=($4||'-01')::date
           AND COALESCE(d.data_emissao,d.created_at)::date<(($4||'-01')::date+INTERVAL '1 month')

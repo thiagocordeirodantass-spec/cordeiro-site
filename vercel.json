@@ -67,6 +67,10 @@
       "destination": "/api/router?route=assistant/:path*"
     },
     {
+      "source": "/api/cnd-pdf",
+      "destination": "/api/cnd-pdf.js"
+    },
+    {
       "source": "/api/certidoes/:path*",
       "destination": "/api/router?route=certidoes/:path*"
     },

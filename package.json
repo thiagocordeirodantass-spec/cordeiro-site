@@ -2,6 +2,9 @@
   "name": "cordeiro-site",
   "private": true,
   "type": "module",
+  "scripts": {
+    "deploy:production": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-production.ps1"
+  },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.80",
     "formidable": "^3.5.4",

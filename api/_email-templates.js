@@ -3,7 +3,7 @@ const esc=value=>String(value??"").replace(/[&<>"']/g,char=>({
 }[char]));
 
 function shell({eyebrow,title,intro,content,footer}){
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>@keyframes haixel-pulse{0%,100%{box-shadow:0 0 0 0 rgba(53,201,157,.28)}50%{box-shadow:0 0 0 10px rgba(53,201,157,0)}}@keyframes haixel-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.haixel-code{animation:haixel-pulse 2.4s ease-in-out infinite}.haixel-content{animation:haixel-rise .55s ease both}@media(prefers-reduced-motion:reduce){*{animation:none!important}}</style></head>
   <body style="margin:0;background:#eef5f2;font-family:Inter,Segoe UI,Arial,sans-serif;color:#14241f">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 12px;background:#eef5f2"><tr><td align="center">
       <table role="presentation" width="620" cellspacing="0" cellpadding="0" style="width:100%;max-width:620px;overflow:hidden;border:1px solid #dce9e4;border-radius:24px;background:#fff;box-shadow:0 22px 60px rgba(19,59,46,.10)">
