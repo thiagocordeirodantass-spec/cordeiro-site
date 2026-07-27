@@ -126,13 +126,12 @@ function Brand() {
 }
 function HaixelAiMark({small=false}:{small?:boolean}) {
   return <span className={`haixel-ai-mark${small?" small":""}`} aria-label="Haixel IA">
-    <i/><i/><Bot/>
+    <i/><i/><strong>H</strong><em>AI</em>
   </span>;
 }
 function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
   const [contact,setContact]=useState({nome:"",email:"",empresa:"",mensagem:""}),[contactBusy,setContactBusy]=useState(false),
-    [contactSent,setContactSent]=useState(false),[landingAiTopic,setLandingAiTopic]=useState("visao"),
-    [landingAiQuestion,setLandingAiQuestion]=useState(""),[landingAiCustom,setLandingAiCustom]=useState<{question:string;answer:string}|null>(null);
+    [contactSent,setContactSent]=useState(false),[landingAiTopic,setLandingAiTopic]=useState("visao");
   async function sendContact(event:React.FormEvent){
     event.preventDefault();setContactBusy(true);
     try{await api("/api/contact",{method:"POST",body:contact});setContactSent(true);setContact({nome:"",email:"",empresa:"",mensagem:""})}
@@ -166,22 +165,6 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     sefaz:["O que é o Hub SEFAZ?","É o centro de consulta e captura fiscal: acompanha serviços por estado, preserva a sequência NSU e respeita pausas preventivas."],
     seguranca:["Meus dados estão protegidos?","Acessos, empresas e permissões ficam separados. Certificados A1 são vinculados ao CNPJ e tratados somente pelo backend."],
   };
-  function askLandingAi(event:React.FormEvent){
-    event.preventDefault();const question=landingAiQuestion.trim();if(!question)return;
-    const normalized=question.toLocaleLowerCase("pt-BR");
-    const matches=[
-      [["preço","valor","plano","contratar"],"Para conhecer planos e uma configuração adequada à sua operação, use a área de contato da landing. Nossa equipe conversa com você sobre empresas, volume de documentos e módulos necessários."],
-      [["documento","xml","nota","nfe","nf-e","cte","ct-e","nfse","nfs-e"],aiTopics.documentos[1]],
-      [["cnd","certidão","certidoes","regularidade","vencimento"],aiTopics.cnd[1]],
-      [["sefaz","nsu","captura","distribuição"],aiTopics.sefaz[1]],
-      [["segurança","certificado","a1","permissão","acesso"],aiTopics.seguranca[1]],
-      [["empresa","filial","matriz","multiempresa"],"A Haixel organiza matrizes e filiais em ambientes separados, com módulos, certificado e permissões definidos para cada operação."],
-      [["mensagem","suporte","ajuda","chamado"],"A plataforma possui mensagens internas e uma Central de Suporte dedicada para dúvidas, feedbacks e acompanhamento de chamados."],
-    ] as [string[],string][];
-    const answer=matches.find(([terms])=>terms.some(term=>normalized.includes(term)))?.[1]||
-      "Posso explicar documentos fiscais, CNDs, Hub SEFAZ, empresas, segurança, suporte e os recursos da Haixel. Faça uma pergunta sobre um desses assuntos ou converse com nossa equipe pela área de contato.";
-    setLandingAiCustom({question,answer});setLandingAiQuestion("");
-  }
   return <main className="landing" onPointerMove={event=>{
     const rect=event.currentTarget.getBoundingClientRect();
     event.currentTarget.style.setProperty("--landing-x",`${event.clientX-rect.left}px`);
@@ -219,16 +202,11 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
         <p>Explore os principais módulos antes de entrar. Para dados reais da empresa, a Haixel IA utiliza somente o ambiente autenticado e autorizado.</p>
         <nav>{[["visao","Visão geral",Sparkles],["documentos","Documentos",Files],["cnd","CNDs",ShieldCheck],
           ["sefaz","SEFAZ",Radar],["seguranca","Segurança",Network]].map(([id,label,Icon]:any)=>
-          <button className={landingAiTopic===id&&!landingAiCustom?"active":""} onClick={()=>{setLandingAiTopic(id);setLandingAiCustom(null)}} key={id}><Icon/>{label}</button>)}</nav>
+          <button className={landingAiTopic===id?"active":""} onClick={()=>setLandingAiTopic(id)} key={id}><Icon/>{label}</button>)}</nav>
       </div>
       <div className="landing-ai-showcase-panel">
         <header className="text-only"><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
-        <article><Sparkles/><p><b>{landingAiCustom?.question||aiTopics[landingAiTopic][0]}</b>{landingAiCustom?.answer||aiTopics[landingAiTopic][1]}</p></article>
-        <form className="landing-ai-question" onSubmit={askLandingAi}>
-          <label><MessageCircle/><input value={landingAiQuestion} onChange={event=>setLandingAiQuestion(event.target.value)}
-            placeholder="Pergunte algo sobre a Haixel..." aria-label="Pergunte para a Haixel IA"/></label>
-          <button disabled={!landingAiQuestion.trim()} aria-label="Enviar pergunta"><Send/></button>
-        </form>
+        <article><Sparkles/><p><b>{aiTopics[landingAiTopic][0]}</b>{aiTopics[landingAiTopic][1]}</p></article>
         <footer><ShieldCheck/><span><b>Explicação pública e segura</b><small>Nenhum dado fiscal é exposto nesta página.</small></span></footer>
       </div>
     </section>
