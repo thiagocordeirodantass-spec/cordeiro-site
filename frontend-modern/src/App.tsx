@@ -222,7 +222,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
           <button className={landingAiTopic===id&&!landingAiCustom?"active":""} onClick={()=>{setLandingAiTopic(id);setLandingAiCustom(null)}} key={id}><Icon/>{label}</button>)}</nav>
       </div>
       <div className="landing-ai-showcase-panel">
-        <header><span><HaixelAiMark small/><i/></span><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
+        <header className="text-only"><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
         <article><Sparkles/><p><b>{landingAiCustom?.question||aiTopics[landingAiTopic][0]}</b>{landingAiCustom?.answer||aiTopics[landingAiTopic][1]}</p></article>
         <form className="landing-ai-question" onSubmit={askLandingAi}>
           <label><MessageCircle/><input value={landingAiQuestion} onChange={event=>setLandingAiQuestion(event.target.value)}
