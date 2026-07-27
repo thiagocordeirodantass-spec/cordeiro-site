@@ -3908,7 +3908,7 @@ function MaintenanceNotice({
       <section className="maintenance-experience" role="status">
         <div className="maintenance-brand"><img src="/assets/haixel-logo.png" /><b>Haixel</b></div>
         <div className="maintenance-worker" aria-label="Assistente Haixel trabalhando na atualização">
-          <span className="worker-person"><Bot /></span>
+          <span className="worker-person"><img src="/assets/haixel-logo.png" alt="Haixel"/></span>
           <span className="worker-arms"><i /><i /></span>
           <span className="worker-laptop"><Laptop /></span>
           <span className="worker-dots"><i /><i /><i /></span>
@@ -5030,6 +5030,7 @@ export default function App() {
     [showWelcome, setShowWelcome] = useState(false),
     [showRelease, setShowRelease] = useState(false),
     [maintenanceGrace,setMaintenanceGrace]=useState<number|null>(null),
+    [maintenanceRedirecting,setMaintenanceRedirecting]=useState(false),
     [notifications, setNotifications] =
       useState<AppNotification[]>(storedNotifications);
   const setMobile = (value: boolean) =>
@@ -5138,22 +5139,22 @@ export default function App() {
     }
   },[systemStatus?.release.version,systemStatus?.maintenance.active,user,checking]);
   useEffect(()=>{
-    if(!systemStatus?.maintenance.active){setMaintenanceGrace(null);return}
-    const key=`haixel.maintenance.seen.${systemStatus.release.version}`;
-    if(sessionStorage.getItem(key)==="1"){setMaintenanceGrace(0);return}
+    if(!systemStatus?.maintenance.active){setMaintenanceGrace(null);setMaintenanceRedirecting(false);return}
     setMaintenanceGrace(value=>value??10);
     const timer=window.setInterval(()=>setMaintenanceGrace(value=>{
       if(value==null)return 10;
-      if(value<=1){sessionStorage.setItem(key,"1");window.clearInterval(timer);return 0}
+      if(value<=1){window.clearInterval(timer);return 0}
       return value-1;
     }),1000);
     return()=>window.clearInterval(timer);
-  },[systemStatus?.maintenance.active,systemStatus?.release.version]);
+  },[systemStatus?.maintenance.active]);
   useEffect(()=>{
     if(!user||!systemStatus?.maintenance.active||maintenanceGrace!==0)return;
-    api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
-      setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");
-    });
+    setMaintenanceRedirecting(true);
+    const timer=window.setTimeout(()=>api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
+      setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");setMaintenanceRedirecting(false);
+    }),1100);
+    return()=>window.clearTimeout(timer);
   },[maintenanceGrace,systemStatus?.maintenance.active,user]);
   useEffect(() => {
     if (!user || !systemStatus) return;
@@ -5299,6 +5300,11 @@ export default function App() {
       <Assistant />
       {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
         <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}
+      {maintenanceRedirecting&&<div className="maintenance-redirect-transition" role="status">
+        <i/><i/><span><img src="/assets/haixel-logo.png" alt="Haixel"/>
+          <small>ATUALIZAÇÃO EM ANDAMENTO</small><b>Levando você para um ambiente seguro</b>
+          <p>Sua sessão foi protegida. A landing continuará disponível durante a manutenção.</p></span>
+      </div>}
       {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
       {showWelcome && (
         <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
