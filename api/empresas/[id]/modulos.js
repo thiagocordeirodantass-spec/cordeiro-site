@@ -4,9 +4,10 @@ function sessionId(req){return decodeURIComponent(String(req.headers.cookie||"")
 const defaults={
   cnd:{prazo_alerta:10,alerta_modo:"dias",alerta_dia_semana:1,alerta_dia_mes:1,
     alerta_vencimento:true,alerta_vencidas:true,alerta_positivas:true,remetente:"",dominio_remetente:""},
-  sefaz:{consulta_automatica:true,importar_automaticamente:true,uf:"MG",ult_nsu:"0",somente_consulta:true},
+  sefaz:{consulta_automatica:true,importar_automaticamente:true,uf:"MG",ult_nsu:"0",somente_consulta:true,
+    modo_consulta:"nsu",limite_chaves_hora:18,lote_maximo:50,pausa_656_minutos:60},
   documentos:{deduplicar:true,importar_xml:true,guardar_xml:true},
-  alertas:{email_ativo:true,frequencia:"diaria",hora:"08:00"},
+  alertas:{email_ativo:true,frequencia:"diaria",hora:"08:00",dias_semana:[1,2,3,4,5],dias_mes:[1]},
 };
 export default async function handler(req,res){
   try{
@@ -28,6 +29,9 @@ export default async function handler(req,res){
       if(auth.rows[0].role!=="admin")return res.status(403).json({error:"Apenas administradores podem configurar módulos"});
       const modulo=String(req.body?.modulo||"");
       if(!Object.hasOwn(defaults,modulo))return res.status(400).json({error:"Módulo inválido"});
+      if(modulo==="sefaz")return res.status(403).json({
+        error:"As proteções SEFAZ são fixas e administradas automaticamente pela Haixel",
+      });
       const config={...defaults[modulo],...(req.body?.configuracao||{})};
       await pool.query(`INSERT INTO empresa_module_config(empresa_id,modulo,configuracao,ativo)
         VALUES($1,$2,$3::jsonb,$4) ON CONFLICT(empresa_id,modulo) DO UPDATE SET

@@ -32,6 +32,7 @@ export function ensureSchema() {
         role VARCHAR(20) NOT NULL DEFAULT 'operador',
         ativo BOOLEAN NOT NULL DEFAULT TRUE,
         primeiro_login BOOLEAN NOT NULL DEFAULT FALSE,
+        onboarding_completed_at TIMESTAMPTZ,
         ultimo_login TIMESTAMPTZ,
         cargo TEXT,
         area_atuacao TEXT,
@@ -51,6 +52,9 @@ export function ensureSchema() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS website_url TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS telefone TEXT;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS preferencias JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -200,6 +204,10 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS messages_pair_idx
         ON user_messages(sender_id, recipient_id, created_at);
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_data BYTEA;
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT;
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_mime TEXT;
+      ALTER TABLE user_messages ADD COLUMN IF NOT EXISTS attachment_size INTEGER;
       CREATE TABLE IF NOT EXISTS certidoes (
         id BIGSERIAL PRIMARY KEY,
         user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
@@ -255,6 +263,16 @@ export function ensureSchema() {
       );
       CREATE INDEX IF NOT EXISTS sefaz_key_query_rate_idx
         ON sefaz_key_query_log(empresa_id, created_at DESC);
+      CREATE TABLE IF NOT EXISTS empresa_certificados (
+        empresa_id BIGINT PRIMARY KEY REFERENCES empresas(id) ON DELETE CASCADE,
+        encrypted_payload BYTEA NOT NULL,
+        arquivo_nome TEXT,
+        titular TEXT,
+        cnpj TEXT,
+        validade_inicio TIMESTAMPTZ,
+        validade_fim TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       INSERT INTO cnd_destinatarios(empresa_id,email)
       SELECT id,v.email FROM empresas CROSS JOIN (VALUES
         ('raul.guilherme25@gmail.com'),('thiagocordeirodantass@gmail.com')

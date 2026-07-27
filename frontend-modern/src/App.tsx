@@ -7,28 +7,41 @@ import {
   Bell,
   BookOpen,
   Building2,
+  Bug,
   ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  CheckCheck,
+  Clock3,
   CloudDownload,
   FileDown,
+  FileSpreadsheet,
   FileText,
   Files,
   Gauge,
   GraduationCap,
+  Headphones,
   LayoutDashboard,
+  Laptop,
   Lightbulb,
   Network,
+  Newspaper,
   Link,
   Linkedin,
   LogOut,
   Menu,
   MessageCircle,
+  Megaphone,
   Moon,
   PackageSearch,
+  Paperclip,
   Radar,
   RefreshCw,
+  Rocket,
   Save,
   Search,
   Send,
+  Settings,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -60,7 +73,8 @@ type Page =
   | "feedback"
   | "profile"
   | "companies"
-  | "users";
+  | "users"
+  | "time";
 type AppNotification = {
   id: number;
   title: string;
@@ -83,9 +97,38 @@ const brl = (v: any) =>
     currency: "BRL",
   });
 const date = (v: any) => (v ? new Date(v).toLocaleDateString("pt-BR") : "—");
+const daysUntil=(value:any)=>{
+  if(!value)return null;
+  const parsed=new Date(String(value).includes("T")?value:`${value}T23:59:59`);
+  const time=parsed.getTime();
+  return Number.isFinite(time)?Math.ceil((time-Date.now())/86400000):null;
+};
+const playMaintenanceCompleteChime=()=>{
+  try{
+    const AudioContextClass=window.AudioContext||(window as any).webkitAudioContext;
+    if(!AudioContextClass)return;
+    const context=new AudioContextClass();
+    const play=()=>{
+      const notes=[523.25,659.25,783.99];
+      notes.forEach((frequency,index)=>{
+        const oscillator=context.createOscillator(),gain=context.createGain();
+        const start=context.currentTime+index*.12;
+        oscillator.type="sine";oscillator.frequency.setValueAtTime(frequency,start);
+        gain.gain.setValueAtTime(0,start);
+        gain.gain.linearRampToValueAtTime(.055,start+.025);
+        gain.gain.exponentialRampToValueAtTime(.001,start+.34);
+        oscillator.connect(gain);gain.connect(context.destination);
+        oscillator.start(start);oscillator.stop(start+.36);
+      });
+      window.setTimeout(()=>context.close().catch(()=>{}),900);
+    };
+    if(context.state==="suspended")context.resume().then(play).catch(()=>context.close().catch(()=>{}));
+    else play();
+  }catch{}
+};
 const sourceInfo=(value?:string)=>{
   const key=String(value||"system").toLowerCase();
-  if(key==="upload")return {label:"Importação manual",tone:"manual"};
+  if(key==="upload")return {label:"Importado manualmente",tone:"manual"};
   if(key==="paste")return {label:"Inclusão manual",tone:"manual"};
   if(key.includes("mtls-auto"))return {label:"SEFAZ automática",tone:"automatic"};
   if(key.includes("sefaz"))return {label:"Consulta por chave",tone:"sefaz"};
@@ -98,53 +141,179 @@ function Brand() {
     <div className="brand">
       <span>
         <img
-          src="/assets/cordeiro-mascote-v2.png"
-          alt="Cordeirinho Cordeiro Fiscal"
+          src="/assets/haixel-logo.png"
+          alt="Haixel"
         />
       </span>
       <b>
-        Cordeiro<small>FISCAL</small>
+        Haixel<small>FISCAL TECH</small>
       </b>
     </div>
   );
 }
-function Login({ done }: { done: (u: User) => void }) {
-  const certificateInput = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<"login" | "register" | "verify">("login"),
+function HaixelAiMark({small=false}:{small?:boolean}) {
+  return <span className={`haixel-ai-mark${small?" small":""}`} aria-label="Haixel IA">
+    <i/><i/><strong>H</strong><em>AI</em>
+  </span>;
+}
+function ExcelMark(){
+  return <span className="excel-mark" aria-hidden="true"><b>X</b><i/><i/><i/></span>;
+}
+function CursorParticles({scope}:{scope:string}){
+  const [particles,setParticles]=useState<Array<{id:number;x:number;y:number;dx:number;dy:number;size:number}>>([]);
+  const sequence=useRef(0),lastMove=useRef(0);
+  useEffect(()=>{
+    const spawn=(event:PointerEvent,count:number)=>{
+      const target=event.target as Element|null,host=target?.closest(scope) as HTMLElement|null;
+      if(!host||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+      const rect=host.getBoundingClientRect(),created=Array.from({length:count},()=>({
+        id:++sequence.current,x:event.clientX-rect.left,y:event.clientY-rect.top,
+        dx:(Math.random()-.5)*70,dy:(Math.random()-.7)*70,size:3+Math.random()*6,
+      }));
+      setParticles(current=>[...current.slice(-55),...created]);
+      window.setTimeout(()=>setParticles(current=>current.filter(item=>!created.some(value=>value.id===item.id))),850);
+    };
+    const down=(event:PointerEvent)=>spawn(event,9);
+    const move=(event:PointerEvent)=>{if(!(event.buttons&1)||Date.now()-lastMove.current<38)return;lastMove.current=Date.now();spawn(event,2)};
+    window.addEventListener("pointerdown",down,{passive:true});window.addEventListener("pointermove",move,{passive:true});
+    return()=>{window.removeEventListener("pointerdown",down);window.removeEventListener("pointermove",move)};
+  },[scope]);
+  return <div className="cursor-particles" aria-hidden="true">{particles.map(item=>
+    <i key={item.id} style={{left:item.x,top:item.y,width:item.size,height:item.size,
+      "--particle-x":`${item.dx}px`,"--particle-y":`${item.dy}px`} as React.CSSProperties}/>)}</div>;
+}
+function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
+  const [contact,setContact]=useState({nome:"",email:"",empresa:"",mensagem:""}),[contactBusy,setContactBusy]=useState(false),
+    [contactSent,setContactSent]=useState(false),[landingAiTopic,setLandingAiTopic]=useState("visao");
+  async function sendContact(event:React.FormEvent){
+    event.preventDefault();setContactBusy(true);
+    try{await api("/api/contact",{method:"POST",body:contact});setContactSent(true);setContact({nome:"",email:"",empresa:"",mensagem:""})}
+    catch{setContactSent(false)}finally{setContactBusy(false)}
+  }
+  const solutions=[
+    {icon:Files,title:"Documentos fiscais",text:"Cofre centralizado para NF-e, CT-e e NFS-e, com pesquisa, XML e exportação."},
+    {icon:ShieldCheck,title:"Regularidade CND",text:"Certidões, vencimentos e alertas organizados por matriz e filial."},
+    {icon:Building2,title:"Gestão multiempresa",text:"Ambientes, usuários, certificados e permissões em uma única estrutura."},
+  ];
+  const features=[
+    [CloudDownload,"Captura e custódia de XMLs"],[Radar,"Monitoramento SEFAZ"],
+    [BarChart3,"Relatórios gerenciais"],[Bot,"Haixel IA fiscal"],
+    [Users,"Acessos por empresa"],[Bell,"Alertas automáticos"],
+  ] as any[];
+  const audiences=[
+    ["Transportadoras","CT-e, documentos recebidos, XMLs e acompanhamento SEFAZ."],
+    ["Comércio e indústria","NF-e, fornecedores, relatórios e arquivos fiscais centralizados."],
+    ["Prestadores de serviços","NFS-e, certidões e visão por empresa ou unidade."],
+    ["Escritórios contábeis","Gestão multiempresa, acessos controlados e exportação em lote."],
+  ];
+  const steps=[
+    ["01","Conecte suas empresas","Cadastre matrizes e filiais, vincule o certificado A1 e defina os acessos."],
+    ["02","Centralize a operação","Importe XMLs, consulte documentos e acompanhe certidões e serviços fiscais."],
+    ["03","Transforme dados em ação","Use filtros, alertas, relatórios e a Haixel IA para decidir com mais segurança."],
+  ];
+  const aiTopics:any={
+    visao:["Conheça a Haixel","A Haixel reúne documentos fiscais, empresas, certidões, monitoramento SEFAZ, relatórios e inteligência em um ambiente web seguro."],
+    documentos:["Como funcionam os documentos?","NF-e, CT-e e NFS-e podem ser consultados, importados, pesquisados e exportados. Os XMLs ficam vinculados à empresa correta."],
+    cnd:["Como a Haixel cuida das CNDs?","A plataforma organiza PDFs, validade, situação e alertas por matriz e filial, facilitando a conferência da regularidade."],
+    sefaz:["O que é o Hub SEFAZ?","É o centro de consulta e captura fiscal: acompanha serviços por estado, preserva a sequência NSU e respeita pausas preventivas."],
+    seguranca:["Meus dados estão protegidos?","Acessos, empresas e permissões ficam separados. Certificados A1 são vinculados ao CNPJ e tratados somente pelo backend."],
+  };
+  return <main className="landing" onPointerMove={event=>{
+    const rect=event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty("--landing-x",`${event.clientX-rect.left}px`);
+    event.currentTarget.style.setProperty("--landing-y",`${event.clientY+window.scrollY}px`);
+  }}>
+    <CursorParticles scope=".landing"/>
+    <div className="landing-cursor-light" aria-hidden="true"/>
+    <header className="landing-nav">
+      <Brand/><nav><a href="#solucoes">Soluções</a><a href="#haixel-ia">Haixel IA</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
+      <div>{maintenance&&<span className="landing-maintenance-pill"><Activity/> Manutenção</span>}
+        <button className="landing-trial" onClick={onAccess}>Acessar plataforma <ArrowUpRight/></button></div>
+    </header>
+    <section className="landing-hero">
+      <div className="landing-hero-copy"><span><Sparkles/> GESTÃO FISCAL INTELIGENTE</span>
+        <h1>Controle fiscal claro para empresas que querem <em>avançar.</em></h1>
+        <p>Documentos, certidões, SEFAZ e empresas reunidos em uma plataforma segura, rápida e preparada para a sua operação.</p>
+        <small><CheckCircle2/> Acesso web <CheckCircle2/> Sem instalação <CheckCircle2/> Dados protegidos</small>
+      </div>
+      <div className="landing-product">
+        <div className="landing-orbit-stage">
+          <div className="landing-orbit-ring one"/><div className="landing-orbit-ring two"/>
+          <div className="landing-ai-core"><span><HaixelAiMark/></span>
+            <small>HAIXEL IA</small><b>Inteligência conectada à sua operação</b></div>
+          <article className="landing-float-card xml"><i><Files/></i><span><small>DOCUMENTOS</small><b>XMLs organizados e protegidos</b></span><CheckCircle2/></article>
+          <article className="landing-float-card cnd"><i><ShieldCheck/></i><span><small>REGULARIDADE</small><b>CNDs e vencimentos sob controle</b></span><CheckCircle2/></article>
+          <article className="landing-float-card sefaz"><i><Radar/></i><span><small>MONITORAMENTO</small><b>Serviços SEFAZ acompanhados</b></span><Activity/></article>
+          <div className="landing-data-pulse"><i/><span>Dados fiscais sincronizados</span></div>
+        </div>
+      </div>
+    </section>
+    <section className="landing-trust"><span>Uma plataforma para toda a rotina fiscal</span>
+      <div><b>NF-e</b><b>CT-e</b><b>NFS-e</b><b>XML</b><b>CND</b><b>SEFAZ</b><b>Multiempresa</b></div></section>
+    <section className="landing-ai-showcase" id="haixel-ia">
+      <div className="landing-ai-showcase-copy"><span>HAIXEL IA · GUIA PÚBLICO</span><h2>Entenda a plataforma conversando com a nossa inteligência.</h2>
+        <p>Explore os principais módulos antes de entrar. Para dados reais da empresa, a Haixel IA utiliza somente o ambiente autenticado e autorizado.</p>
+        <nav>{[["visao","Visão geral",Sparkles],["documentos","Documentos",Files],["cnd","CNDs",ShieldCheck],
+          ["sefaz","SEFAZ",Radar],["seguranca","Segurança",Network]].map(([id,label,Icon]:any)=>
+          <button className={landingAiTopic===id?"active":""} onClick={()=>setLandingAiTopic(id)} key={id}><Icon/>{label}</button>)}</nav>
+      </div>
+      <div className="landing-ai-showcase-panel">
+        <header className="text-only"><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
+        <article><Sparkles/><p><b>{aiTopics[landingAiTopic][0]}</b>{aiTopics[landingAiTopic][1]}</p></article>
+        <footer><ShieldCheck/><span><b>Explicação pública e segura</b><small>Nenhum dado fiscal é exposto nesta página.</small></span></footer>
+      </div>
+    </section>
+    <section className="landing-section" id="solucoes"><header><span>SOLUÇÕES CONECTADAS</span><h2>Menos retrabalho. Mais controle.</h2><p>Escolha uma tarefa e encontre tudo o que precisa no mesmo fluxo.</p></header>
+      <div className="landing-solutions">{solutions.map(({icon:Icon,title,text},index)=><article key={title}><em>0{index+1}</em><i><Icon/></i><h3>{title}</h3><p>{text}</p></article>)}</div>
+    </section>
+    <section className="landing-audiences"><header><span>FEITA PARA OPERAÇÕES REAIS</span><h2>Uma base fiscal que acompanha diferentes negócios.</h2></header>
+      <div>{audiences.map(([title,text],index)=><article key={title}><em>0{index+1}</em><h3>{title}</h3><p>{text}</p><CheckCircle2/></article>)}</div></section>
+    <section className="landing-dark" id="recursos"><div><span>PLATAFORMA COMPLETA</span><h2>A operação fiscal vista por inteiro.</h2><p>Recursos conectados para consultar, organizar, acompanhar e decidir com segurança.</p></div>
+      <div className="landing-features">{features.map(([Icon,title])=><article key={title}><i><Icon/></i><b>{title}</b><CheckCircle2/></article>)}</div></section>
+    <section className="landing-flow"><header><span>DA CONFIGURAÇÃO À DECISÃO</span><h2>Um fluxo contínuo para a rotina fiscal.</h2><p>A Haixel conecta cadastros, documentos e acompanhamento sem espalhar a operação em várias ferramentas.</p></header>
+      <div>{steps.map(([number,title,text])=><article key={number}><em>{number}</em><span><h3>{title}</h3><p>{text}</p></span><ArrowUpRight/></article>)}</div></section>
+    <section className="landing-security" id="seguranca"><div><i><ShieldCheck/></i><span><small>SEGURANÇA EM TODAS AS CAMADAS</small><h2>Seus dados fiscais tratados com responsabilidade.</h2><p>Controle de acesso, sessões protegidas, certificado A1 por empresa e rastreabilidade das operações.</p></span></div>
+      <aside><strong>100% web</strong><span>Acesse de qualquer dispositivo</span><strong>Multiempresa</strong><span>Permissões por ambiente</span></aside></section>
+    <section className="landing-faq"><header><span>INFORMAÇÕES IMPORTANTES</span><h2>O que você encontra na Haixel.</h2></header><div>
+      <article><b>Quais documentos são organizados?</b><p>NF-e, CT-e, NFS-e e seus XMLs, além de dados de emissão, destinatários, valores, eventos e origem.</p></article>
+      <article><b>Posso trabalhar com várias empresas?</b><p>Sim. Matrizes e filiais ficam agrupadas, com certificado, módulos, usuários e permissões vinculados a cada ambiente.</p></article>
+      <article><b>Como a regularidade fiscal é acompanhada?</b><p>Certidões são armazenadas com tipo, situação, emissão, validade, PDF e alertas configuráveis por empresa.</p></article>
+      <article><b>O sistema funciona em qualquer dispositivo?</b><p>A plataforma é web e responsiva, com navegação adaptada para computador, tablet e celular.</p></article>
+    </div></section>
+    <section className="landing-contact" id="contato">
+      <div className="landing-contact-copy"><span>VAMOS CONVERSAR</span><h2>Venha bater um papo com a gente.</h2>
+        <p>Conte como funciona sua operação fiscal. Nossa equipe pode mostrar como centralizar documentos, empresas, CNDs e monitoramento em um fluxo mais claro.</p>
+        <div>{[["Resposta humana","Sua mensagem chega à equipe Haixel.",MessageCircle],
+          ["Conversa sobre a operação","Entendemos empresas, unidades e rotinas.",Building2],
+          ["Demonstração direcionada","Mostramos os módulos relevantes para você.",Sparkles]]
+          .map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span></article>)}</div>
+      </div>
+      <form onSubmit={sendContact}>
+        <header><small>CONTATO HAIXEL</small><h3>Fale sobre a sua necessidade</h3><p>Preencha os dados e retornaremos a conversa.</p></header>
+        <div><label>Seu nome<input required value={contact.nome} onChange={e=>setContact({...contact,nome:e.target.value})}/></label>
+          <label>E-mail profissional<input required type="email" value={contact.email} onChange={e=>setContact({...contact,email:e.target.value})}/></label></div>
+        <label>Empresa<input required value={contact.empresa} onChange={e=>setContact({...contact,empresa:e.target.value})}/></label>
+        <label>Como podemos ajudar?<textarea required rows={4} value={contact.mensagem} onChange={e=>setContact({...contact,mensagem:e.target.value})}
+          placeholder="Conte um pouco sobre documentos, empresas ou desafios da sua rotina fiscal..."/></label>
+        <button className="landing-trial" disabled={contactBusy}>{contactBusy?<RefreshCw className="spin"/>:<Send/>} Enviar mensagem</button>
+        {contactSent&&<span className="landing-contact-success"><CheckCircle2/> Mensagem recebida. Vamos conversar em breve.</span>}
+      </form>
+    </section>
+    <section className="landing-final"><span>UMA OPERAÇÃO MAIS CLARA COMEÇA AQUI</span><h2>Entre na Haixel e assuma o controle fiscal.</h2><p>Documentos, empresas, certidões, relatórios e monitoramento reunidos em um único ambiente.</p></section>
+    <footer className="landing-footer"><Brand/><p>Inteligência fiscal para decisões seguras.</p><span>© {new Date().getFullYear()} Haixel Fiscal Tech</span></footer>
+  </main>;
+}
+function Login({ done,initialMode="login",onBack }: { done: (u: User) => void; initialMode?:"login"|"register"; onBack?:()=>void }) {
+  const [mode, setMode] = useState<"login" | "register" | "verify">(initialMode),
     [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
     [name, setName] = useState(""),
     [email, setEmail] = useState(""),
     [code, setCode] = useState(""),
     [devCode, setDevCode] = useState(""),
-    [certificate, setCertificate] = useState<File | null>(null),
-    [certificatePassword, setCertificatePassword] = useState(""),
     [remember,setRemember]=useState(()=>localStorage.getItem("cordeiro.remember")!=="0"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  async function loginWithCertificate() {
-    if (!certificate) {
-      certificateInput.current?.click();
-      return;
-    }
-    if (!certificatePassword) {
-      setError("Informe a senha do certificado digital.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const form = new FormData();
-      form.append("certificate", certificate);
-      form.append("password", certificatePassword);
-      await api("/api/auth/certificate-login", { method: "POST", body: form });
-      done((await api<{ user: User }>("/api/auth/me")).user);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -178,7 +347,11 @@ function Login({ done }: { done: (u: User) => void }) {
     }
   }
   return (
-    <main className="login">
+    <main className="login" onPointerMove={event=>{
+      const rect=event.currentTarget.getBoundingClientRect();
+      event.currentTarget.style.setProperty("--hub-x",`${event.clientX-rect.left}px`);
+      event.currentTarget.style.setProperty("--hub-y",`${event.clientY-rect.top}px`);
+    }}>
       <section className="login-art">
         <Brand />
         <div>
@@ -197,8 +370,16 @@ function Login({ done }: { done: (u: User) => void }) {
           </small>
         </div>
       </section>
-      <section className="login-side">
+      <section className="login-side" onPointerMove={event=>{
+        const rect=event.currentTarget.getBoundingClientRect();
+        event.currentTarget.style.setProperty("--login-x",`${event.clientX-rect.left}px`);
+        event.currentTarget.style.setProperty("--login-y",`${event.clientY-rect.top}px`);
+        event.currentTarget.style.setProperty("--login-rx",`${((event.clientY-rect.top)/rect.height-.5)*2}deg`);
+        event.currentTarget.style.setProperty("--login-ry",`${(.5-(event.clientX-rect.left)/rect.width)*3}deg`);
+      }}>
+        <CursorParticles scope=".login-side"/>
         <form className="auth-card" onSubmit={submit}>
+          {onBack&&<button type="button" className="auth-back" onClick={onBack}>← Voltar para o site</button>}
           <div className="mobile-brand">
             <Brand />
           </div>
@@ -309,41 +490,6 @@ function Login({ done }: { done: (u: User) => void }) {
               "Validar e entrar"
             )}
           </button>
-          {mode === "login" && (
-            <div className="mtls-login">
-              <div className="auth-divider"><span>ou acesse com</span></div>
-              <input
-                ref={certificateInput}
-                className="certificate-file-input"
-                type="file"
-                accept=".pfx,.p12,application/x-pkcs12"
-                onChange={(event) => {
-                  setCertificate(event.target.files?.[0] || null);
-                  setError("");
-                }}
-              />
-              <button type="button" className="mtls-button" disabled={busy}
-                onClick={loginWithCertificate}>
-                <i><ShieldCheck /></i>
-                <span><b>Certificado digital INTECOM</b>
-                  <small>{certificate ? certificate.name : "Selecionar arquivo .PFX ou .P12"}</small></span>
-                <span className="mtls-arrow">→</span>
-              </button>
-              {certificate && (
-                <label className="certificate-password">
-                  Senha do certificado
-                  <input
-                    required
-                    type="password"
-                    value={certificatePassword}
-                    onChange={(event) => setCertificatePassword(event.target.value)}
-                    placeholder="Digite a senha do certificado"
-                  />
-                </label>
-              )}
-              <p><ShieldCheck /> O arquivo é processado somente para validar o acesso e não é salvo no servidor.</p>
-            </div>
-          )}
           <button
             type="button"
             className="auth-switch"
@@ -367,13 +513,12 @@ const groups = [
     "Gestão documental",
     [
       ["documents", "Central de documentos", Files],
-      ["issued", "Documentos emitidos", Send],
-      ["import", "Central XML", UploadCloud],
       ["reports", "Inteligência fiscal", BarChart3],
       ["certificates", "Regularidade CND", ShieldCheck],
     ],
   ],
   ["Integrações", [["integrations", "Hub SEFAZ", Network]]],
+  ["Suporte", [["feedback", "Central de suporte", MessageCircle]]],
   [
     "Governança",
     [
@@ -382,6 +527,37 @@ const groups = [
     ],
   ],
 ] as any[];
+
+function DocumentHub({toast,initial="archive"}:{toast:(s:string,e?:boolean)=>void;initial?:"archive"|"dfe"}) {
+  const [mode,setMode]=useState<"archive"|"dfe"|"monitor">(initial);
+  return <section className="unified-document-hub">
+    <header className="document-nexus">
+      <div className="document-nexus-copy"><span className="eyebrow">CENTRAL DOCUMENTAL HAIXEL</span>
+        <h1>Todo documento fiscal.<br/><em>Uma única inteligência.</em></h1>
+        <p>Capture, pesquise, audite, importe e exporte NF-e, CT-e e NFS-e sem perder o contexto da empresa.</p>
+        <div><span><i/> Custódia ativa</span><span><ShieldCheck/> Integridade protegida</span><span><Activity/> Monitor conectado</span></div>
+      </div>
+      <div className="document-nexus-visual">
+        <i className="orbit one"/><i className="orbit two"/>
+        <span className="nexus-core"><Files/><b>DF-e</b><small>CENTRAL</small></span>
+        <article className="nexus-file nfe"><FileText/><span><small>DOCUMENTO</small><b>NF-e</b></span><CheckCircle2/></article>
+        <article className="nexus-file cte"><CloudDownload/><span><small>TRANSPORTE</small><b>CT-e</b></span><CheckCircle2/></article>
+        <article className="nexus-file xml"><ShieldCheck/><span><small>ARQUIVO</small><b>XML</b></span><CheckCircle2/></article>
+      </div>
+    </header>
+    <div className="document-workspace-switch">
+      <span><small>ÁREA DOCUMENTAL</small><b>{mode==="archive"?"Cofre e auditoria":mode==="monitor"?"Monitor DF-e":"Importação XML"}</b></span>
+      <nav>
+        <button className={mode==="archive"?"active":""} onClick={()=>setMode("archive")}><Files/><span>
+          <b>Cofre e auditoria</b><small>Pesquisar, conferir e exportar</small></span></button>
+        {false && <button className={mode==="dfe"?"active":""} onClick={()=>setMode("dfe")}><Radar/><span>
+          <b>Monitor e importaÃ§Ã£o</b><small>Emitidos, recebidos e SEFAZ</small></span></button>
+        }
+      </nav>
+    </div>
+    <div className="document-workspace" key={mode}>{mode==="archive"?<Documents toast={toast}/>:<IssuedDocuments toast={toast}/>}</div>
+  </section>;
+}
 function Head({
   tag,
   title,
@@ -406,13 +582,15 @@ function Head({
 }
 function Panel({
   title,
+  className,
   children,
 }: {
   title?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="panel">
+    <section className={`panel${className ? ` ${className}` : ""}`}>
       {title && <h3>{title}</h3>}
       {children}
       {title === "Movimentação mensal" && <FiscalNews />}
@@ -440,14 +618,43 @@ function TeamActivity(){
     </article>)}</div>:<Empty/>}</Panel></>;
 }
 function Dashboard() {
+  const [stats,setStats]=useState<any>({}),[loadingStats,setLoadingStats]=useState(true);
+  useEffect(()=>{api<any>("/api/dashboard/kpis").then(setStats).catch(()=>{}).finally(()=>setLoadingStats(false))},[]);
+  const metrics=[
+    ["Documentos",stats.total??stats.documentos??0,Files,"mint"],
+    ["Movimentação",brl(stats.valor_total??stats.valor),Gauge,"blue"],
+    ["CNDs em atenção",stats.cnds_vencendo??stats.alertas??0,ShieldCheck,"amber"],
+    ["Incluídos no mês",stats.mes_atual??stats.no_mes??0,Activity,"violet"],
+  ];
   return (
     <>
       <Head
-        tag="RADAR CONTÁBIL & FISCAL"
-        title="Cockpit de conhecimento"
-        text="Notícias, mudanças regulatórias e referências para a rotina fiscal e contábil."
+        tag="VISÃO OPERACIONAL"
+        title="Cockpit fiscal"
+        text="Documentos, regularidade, movimentação e conhecimento reunidos para orientar a operação."
       />
-      <section className="knowledge-hero"><div><Radar/><span><small>ACOMPANHAMENTO CONTÍNUO</small>
+      <section className="fiscal-cockpit-hero">
+        <div><span className="eyebrow">COMANDO FISCAL EM TEMPO REAL</span><h2>Da visão geral à próxima ação.</h2>
+          <p>Acompanhe o que entrou, identifique riscos e continue a rotina sem alternar entre várias telas.</p>
+          <div><span><i/> Operação acompanhada</span><span><ShieldCheck/> Ambiente protegido</span></div></div>
+        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><i className="service-symbol news"><Newspaper/></i><b>NOTÍCIAS</b><small>RADAR ATIVO</small></span></div>
+      </section>
+      <div className="cockpit-metrics">{metrics.map(([label,value,Icon,tone]:any,index)=><article className={tone} key={label}
+        style={{animationDelay:`${index*.08}s`}}><i><Icon/></i><span><small>{label}</small><b>{loadingStats?"—":value}</b><em>Empresa ativa</em></span></article>)}</div>
+      <section className="cockpit-command-grid">
+        <article className="cockpit-priorities"><header><div><Bell/><span><small>AÇÕES RECOMENDADAS</small><h3>Próximas tarefas da sua rotina</h3>
+          <p>Sugestões para manter documentos e certidões organizados — não significam necessariamente um erro.</p></span></div><em>Hoje</em></header>
+          <div><span><i className="amber"><ShieldCheck/></i><p><b>Regularidade fiscal</b><small>Confira certidões próximas do vencimento e PDFs pendentes.</small></p><ChevronRight/></span>
+            <span><i className="blue"><CloudDownload/></i><p><b>Captura documental</b><small>Sincronize o Monitor DF-e e revise documentos recebidos.</small></p><ChevronRight/></span>
+            <span><i className="mint"><Search/></i><p><b>Conferência do cofre</b><small>Valide chaves, situações e arquivos importados recentemente.</small></p><ChevronRight/></span></div>
+        </article>
+        <article className="cockpit-health"><header><Activity/><span><small>SAÚDE DA OPERAÇÃO</small><h3>Fluxos conectados</h3></span></header>
+          {[["Documentos e XML",88],["Regularidade CND",72],["Integração SEFAZ",94]].map(([label,value]:any)=><div key={label}>
+            <span><b>{label}</b><em>{value}%</em></span><i><span style={{width:`${value}%`}}/></i></div>)}
+          <footer><i/><span><b>Monitoramento contínuo</b><small>Indicadores atualizados pela empresa ativa.</small></span></footer>
+        </article>
+      </section>
+      <section className="knowledge-hero cockpit-knowledge"><div><Radar/><span><small>CONHECIMENTO APLICADO</small>
         <h2>O que muda no fiscal, explicado para a operação.</h2><p>Reforma tributária, obrigações, documentos eletrônicos, certidões e prazos.</p></span></div>
         <div className="knowledge-tags"><span>Reforma Tributária</span><span>NF-e & CT-e</span><span>SPED</span><span>Contabilidade</span></div></section>
       <FiscalNews/>
@@ -606,36 +813,88 @@ function FiscalFilters({
   );
 }
 
-function IssuedDocuments({toast}:{toast:(s:string,e?:boolean)=>void}){
+function IssuedDocuments({toast,initialSection="monitor"}:{toast:(s:string,e?:boolean)=>void;initialSection?:"monitor"|"import"}){
   const [data,setData]=useState<any>({items:[],stats:{}}),[kind,setKind]=useState(""),
-    [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true);
-  const issuedParams=new URLSearchParams({month,...(kind?{kind}:{})});
+    [section,setSection]=useState<"monitor"|"import">(initialSection),
+    [direction,setDirection]=useState<"outgoing"|"incoming">("outgoing"),
+    [query,setQuery]=useState(""),
+    [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7)),[busy,setBusy]=useState(true),
+    [syncing,setSyncing]=useState(false),issuedSyncRef=useRef(false);
+  const issuedParams=new URLSearchParams({month,direction,...(kind?{kind}:{})});
   const load=useCallback((notify=false)=>{setBusy(true);api<any>(`/api/docs/issued?${issuedParams}`)
     .then(result=>{setData(result);if(notify)toast(`${result.items?.length||0} documento(s) emitido(s) atualizado(s)`)})
-    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,toast]);
+    .catch(error=>toast(error.message,true)).finally(()=>setBusy(false))},[kind,month,direction,toast]);
   useEffect(()=>{load();const timer=window.setInterval(()=>load(false),30000);return()=>window.clearInterval(timer)},[load]);
+  const refreshIssued=async()=>{
+    if(issuedSyncRef.current)return;
+    issuedSyncRef.current=true;setSyncing(true);
+    try{
+      const [year,monthNumber]=month.split("-").map(Number);
+      const dateFrom=`${month}-01`;
+      const dateTo=new Date(Date.UTC(year,monthNumber,0)).toISOString().slice(0,10);
+      const sync=await api<any>("/api/sefaz/cert/periodo-auto",{method:"POST",body:{dateFrom,dateTo}});
+      await load(false);
+      toast(`${sync.documentos?.length||0} registro(s) recebido(s) por NSU; documentos emitidos atualizados`);
+    }catch(error){
+      const message=(error as Error).message;
+      toast(/espera|aguarde|bloque|656/i.test(message)?message:`Não foi possível sincronizar com a SEFAZ: ${message}`,true);
+      await load(false);
+    }finally{issuedSyncRef.current=false;setSyncing(false)}
+  };
   const stats=data.stats||{};
-  return <><Head tag="SAÍDAS FISCAIS" title="Documentos emitidos"
-    text="NF-e, NFS-e e CT-e emitidos pelo CNPJ da empresa ativa, organizados automaticamente."
-    action={<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
-      <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.xlsx`)}><FileDown/> NFS-e Excel</button>
-      <button className="secondary" onClick={()=>download(`/api/relatorio/csv?modelo=nfse&month=${month}`,`nfse-emitidas-${month}.csv`)}><FileDown/> CSV</button>
-      <button className="primary" onClick={()=>load(true)} disabled={busy}>{busy?<RefreshCw className="spin"/>:<RefreshCw/>} Atualizar agora</button></div>}/>
-    <section className="issued-hero"><div><i><Send/></i><span><small>EMISSÃO PRÓPRIA</small><h2>Monitor de documentos de saída</h2>
-      <p>A classificação usa o CNPJ emitente e mantém cada matriz ou filial em seu próprio ambiente.</p></span></div>
-      <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Distribuição CT-e</span><span><i/> NFS-e · Conector nacional/municipal</span></div></section>
-    <div className="issued-kpis">{[["Total",stats.total||0,Files],["NF-e",stats.nfe||0,FileText],["NFS-e",stats.nfse||0,FileText],["CT-e",stats.cte||0,CloudDownload]]
+  const filtered=(data.items||[]).filter((item:any)=>{
+    const content=[item.kind,item.numero,item.chave,item.remetente_nome,item.remetente_doc,
+      item.destinatario_nome,item.destinatario_doc,item.status].join(" ").toLowerCase();
+    return !query||content.includes(query.toLowerCase());
+  });
+  return <><Head tag="CENTRAL DF-e" title="Documentos fiscais"
+    text="Recebimento, custódia e acompanhamento dos documentos emitidos pela empresa e contra o seu CNPJ."
+    action={section==="monitor"?<div className="issued-actions"><label>Competência<input type="month" value={month} onChange={event=>setMonth(event.target.value)}/></label>
+      <button className="secondary issued-import-xml" onClick={()=>setSection("import")}><UploadCloud/> Importar XML</button>
+      <button className="secondary" onClick={()=>download(`/api/relatorio/xlsx?month=${month}`,`documentos-fiscais-${month}.xlsx`)}><FileDown/> Exportar Excel</button>
+      <button className="secondary" onClick={()=>download(`/api/relatorio/lote?formato=xml&month=${month}`,`xml-fiscais-${month}.zip`)}><CloudDownload/> Baixar XMLs</button>
+          <button className="primary" onClick={refreshIssued} disabled={busy||syncing}>{syncing?<RefreshCw className="spin"/>:<Search/>} {syncing?"Consultando SEFAZ...":"Consultar SEFAZ agora"}</button></div>:undefined}/>
+    {section==="import"?<Importer toast={toast} embedded done={()=>{setSection("monitor");load(true)}}/>:<>
+    <section className="dfe-command-board">
+      <div><span className="eyebrow">OPERAÇÃO DOCUMENTAL</span><h2>Visão unificada do ciclo fiscal</h2>
+        <p>Capture, confira, organize e exporte documentos sem perder o contexto da empresa ativa.</p></div>
+      <div className="dfe-command-metrics">
+        <span><small>Em custódia</small><b>{stats.xml||0}</b></span>
+        <span><small>Com alerta</small><b>{stats.alertas||0}</b></span>
+        <span><small>Movimentação</small><b>{brl(stats.valor||0)}</b></span>
+      </div>
+    </section>
+    <section key={`hero-${direction}`} className={`issued-hero dfe-hero direction-page direction-${direction}`}><div><i>{direction==="incoming"?<CloudDownload/>:<Send/>}</i><span>
+      <small>{direction==="incoming"?"RECEBIMENTO FISCAL":"EMISSÕES PRÓPRIAS"}</small>
+      <h2>{direction==="incoming"?"Documentos emitidos contra a empresa":"Documentos emitidos pela empresa"}</h2>
+      <p>Informações centralizadas por CNPJ, com captura segura, consulta e custódia do arquivo fiscal.</p></span></div>
+      <div><span><i/> NF-e · Distribuição DF-e</span><span><i/> CT-e · Documentos de transporte</span><span><i/> XML · Integridade e custódia</span></div></section>
+    <div className="issued-kpis dfe-kpis">{[["Documentos",stats.total||0,Files],["XML em custódia",stats.xml||0,ShieldCheck],
+      ["Alertas fiscais",stats.alertas||0,Bell],["Valor monitorado",brl(stats.valor||0),Gauge]]
       .map(([label,value,Icon]:any)=><article key={label}><i><Icon/></i><span><small>{label}</small><b>{value}</b></span></article>)}</div>
-    <Panel><div className="issued-toolbar"><div className="doc-tabs">{[["","Todos"],["NFE","NF-e"],["NFSE","NFS-e"],["CTE","CT-e"]].map(([value,label])=>
-      <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}>{label}</button>)}</div>
-      <small>Competência {month.split("-").reverse().join("/")} · atualização automática a cada 30 segundos</small></div>
-      <div className="table"><table><thead><tr><th>Documento</th><th>Destinatário</th><th>Emissão</th><th>Valor</th><th>Status</th><th>Origem</th><th>XML</th></tr></thead>
-        <tbody>{(data.items||[]).map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
-          <td>{item.destinatario_nome||"Não identificado"}<small>{item.destinatario_doc||""}</small></td><td>{date(item.data_emissao)}</td>
+    <section className="dfe-capabilities">
+      <article><i><CloudDownload/></i><span><b>Captura centralizada</b><small>Documentos localizados pela distribuição oficial e importações da empresa.</small></span></article>
+      <article><i><ShieldCheck/></i><span><b>Validação e custódia</b><small>Identificação imediata da disponibilidade do XML armazenado.</small></span></article>
+      <article><i><Bell/></i><span><b>Eventos e situações</b><small>Status fiscal destacado para acelerar conferências e tratar cancelamentos.</small></span></article>
+      <article><i><FileDown/></i><span><b>Consulta e exportação</b><small>Planilha gerencial e arquivos XML disponíveis individualmente ou em lote.</small></span></article>
+    </section>
+    <Panel className={`dfe-control-deck direction-${direction}`}><div key={`query-${direction}`} className="dfe-query-bar direction-page"><label><Search/><input value={query} onChange={event=>setQuery(event.target.value)}
+      placeholder="Buscar por fornecedor, cliente, CNPJ, número ou chave..."/></label>
+    </div><div className="issued-toolbar"><div className={`issued-direction direction-${direction}`}>
+      <button className={direction==="outgoing"?"active":""} aria-pressed={direction==="outgoing"} onClick={()=>setDirection("outgoing")} title="CNPJ ativo como emitente ou prestador"><Send/><span><b>Emitidas</b><small>Pela empresa</small></span></button>
+      <button className={direction==="incoming"?"active":""} aria-pressed={direction==="incoming"} onClick={()=>setDirection("incoming")} title="CNPJ ativo como destinatário ou tomador"><CloudDownload/><span><b>Recebidas</b><small>Contra a empresa</small></span></button>
+    </div><div className="doc-tabs">{[["","Todos",Files],["NFE","NF-e",FileText],["NFSE","NFS-e",FileSpreadsheet],["CTE","CT-e",CloudDownload]].map(([value,label,Icon]:any)=>
+      <button className={kind===value?"active":""} onClick={()=>setKind(value)} key={value}><Icon/>{label}</button>)}</div>
+      <small>{filtered.length} de {data.items?.length||0} documentos · atualização automática a cada 30 segundos</small></div>
+      <div key={`table-${direction}-${kind||"all"}`} className="table dfe-table direction-page kind-page"><table><thead><tr><th>Documento</th><th>{direction==="incoming"?"Emitente / fornecedor":"Destinatário / cliente"}</th><th>Emissão</th><th>Valor</th><th>Situação</th><th>Origem</th><th>Arquivo</th></tr></thead>
+        <tbody>{filtered.map((item:any)=><tr key={item.id}><td><b>{item.kind} #{item.numero||"—"}</b><small>{item.chave||"Sem chave"}</small></td>
+          <td>{direction==="incoming"?(item.remetente_nome||"Não identificado"):(item.destinatario_nome||"Não identificado")}
+            <small>{direction==="incoming"?(item.remetente_doc||""):(item.destinatario_doc||"")}</small></td><td>{date(item.data_emissao)}</td>
           <td><b>{brl(item.valor_total)}</b></td><td><span className="status">{item.status}</span></td>
           <td><span className={`source-badge ${sourceInfo(item.source).tone}`}><i/>{sourceInfo(item.source).label}</span></td>
-          <td><button className="square" disabled={!item.has_xml} onClick={()=>download(`/api/docs/${item.id}/xml`,`${item.chave||item.id}.xml`)}><FileDown/></button></td></tr>)}</tbody></table>
-        {!busy&&!data.items?.length&&<Empty/>}</div></Panel>
+          <td><button className="square" title={item.has_xml?"Baixar XML":"XML ainda não disponível"} disabled={!item.has_xml}
+            onClick={()=>download(`/api/docs/${item.id}/xml`,`${item.chave||item.id}.xml`)}><FileDown/></button></td></tr>)}</tbody></table>
+        {!busy&&!filtered.length&&<Empty/>}</div></Panel></>}
   </>;
 }
 
@@ -649,6 +908,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [total,setTotal]=useState(0),
     [pages,setPages]=useState(1),
     [stats,setStats]=useState<any>({}),
+    [syncing,setSyncing]=useState(false),
     [busy, setBusy] = useState(true),
     [selected, setSelected] = useState<any>(null),
     [pendingDelete,setPendingDelete]=useState<any>(null),
@@ -734,13 +994,27 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
       setSelectedIds([]);setConfirmBatchDelete(false);toast(`${result.deleted} documento(s) e XML(s) excluído(s)`);load();
     }catch(error){toast((error as Error).message,true)}
   }
+  async function consultSefaz(){
+    setSyncing(true);
+    try{
+      const now=new Date(),month=now.toISOString().slice(0,7),dateFrom=`${month}-01`,dateTo=now.toISOString().slice(0,10);
+      const result=await api<any>("/api/sefaz/cert/periodo-auto",{method:"POST",body:{dateFrom,dateTo}});
+      toast(`${result.documentos?.length||0} documento(s) consultado(s) na SEFAZ`);load();
+    }catch(error){toast(`Não foi possível consultar a SEFAZ: ${(error as Error).message}`,true)}finally{setSyncing(false)}
+  }
   return (
     <>
       <Head
         tag="DOCUMENTOS"
-        title="Documentos fiscais"
+        title="Central de documentos"
         text={`${total} registros encontrados · página ${page} de ${pages}`}
       />
+      <section className="document-action-deck"><button className="vault-summary-card" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}><i className="teal"><Files/></i><span><b>Cofre e auditoria</b><small>Pesquisar, conferir e exportar</small></span><ChevronRight/></button>
+        <button onClick={()=>setShowFilters(true)}><i className="blue"><Search/></i><span><b>Pesquisa inteligente</b><small>Cruze chave, CNPJ, período e situação</small></span><ChevronRight/></button>
+        <button onClick={load}><i className="green"><RefreshCw className={busy?"spin":""}/></i><span><b>Atualizar cofre</b><small>Carregue os registros mais recentes</small></span><ChevronRight/></button>
+        <button onClick={consultSefaz} disabled={syncing}><i className="amber"><Search className={syncing?"spin":""}/></i><span><b>{syncing?"Consultando SEFAZ...":"Consultar SEFAZ"}</b><small>Emitidos e recebidos do CNPJ ativo</small></span><ChevronRight/></button>
+        <button onClick={()=>download(`/api/relatorio/lote?formato=xml&${exportParams}`,"documentos-xml.zip")}><i className="violet"><CloudDownload/></i><span><b>Pacote de XMLs</b><small>Exporte o resultado da consulta</small></span><ChevronRight/></button>
+      </section>
       <div className="kpis document-kpis">{[
         ["Documentos",stats.total??stats.documentos??total,FileText,"mint"],
         ["Valor movimentado",brl(stats.valor_total??stats.valor),Gauge,"violet"],
@@ -803,10 +1077,11 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
             <RefreshCw className={busy ? "spin" : ""} />
           </button>
         </div>
-        <div className="doc-tabs">
-          {[["","Todos"],["NFE","NF-e"],["CTE","CT-e"],["NFSE","NFS-e"]].map(([value,label])=>
-            <button className={kindFilter===value?"active":""} key={value} onClick={()=>{setKindFilter(value);setPage(1)}}>{label}</button>)}
-        </div>
+        <label className="document-type-select"><Files/><span><small>TIPO DE DOCUMENTO</small>
+          <select value={kindFilter} onChange={event=>{setKindFilter(event.target.value);setPage(1)}}>
+            <option value="">Todos os documentos</option><option value="NFE">NF-e</option>
+            <option value="CTE">CT-e</option><option value="NFSE">NFS-e</option>
+          </select></span><ChevronDown/></label>
         <div className="table">
           <table>
             <thead>
@@ -1005,7 +1280,7 @@ function Documents({ toast }: { toast: (s: string, e?: boolean) => void }) {
     </>
   );
 }
-function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; done:()=>void }) {
+function Importer({ toast,done,embedded=false }: { toast: (s: string, e?: boolean) => void; done:()=>void; embedded?:boolean }) {
   const [files, setFiles] = useState<File[]>([]),
     [drag, setDrag] = useState(false),
     [busy, setBusy] = useState(false),
@@ -1055,11 +1330,11 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
   }
   return (
     <>
-      <Head
+      {!embedded&&<Head
         tag="IMPORTAÇÃO"
         title="Importar documentos"
         text="Envie arquivos XML de NF-e, CT-e ou NFS-e para processamento."
-      />
+      />}
       <Panel>
         <label
           className={`drop ${drag ? "drag" : ""}`}
@@ -1125,6 +1400,81 @@ function Importer({ toast,done }: { toast: (s: string, e?: boolean) => void; don
     </>
   );
 }
+function TimeControl({ toast }: { toast: (s: string, e?: boolean) => void }) {
+  type Punch = { id:string; at:string; type:string };
+  const [records,setRecords]=useState<Punch[]>(()=>{try{return JSON.parse(localStorage.getItem("haixel.time.records")||"[]")}catch{return []}});
+  const [targetHours,setTargetHours]=useState(()=>localStorage.getItem("haixel.time.target")||"8");
+  const [bankTarget,setBankTarget]=useState(()=>localStorage.getItem("haixel.time.bank-target")||"10");
+  const [bankDeadline,setBankDeadline]=useState(()=>localStorage.getItem("haixel.time.bank-deadline")||`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}-15`);
+  const [closeDay,setCloseDay]=useState(()=>localStorage.getItem("haixel.time.close-day")||"25");
+  const [noticeEmail,setNoticeEmail]=useState(()=>localStorage.getItem("haixel.time.email")||"");
+  const [manualDate,setManualDate]=useState(()=>new Date().toISOString().slice(0,10));
+  const [manualEntry,setManualEntry]=useState("");
+  const [manualExit,setManualExit]=useState("");
+  const [punchType,setPunchType]=useState("Entrada");
+  const [entryTime,setEntryTime]=useState("");
+  const [exitTime,setExitTime]=useState("");
+  const [lunchStart,setLunchStart]=useState("");
+  const [lunchEnd,setLunchEnd]=useState("");
+  const [scheduleStart,setScheduleStart]=useState(()=>localStorage.getItem("haixel.time.start")||"08:00");
+  const [scheduleEnd,setScheduleEnd]=useState(()=>localStorage.getItem("haixel.time.end")||"17:00");
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{localStorage.setItem("haixel.time.records",JSON.stringify(records))},[records]);
+  useEffect(()=>{localStorage.setItem("haixel.time.target",targetHours);localStorage.setItem("haixel.time.bank-target",bankTarget);localStorage.setItem("haixel.time.bank-deadline",bankDeadline);localStorage.setItem("haixel.time.close-day",closeDay);localStorage.setItem("haixel.time.email",noticeEmail);localStorage.setItem("haixel.time.start",scheduleStart);localStorage.setItem("haixel.time.end",scheduleEnd)},[targetHours,bankTarget,bankDeadline,closeDay,noticeEmail,scheduleStart,scheduleEnd]);
+  useEffect(()=>{const timer=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(timer)},[]);
+  const today=now.toISOString().slice(0,10);
+  const todayRecords=records.filter(item=>item.at.slice(0,10)===today);
+  const monthRecords=records.filter(r=>r.at.slice(0,7)===today.slice(0,7));
+  const elapsedHours=todayRecords.length>=2?(Date.now()-new Date(todayRecords[0].at).getTime())/3600000:0;
+  const remainingSeconds=Math.max(0,Math.round((Number(targetHours||8)-elapsedHours)*3600));
+  const remainingLabel=`${String(Math.floor(remainingSeconds/3600)).padStart(2,"0")}:${String(Math.floor(remainingSeconds%3600/60)).padStart(2,"0")}:${String(remainingSeconds%60).padStart(2,"0")}`;
+  const deadlineDays=Math.max(0,Math.ceil((new Date(`${bankDeadline}T23:59:59`).getTime()-Date.now())/86400000));
+  const bankDone=Math.min(Number(bankTarget||0),monthRecords.length*2);
+  const bankLeft=Math.max(0,Number(bankTarget||0)-bankDone);
+  const nextType=["Entrada","Saída intervalo","Retorno","Saída"][todayRecords.length%4];
+  const punch=()=>{
+    if(todayRecords.length>=4){toast("Limite diário atingido: são permitidas apenas 4 marcações",true);return}
+    const at=new Date().toISOString();
+    setRecords(items=>[...items,{id:crypto.randomUUID(),at,type:punchType}]);
+    try{const C=window.AudioContext||(window as any).webkitAudioContext;if(C){const c=new C(),o=c.createOscillator(),g=c.createGain();o.frequency.value=nextType==="Saída"?520:740;g.gain.setValueAtTime(.0001,c.currentTime);g.gain.exponentialRampToValueAtTime(.12,c.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+.22);o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.24)}}catch{}
+    toast(`${nextType} registrada às ${new Date(at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`);
+  };
+  const saveManualTimes=()=>{
+    if(!manualDate||(!manualEntry&&!manualExit)){toast("Informe a data e pelo menos um horário",true);return}
+    const add:any[]=[];
+    if(manualEntry)add.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${manualEntry}:00`).toISOString(),type:"Entrada (manual)"});
+    if(manualExit)add.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${manualExit}:00`).toISOString(),type:"Saída (manual)"});
+    setRecords(items=>[...items.filter(item=>!(item.at.slice(0,10)===manualDate&&item.type.includes("(manual)"))),...add].sort((a,b)=>a.at.localeCompare(b.at)));
+    toast("Horários manuais salvos");
+  };
+  const saveManual=()=>{
+    if(!manualDate||(!entryTime&&!lunchStart&&!lunchEnd&&!exitTime)){toast("Informe os horários da jornada",true);return}
+    const existingForDay=records.filter(item=>item.at.slice(0,10)===manualDate&&!item.type.includes("manual")).length;
+    if(existingForDay+(entryTime?1:0)+(lunchStart?1:0)+(lunchEnd?1:0)+(exitTime?1:0)>4){toast("Informe no máximo 4 marcações por dia",true);return}
+    const additions:Punch[]=[];
+    if(entryTime)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${entryTime}:00`).toISOString(),type:"Entrada (manual)"});
+    if(exitTime)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${exitTime}:00`).toISOString(),type:"Saída (manual)"});
+    if(lunchStart)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${lunchStart}:00`).toISOString(),type:"Saída almoço (manual)"});
+    if(lunchEnd)additions.push({id:crypto.randomUUID(),at:new Date(`${manualDate}T${lunchEnd}:00`).toISOString(),type:"Retorno almoço (manual)"});
+    setRecords(items=>[...items.filter(item=>!(item.at.slice(0,10)===manualDate&&item.type.includes("manual"))),...additions].sort((a,b)=>a.at.localeCompare(b.at)));
+    toast("Horários personalizados salvos");
+  };
+  const editPunch=(item:Punch)=>{const current=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});const value=window.prompt(`Novo horário para ${item.type}`,current);if(!value||!/^[0-2]\d:[0-5]\d$/.test(value))return;const nextAt=new Date(`${item.at.slice(0,10)}T${value}:00`).toISOString();setRecords(items=>items.map(row=>row.id===item.id?{...row,at:nextAt}:row));toast("Horário atualizado")};
+  const exportCsv=()=>{const csv=["Data;Horário;Evento",...records.map(r=>`${new Date(r.at).toLocaleDateString("pt-BR")};${new Date(r.at).toLocaleTimeString("pt-BR")};${r.type}`)].join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="cartao-de-ponto.csv";a.click();URL.revokeObjectURL(a.href);toast("Relatório exportado")};
+  const week=["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"].map((label,index)=>({label,hours:monthRecords.filter(r=>new Date(r.at).getDay()===(index+1)%7).length*2}));
+  return <section className="time-control-page">
+    <article className="time-schedule-card"><div><span className="eyebrow">PLANEJAMENTO DO BANCO</span><h2>Meta de horas extras</h2><p>Defina o total de horas e até quando deseja cumprir a meta.</p></div><div className="time-schedule-fields"><label>Meta de banco (h)<input type="number" min="0" step="0.5" value={bankTarget} onChange={e=>setBankTarget(e.target.value)}/></label><label>Data limite<input type="date" value={bankDeadline} onChange={e=>setBankDeadline(e.target.value)}/></label><div className="time-schedule-result"><strong>{bankLeft.toFixed(1)}h</strong><span>faltam · {deadlineDays} dia(s) restantes</span></div></div></article>
+    <article className="time-bank-target"><div><span className="eyebrow">META DO BANCO DE HORAS</span><h2>Planeje suas horas extras</h2><p>Defina sua meta personalizada e acompanhe automaticamente o saldo.</p></div><div className="time-bank-form"><label>Meta (horas)<input type="number" min="0" max="300" step="0.5" value={bankTarget} onChange={e=>setBankTarget(e.target.value)}/></label><button className="primary" onClick={()=>toast(`Meta de ${bankTarget}h salva`)}><Save/> Salvar meta</button><strong>Saldo: {Math.min(Number(bankTarget),monthRecords.length*2).toFixed(1)}h · Falta: {Math.max(0,Number(bankTarget)-monthRecords.length*2).toFixed(1)}h</strong></div></article>
+    <article className="time-chart-card"><div><span className="eyebrow">ANÁLISE DA JORNADA</span><h2>Horas trabalhadas na semana</h2><p>Compare as marcações com sua meta diária personalizada.</p></div><div className="time-bars">{week.map(item=><div className="time-bar-col" key={item.label}><span>{item.hours?`${item.hours}h`:"—"}</span><i style={{height:`${Math.max(8,Math.min(100,item.hours/8*100))}%`}}/><small>{item.label}</small></div>)}</div></article>
+    <div className="time-control-hero"><div><span className="eyebrow">GESTÃO DE JORNADA</span><h1>Controle de ponto</h1><p>Registre a jornada e acompanhe quanto falta para concluir o expediente.</p></div><div className="time-live"><Clock3/><strong>{remainingLabel}</strong><small>tempo restante do expediente</small></div></div>
+    <div className="time-kpis"><article><small>Hoje</small><b>{todayRecords.length?`${todayRecords.length} marcações` : "Nenhuma marcação"}</b><span>Jornada em andamento</span></article><article><small>Horas no mês</small><b>{(monthRecords.length*2).toFixed(1).replace(".",",")}h</b><span>Apuração automática</span></article><article><small>Banco de horas</small><b className="ok-text">+02:40</b><span>Saldo acumulado</span></article><article><small>Pendências</small><b>{records.length?0:1}</b><span>Sem inconsistências</span></article></div>
+    <div className="time-grid"><article className="time-punch-card"><div className="time-punch-ring"><Clock3/></div><span className="eyebrow">PRÓXIMA MARCAÇÃO</span><h2>{nextType}</h2><p>Registre agora ou informe manualmente os horários em que entrou e saiu.</p><button className="primary time-punch-button" onClick={punch}><Clock3/> Registrar ponto</button><div className="time-manual"><label>Data<input type="date" value={manualDate} onChange={e=>setManualDate(e.target.value)}/></label><label>Entrada<input type="time" value={entryTime} onChange={e=>setEntryTime(e.target.value)}/></label><label>Saída<input type="time" value={exitTime} onChange={e=>setExitTime(e.target.value)}/></label><button className="secondary" onClick={saveManual}>Salvar horários</button></div><small className="time-secure"><ShieldCheck/> Registro protegido no histórico do usuário</small></article><article className="time-summary-card"><div className="section-title"><div><span className="eyebrow">JORNADA DE HOJE</span><h2>Resumo do dia</h2></div><span className="status-pill ok">Em aberto</span></div><div className="time-timeline">{todayRecords.length?todayRecords.map(item=><div key={item.id}><i/><span><b>{item.type}</b><small>{new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</small></span></div>):<div className="empty-state"><Clock3/><span>Nenhuma marcação hoje</span></div>}</div></article></div>
+    <article className="time-report-card"><div><span className="eyebrow">CONFIGURAÇÃO DA JORNADA</span><h2>Metas, banco e avisos</h2><p>Personalize meta diária, horário previsto, fechamento do banco e e-mail de lembrete.</p></div><div className="time-settings"><label>Meta diária (h)<input type="number" min="1" max="24" value={targetHours} onChange={e=>setTargetHours(e.target.value)}/></label><label>Banco fecha dia<input type="number" min="1" max="31" value={closeDay} onChange={e=>setCloseDay(e.target.value)}/></label><label>Início previsto<input type="time" value={scheduleStart} onChange={e=>setScheduleStart(e.target.value)}/></label><label>Fim previsto<input type="time" value={scheduleEnd} onChange={e=>setScheduleEnd(e.target.value)}/></label><label className="wide">E-mail para notificações<input type="email" placeholder="colaborador@empresa.com.br" value={noticeEmail} onChange={e=>setNoticeEmail(e.target.value)}/></label><button className="secondary" onClick={()=>toast(noticeEmail?`Avisos configurados para ${noticeEmail}`:"Informe um e-mail para ativar os avisos",!noticeEmail)}><Bell/> Ativar avisos por e-mail</button></div></article>
+    <article className="time-report-card"><div><span className="eyebrow">RELATÓRIOS</span><h2>Cartão de ponto e apurações</h2><p>Exporte o histórico, horas extras e saldo do banco.</p></div><div className="time-report-actions"><button className="secondary" onClick={exportCsv}><FileDown/> Exportar CSV</button><button className="secondary" onClick={()=>toast("Relatório mensal preparado") }><BarChart3/> Relatório mensal</button><button className="secondary" onClick={()=>toast("Cartão de ponto aberto") }><FileText/> Cartão de ponto</button></div></article>
+    <div className="time-footnote"><ShieldCheck/> Módulo preparado para jornadas, escalas e Portaria 671. Integração de colaboradores e aprovação depende da configuração administrativa.</div>
+  </section>;
+}
+
 function Reports({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [format, setFormat] = useState("xlsx"),
     [type, setType] = useState("completo");
@@ -1202,6 +1552,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [cndPage,setCndPage]=useState(1),
     [selectedCnds,setSelectedCnds]=useState<number[]>([]),
     [confirmCndBatch,setConfirmCndBatch]=useState(false),
+    [recognitionResults,setRecognitionResults]=useState<any[]>([]),
     [form, setForm] = useState<any>(null),
     [viewingCertificate,setViewingCertificate]=useState<any>(null),
     [pendingDelete,setPendingDelete]=useState<any>(null),
@@ -1245,7 +1596,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
       if (cndPdf) {
         const pdfBody = new FormData();
         pdfBody.set("pdf", cndPdf);
-        await api(`/api/certidoes/${saved.id || form.id}/pdf`, {
+        await api(`/api/cnd-pdf?id=${saved.id || form.id}`, {
           method: "POST",
           body: pdfBody,
         });
@@ -1260,14 +1611,24 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
   }
   async function recognizePdf(files?: FileList | null) {
     if (!files?.length) return;
-    let imported=0;
+    let imported=0;const results:any[]=[];
     for(const file of Array.from(files)){
       const body=new FormData(); body.set("pdf",file);
-      try{await api<any>("/api/certidoes/recognize",{method:"POST",body});imported++}
+      try{const result=await api<any>("/api/certidoes/recognize",{method:"POST",body});
+        results.push({...result,fileName:file.name});imported++}
       catch(error){toast(`${file.name}: ${(error as Error).message}`,true)}
     }
+    setRecognitionResults(results);
+    setItems(current=>{
+      const documents=results.map(result=>result.document).filter(Boolean);
+      return [...documents,...current.filter(item=>!documents.some(document=>Number(document.id)===Number(item.id)))];
+    });
     if(imported)toast(`${imported} certidão(ões) importada(s) e vinculada(s) pelo CNPJ`);
-    load();
+    await load();
+    setItems(current=>{
+      const documents=results.map(result=>result.document).filter(Boolean);
+      return [...documents,...current.filter(item=>!documents.some(document=>Number(document.id)===Number(item.id)))];
+    });
     if (smartInput.current) smartInput.current.value = "";
   }
   async function saveConfig() {
@@ -1319,7 +1680,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
     <>
       <Head
         tag="REGULARIDADE FISCAL"
-        title="Certidões CND"
+        title="Regularidade CND"
         text="Controle vencimentos, situação fiscal, PDFs e histórico das certidões."
         action={
           <div className="cnd-head-actions">
@@ -1343,6 +1704,27 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </div>
         }
       />
+      <section className="cnd-command-hero">
+        <div><i><ShieldCheck/></i><span><small>PAINEL DE REGULARIDADE</small><h2>Risco fiscal visível antes do vencimento</h2>
+          <p>Acompanhe certidões, PDFs, situações positivas e alertas programados por empresa.</p></span></div>
+        <div className="cnd-risk-summary">
+          <span className="critical"><small>Vencidas</small><b>{stats.vencidas||0}</b></span>
+          <span className="warning"><small>Vencendo</small><b>{stats.vencendo||0}</b></span>
+          <span className="safe"><small>Negativas</small><b>{stats.negativas||0}</b></span>
+        </div>
+      </section>
+      {recognitionResults.length>0&&<section className="cnd-recognition-results">
+        <header><div><Sparkles/><span><b>Leitura integral concluída</b><small>Campos identificados em todas as páginas processadas</small></span></div>
+          <button onClick={()=>setRecognitionResults([])}><X/></button></header>
+        <div>{recognitionResults.map((result,index)=><article key={`${result.fileName}-${index}`}>
+          <i><FileText/></i><span><b>{result.fileName}</b><small>{result.recognized?.razaoSocial||"Empresa ativa"}</small></span>
+          <dl><div><dt>Número</dt><dd>{result.recognized?.numero||"Revisão necessária"}</dd></div>
+            <div><dt>Emissão</dt><dd>{date(result.recognized?.dataEmissao)}</dd></div>
+            <div><dt>Validade</dt><dd>{date(result.recognized?.dataValidade)}</dd></div>
+            <div><dt>Páginas</dt><dd>{result.recognized?.totalPages||"Todas"}</dd></div></dl>
+          <em className={result.missing?.length?"warning":"ok"}>{result.missing?.length?`Revisar: ${result.missing.join(", ")}`:"Preenchimento completo"}</em>
+        </article>)}</div>
+      </section>}
       <div className="cnd-stats">
         {[
           ["Total de CNDs", stats.total || 0, FileText, "blue"],
@@ -1365,21 +1747,21 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <Panel title="Vencimento próximo">
           {items.filter((item)=>{
             if(!item.data_validade) return false;
-            const days=Math.ceil((new Date(`${item.data_validade}T23:59:59`).getTime()-Date.now())/86400000);
-            return days>=0 && days<=Number(cndConfig?.prazo_alerta||10);
+            const days=daysUntil(item.data_validade);
+            return days!=null&&days>=0 && days<=Number(cndConfig?.prazo_alerta||10);
           }).slice(0,5).map(item=><div className="cnd-overview-row" key={item.id}>
-            <b>{item.empresa_nome}</b><span>{typeLabel[item.tipo]||item.tipo}</span>
+            <b>{typeLabel[item.tipo]||item.tipo}</b><span>{item.empresa_nome}</span>
             <small>Validade: {date(item.data_validade)}</small>
           </div>)}
           {!items.some((item)=>{
-            const days=item.data_validade?Math.ceil((new Date(`${item.data_validade}T23:59:59`).getTime()-Date.now())/86400000):-1;
-            return days>=0&&days<=Number(cndConfig?.prazo_alerta||10);
+            const days=daysUntil(item.data_validade);
+            return days!=null&&days>=0&&days<=Number(cndConfig?.prazo_alerta||10);
           }) && <p className="muted">Nenhuma certidão próxima do vencimento</p>}
         </Panel>
         <Panel title="Certidões positivas">
           {items.filter(item=>item.status==="positiva").slice(0,5).map(item=>
-            <div className="cnd-overview-row" key={item.id}><b>{item.empresa_nome}</b>
-              <span>{typeLabel[item.tipo]||item.tipo}</span><small>Validade: {date(item.data_validade)}</small>
+            <div className="cnd-overview-row" key={item.id}><b>{typeLabel[item.tipo]||item.tipo}</b>
+              <span>{item.empresa_nome}</span><small>Validade: {date(item.data_validade)}</small>
             </div>)}
           {!items.some(item=>item.status==="positiva")&&<p className="muted">Nenhuma certidão positiva</p>}
         </Panel>
@@ -1408,13 +1790,7 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
         <div className="cnd-grid">
           {visiblePage.length ? (
             visiblePage.map((item) => {
-              const days = item.data_validade
-                ? Math.ceil(
-                    (new Date(`${item.data_validade}T23:59:59`).getTime() -
-                      Date.now()) /
-                      86400000,
-                  )
-                : null;
+              const days = daysUntil(item.data_validade);
               const expired = days != null && days < 0;
               return (
                 <article
@@ -1439,8 +1815,8 @@ function Certificates({ toast }: { toast: (s: string, e?: boolean) => void }) {
                           : "Positiva com efeitos"}
                     </span>
                   </header>
-                  <small>{typeLabel[item.tipo] || item.tipo}</small>
-                  <h3>{item.empresa_nome}</h3>
+                  <small>{item.empresa_nome}</small>
+                  <h3>{typeLabel[item.tipo] || item.tipo}</h3>
                   <p>{item.numero_certidao || "Sem número informado"}</p>
                   <dl>
                     <div>
@@ -1768,18 +2144,175 @@ function TurnstileBox({
   );
 }
 
+function SefazControlCenterLegacy({toast}:{toast:(s:string,e?:boolean)=>void}){
+  const [data,setData]=useState<any>(null),[file,setFile]=useState<File|null>(null),
+    [password,setPassword]=useState(""),[busy,setBusy]=useState(false),
+    [section,setSection]=useState<"certificate"|"policy"|"rules">("certificate");
+  const load=useCallback(async()=>{
+    try{
+      const me=await api<any>("/api/auth/me");
+      const company=me.user.empresa_ativa;
+      const companyId=Number(company?.empresa_id||company?.id||me.user.empresa_ativa_id);
+      if(!companyId)throw new Error("Selecione uma empresa no topo do sistema");
+      const [modules,certificate,sync]=await Promise.all([
+        api<any>(`/api/empresas/${companyId}/modulos`),
+        api<any>(`/api/empresas/${companyId}/certificado`),
+        api<any>("/api/sefaz/sync-state"),
+      ]);
+      setData({company,companyId,modules,certificate,sync,admin:Boolean(me.user.is_super_admin||me.user.role==="admin")});
+    }catch(error){toast((error as Error).message,true)}
+  },[toast]);
+  useEffect(()=>{load()},[load]);
+  async function saveCertificate(){
+    if(!file||!password)return toast("Selecione o PFX/P12 e informe a senha",true);
+    setBusy(true);
+    try{
+      const body=new FormData();body.set("certificate",file);body.set("password",password);
+      await api(`/api/empresas/${data.companyId}/certificado`,{method:"POST",body});
+      setFile(null);setPassword("");toast("Certificado validado e protegido no cofre da empresa");await load();
+    }catch(error){toast((error as Error).message,true)}finally{setBusy(false)}
+  }
+  async function removeCertificate(){
+    setBusy(true);
+    try{await api(`/api/empresas/${data.companyId}/certificado`,{method:"DELETE"});
+      toast("Certificado removido");await load()}catch(error){toast((error as Error).message,true)}finally{setBusy(false)}
+  }
+  async function saveProtection(){
+    setBusy(true);
+    try{
+      const config=data.modules.modulos.sefaz;
+      await api(`/api/empresas/${data.companyId}/modulos`,{method:"PUT",body:{
+        modulo:"sefaz",configuracao:config,ativo:config.ativo!==false,
+      }});
+      toast("Proteções e preferências SEFAZ salvas");
+    }catch(error){toast((error as Error).message,true)}finally{setBusy(false)}
+  }
+  if(!data)return <section className="sefaz-control loading-card"><RefreshCw className="spin"/><span>Carregando cofre e proteções SEFAZ...</span></section>;
+  const config=data.modules.modulos.sefaz,state=data.sync.state||{},locked=state.locked_until&&new Date(state.locked_until)>new Date();
+  const certificate=data.certificate?.certificado;
+  return <section className="sefaz-control">
+    <header><div><span className="eyebrow">CENTRO DE CONTROLE</span><h2>Segurança, certificado e consumo protegido</h2>
+      <p>Configuração da empresa ativa: <b>{data.company?.nome}</b></p></div>
+      <span className={`sefaz-health ${locked?"waiting":"protected"}`}><i/>{locked?"Em espera segura":"Proteções ativas"}</span></header>
+    <div className="sefaz-control-kpis">
+      <article><ShieldCheck/><span><small>Certificado A1</small><b>{data.certificate?.configurado?"Validado":"Não configurado"}</b></span></article>
+      <article><Network/><span><small>Último NSU</small><b>{state.ult_nsu||"0"}</b></span></article>
+      <article><Activity/><span><small>Consultas individuais / 1h</small><b>{data.sync.individualQueriesLastHour||0} de 18</b></span></article>
+      <article><RefreshCw/><span><small>Estado da fila</small><b>{String(state.last_status||"Não iniciada").replaceAll("_"," ")}</b></span></article>
+    </div>
+    <nav className="sefaz-compact-nav">
+      <button className={section==="certificate"?"active":""} onClick={()=>setSection("certificate")}><ShieldCheck/><span><b>Certificado A1</b><small>Cofre e validade</small></span></button>
+      <button className={section==="policy"?"active":""} onClick={()=>setSection("policy")}><Activity/><span><b>Consulta segura</b><small>UF, estratégia e limites</small></span></button>
+      <button className={section==="rules"?"active":""} onClick={()=>setSection("rules")}><Network/><span><b>Proteções</b><small>Fila, NSU e bloqueios</small></span></button>
+    </nav>
+    <div className="sefaz-control-grid">
+      {section==="certificate"&&<section className="sefaz-vault"><header><i><ShieldCheck/></i><span><b>Certificado digital A1</b>
+        <small>{certificate?`${certificate.arquivo_nome} · válido até ${date(certificate.validade_fim)}`:
+          "Anexe o PFX/P12 da empresa. CNPJ e validade serão conferidos antes de salvar."}</small></span></header>
+        {data.admin?<div className="company-certificate-fields">
+          <label><input type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={e=>setFile(e.target.files?.[0]||null)}/>
+            <span>{file?.name||"Selecionar PFX/P12"}</span></label>
+          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Senha do certificado"/>
+          <button disabled={busy} onClick={saveCertificate}>{busy?<RefreshCw className="spin"/>:<Save/>} Validar e salvar</button>
+          {data.certificate?.configurado&&<button className="danger" disabled={busy} onClick={removeCertificate}><Trash2/> Remover</button>}
+        </div>:<div className="hub-readonly"><ShieldCheck/> Somente administradores podem substituir o certificado.</div>}
+        <p><ShieldCheck/> Arquivo e senha ficam criptografados; o navegador não recebe o conteúdo após o envio.</p>
+      </section>}
+      {section==="policy"&&<section className="sefaz-policy"><header><i><Activity/></i><span><b>Política preventiva</b>
+        <small>Limites conservadores para Distribuição DF-e</small></span></header>
+        <div className="sefaz-policy-fields">
+          <label>UF autora<input maxLength={2} value={config.uf||"MG"} onChange={e=>setData({...data,modules:{...data.modules,
+            modulos:{...data.modules.modulos,sefaz:{...config,uf:e.target.value.toUpperCase()}}}})}/></label>
+          <label>Estratégia<select value={config.modo_consulta||"nsu"} onChange={e=>setData({...data,modules:{...data.modules,
+            modulos:{...data.modules.modulos,sefaz:{...config,modo_consulta:e.target.value}}}})}>
+            <option value="nsu">distNSU sequencial</option><option value="chave">Chaves individuais</option></select></label>
+          <label>Limite interno / hora<input type="number" min="1" max="18" value={config.limite_chaves_hora??18}
+            onChange={e=>setData({...data,modules:{...data.modules,modulos:{...data.modules.modulos,
+              sefaz:{...config,limite_chaves_hora:Math.min(18,Math.max(1,Number(e.target.value)))}}}})}/></label>
+          <label>Máximo por lote<input type="number" min="1" max="50" value={config.lote_maximo??50}
+            onChange={e=>setData({...data,modules:{...data.modules,modulos:{...data.modules.modulos,
+              sefaz:{...config,lote_maximo:Math.min(50,Math.max(1,Number(e.target.value)))}}}})}/></label>
+        </div>
+        {data.admin&&<button className="save-policy" disabled={busy} onClick={saveProtection}><Save/> Salvar política</button>}
+      </section>}
+    </div>
+    {locked&&<div className="sefaz-lock-alert"><Bell/><span><b>Fila em pausa preventiva</b>
+      <small>Nova tentativa liberada após {new Date(state.locked_until).toLocaleString("pt-BR")}. Antecipar a chamada pode reiniciar a contagem da SEFAZ.</small></span></div>}
+    {section==="rules"&&<div className="sefaz-guardrails">
+      {[
+        ["NSU sempre crescente","Cada chamada continua exatamente do ultNSU devolvido; o sistema não reinicia em zero.",ShieldCheck],
+        ["Uma fila por CNPJ","Bloqueio transacional impede duas sincronizações simultâneas para a mesma empresa.",Network],
+        ["cStat 137: pausa de 1 hora","Quando não há documentos novos, nenhuma nova chamada distNSU é feita durante 60 minutos.",RefreshCw],
+        ["cStat 656: pausa integral","Após Consumo Indevido, aguarda 60 minutos completos; novas tentativas não encurtam o prazo.",Bell],
+        ["Margem abaixo do limite oficial","Chaves individuais limitadas internamente a 18/h, abaixo das 20/h informadas pela SEFAZ.",Activity],
+        ["Sem looping de erros","Falhas repetidas entram em espera e ficam registradas, evitando reenvio contínuo pelo certificado.",X],
+      ].map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span></article>)}
+    </div>}
+    <footer><ShieldCheck/><p><b>Atenção:</b> outras aplicações que consultem o mesmo CNPJ também devem compartilhar a sequência do último NSU. A Haixel protege as chamadas feitas pela plataforma, mas não controla softwares externos.</p></footer>
+  </section>
+}
+
+function SefazControlCenter({toast}:{toast:(s:string,e?:boolean)=>void}){
+  const [data,setData]=useState<any>(null);
+  const load=useCallback(async()=>{
+    try{
+      const me=await api<any>("/api/auth/me");
+      const sync=await api<any>("/api/sefaz/sync-state");
+      setData({company:me.user.empresa_ativa,sync});
+    }catch(error){toast((error as Error).message,true)}
+  },[toast]);
+  useEffect(()=>{load()},[load]);
+  if(!data)return <section className="sefaz-modern loading-card"><RefreshCw className="spin"/><span>Preparando conexão fiscal...</span></section>;
+  const state=data.sync?.state||{},waiting=state.locked_until&&new Date(state.locked_until)>new Date();
+  return <section className="sefaz-modern">
+    <header>
+      <div className="sefaz-modern-title"><i><Network/></i><span><small>CONEXÃO FISCAL DA EMPRESA</small>
+        <h2>Centro de operações SEFAZ</h2><p>{data.company?.nome||"Empresa ativa"} · {data.company?.cnpj||"CNPJ ativo"}</p></span></div>
+      <span className={`sefaz-modern-health ${waiting?"waiting":""}`}><i/>
+        {waiting?"Retomada automática programada":"Conexão protegida"}</span>
+    </header>
+    <div className="sefaz-modern-command">
+      <div><span className="eyebrow">DISTRIBUIÇÃO NACIONAL DF-e</span><h3>Captura fiscal contínua, segura e rastreável.</h3>
+        <p>A Haixel preserva a sequência oficial, respeita as pausas da SEFAZ e organiza cada documento no cofre da empresa.</p></div>
+      <div className="sefaz-command-stats">
+        <span><small>Último NSU</small><b>{state.ult_nsu||state.ultimo_nsu||"—"}</b></span>
+        <span><small>Fila</small><b>{waiting?"Protegida":"Livre"}</b></span>
+        <span><small>Ambiente</small><b>{data.company?.ambiente==="homologacao"?"Homologação":"Produção"}</b></span>
+      </div>
+    </div>
+    <div className="sefaz-modern-flow">
+      {[["01","Receber documentos","Busca documentos emitidos pela empresa e contra o CNPJ.",CloudDownload],
+        ["02","Consultar uma chave","Localize NF-e ou CT-e informando a chave de acesso.",Search],
+        ["03","Organizar no cofre","Documentos válidos entram automaticamente na Central de Documentos.",Files]]
+        .map(([step,title,text,Icon]:any)=><article key={step}><em>{step}</em><i><Icon/></i>
+          <span><b>{title}</b><small>{text}</small></span></article>)}
+    </div>
+    <div className="sefaz-modern-action">
+      <span><ShieldCheck/><p><b>Proteção automática administrada pela Haixel</b>
+        <small>Use “Buscar na SEFAZ” no Monitor DF-e para receber documentos por período e “Consultar e importar” para chaves específicas.</small></p></span>
+    </div>
+    {waiting&&<div className="sefaz-modern-wait"><Bell/><span><b>Sincronização em espera segura</b>
+      <small>A Haixel retomará automaticamente no horário permitido, sem reiniciar a sequência.</small></span></div>}
+  </section>;
+}
+
 function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   const [key, setKey] = useState(()=>localStorage.getItem("cordeiro.sefaz.queue")||""),
     [kind, setKind] = useState("nfe"),
     [provider] = useState("sefaz"),
     [results, setResults] = useState<any[]>([]),
+    [queryHistory,setQueryHistory]=useState<any[]>(()=>{try{return JSON.parse(localStorage.getItem("cordeiro.sefaz.query-history")||"[]")}catch{return []}}),
+    [historyFrom,setHistoryFrom]=useState(""),[historyTo,setHistoryTo]=useState(""),
     [queueProgress,setQueueProgress]=useState({done:0,total:0}),
+    [hubSection,setHubSection]=useState<"connection"|"query"|"monitor">("connection"),
     [busy, setBusy] = useState(false),
     [captchaToken, setCaptchaToken] = useState(""),
     [sitekey, setSitekey] = useState("0x4AAAAAAD9QFuEXmAjhoAuE"),
     [sitekeyInput, setSitekeyInput] = useState("0x4AAAAAAD9QFuEXmAjhoAuE");
   const keyInput = useRef<HTMLTextAreaElement>(null);
   useEffect(()=>{localStorage.setItem("cordeiro.sefaz.queue",key)},[key]);
+  useEffect(()=>{localStorage.setItem("cordeiro.sefaz.query-history",JSON.stringify(queryHistory.slice(-500)))},[queryHistory]);
+  const visibleHistory=queryHistory;
   const informedKeys=[...new Set(key.split(/[\s,;]+/).map(value=>value.replace(/\D/g,"")).filter(Boolean))];
   const safeQueriesPerHour=18;
   const estimatedMinutes=Math.ceil(informedKeys.length/safeQueriesPerHour*60);
@@ -1809,8 +2342,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   }
   const openConnector = (target: string) => {
     if (target === "query") {
-      keyInput.current?.focus();
-      keyInput.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHubSection("query");
+      window.setTimeout(()=>keyInput.current?.focus(),80);
       return;
     }
     if (target === "portal") {
@@ -1821,9 +2354,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
       );
       return;
     }
-    document
-      .getElementById(target)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHubSection(target==="certificate-monitor"?"monitor":"connection");
   };
   useEffect(() => {
     api<any>("/api/meudanfe/config")
@@ -1918,7 +2449,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
               };
             }
           })()];
-        collected.push(...responses);
+        const stamped=responses.map(item=>({...item,consultedAt:new Date().toISOString()}));
+        collected.push(...stamped);setQueryHistory(current=>[...current,...stamped].slice(-500));
         setResults([...collected]);
         setQueueProgress({done:index+1,total:keys.length});
         const remaining=keys.slice(index+1);
@@ -1987,52 +2519,44 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
   return (
     <>
       <Head
-        tag="DOCUMENTOS OFICIAIS"
-        title="SEFAZ e NFS-e Nacional"
-        text="Consulte chaves e baixe XML usando as integrações configuradas para a empresa."
+        tag="HUB FISCAL"
+        title="Integrações e documentos oficiais"
+        text="Conectores, certificado, consultas e monitoramento organizados em um único centro operacional."
       />
-      <section className="sefaz-command">
-        <div className="sefaz-command-icon">
-          <CloudDownload />
-        </div>
-        <div>
-          <span className="eyebrow">HUB DE INTEGRAÇÕES FISCAIS</span>
-          <h2>Consulta segura e sincronização automática</h2>
-          <p>
-            Consulte chaves avulsas ou importe uma planilha. Somente XMLs completos são integrados;
-            qualquer inconsistência permanece registrada no log.
-            retorno e integra os documentos automaticamente.
-          </p>
-        </div>
-        <div className="sefaz-command-status">
-          <span>
-            <i /> mTLS protegido
-          </span>
-          <span>
-            <i /> Integração ativa
-          </span>
-        </div>
+      <section className="integration-hub-hero">
+        <div className="integration-hub-copy"><i><Network/></i><div><span className="eyebrow">OPERAÇÃO CONECTADA</span>
+          <h2>Seu ecossistema fiscal, simples de operar</h2>
+          <p>Acesse os serviços oficiais, acompanhe a proteção do certificado e envie consultas sem navegar por telas dispersas.</p></div></div>
+        <div className="integration-live"><span><i/> Ambiente protegido</span><small>Fila, NSU e limites preventivos ativos</small></div>
       </section>
-      <section className="sefaz-flow">
-        {[
-          ["01","Carregue as chaves","Cole manualmente ou importe uma planilha Excel/CSV."],
-          ["02","Validação oficial","A consulta mTLS busca o XML diretamente na SEFAZ."],
-          ["03","Importação segura","Somente documentos completos entram na Central."],
-        ].map(([number,title,text])=><article key={number}><b>{number}</b><span><strong>{title}</strong><small>{text}</small></span></article>)}
-      </section>
-      <div className="fiscal-grid">
-        <Panel title="Consulta e importação de documentos">
+      <nav className="integration-launchpad">
+        <button className={hubSection==="connection"?"active":""} onClick={()=>setHubSection("connection")}><i className="green"><Network/></i><span><b>Conexão fiscal</b><small>Captura, NSU e sincronização</small></span><ArrowUpRight/></button>
+        <button className={hubSection==="query"?"active":""} onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Consulta e importação</b><small>Chave de NF-e ou CT-e</small></span><ArrowUpRight/></button>
+        <button className={hubSection==="monitor"?"active":""} onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Radar nacional</b><small>Todos os estados sem repetição</small></span><ArrowUpRight/></button>
+        <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
+      </nav>
+      {hubSection==="connection"&&<div id="sefaz-security" className="integration-stage"><SefazControlCenter toast={toast}/></div>}
+      {hubSection==="query"&&<div className="fiscal-grid integration-query-module integration-stage">
+        <Panel>
+          <header className="integration-query-head">
+            <div><i><Search/></i><span><small>ESTAÇÃO DE CONSULTA</small><h2>Consulta e importação de documentos</h2>
+              <p>Localize documentos oficiais pela chave, valide a origem e incorpore o XML à empresa ativa.</p></span></div>
+            <aside><span><i/> SEFAZ conectada</span><b>{informedKeys.length.toString().padStart(2,"0")}</b><small>chaves na fila</small></aside>
+          </header>
+          <div className="integration-query-workspace">
+            <aside className="integration-query-steps">
+              <span className="active"><em>01</em><b>Selecione</b><small>NF-e ou CT-e</small></span>
+              <span className={informedKeys.length?"active":""}><em>02</em><b>Informe</b><small>Chaves ou planilha</small></span>
+              <span className={results.length?"active":""}><em>03</em><b>Receba</b><small>Validação e XML</small></span>
+            </aside>
           <div className="query-box">
-            <label>
-              Documento
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="nfe">NF-e</option>
-                <option value="cte">CT-e</option>
-              </select>
-            </label>
             <div className="query-source-note"><ShieldCheck/><span><small>Consulta protegida pela fonte oficial</small>
-              <b>SEFAZ · Distribuição DF-e</b></span></div>
-            <label>
+              <b>SEFAZ · Distribuição DF-e</b><em><i/> Ambiente protegido</em></span>
+              <div className="query-kind-toggle" aria-label="Tipo de documento">
+                <button type="button" className={kind==="nfe"?"active":""} aria-pressed={kind==="nfe"} onClick={()=>setKind("nfe")}>NF-e</button>
+                <button type="button" className={kind==="cte"?"active":""} aria-pressed={kind==="cte"} onClick={()=>setKind("cte")}>CT-e</button>
+              </div></div>
+            <label className="query-key-entry">
               Chave de acesso
               <textarea
                 ref={keyInput}
@@ -2048,31 +2572,33 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                 chave(s) informada(s)
               </small>
             </label>
-            <label className="spreadsheet-import">
-              <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
-              <span className="spreadsheet-button"><FileText/><span><b>Importar planilha</b><small>Carregar lista de chaves</small></span><UploadCloud/></span>
-              <small>Excel, CSV ou TXT · todas as abas serão verificadas</small>
-            </label>
+            <div className="query-actions">
+              <label className="spreadsheet-import" title="Importar Excel, CSV ou TXT">
+                <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
+                <span className="spreadsheet-button compact" aria-label="Importar Excel, CSV ou TXT"><ExcelMark/></span>
+              </label>
+              <button className="primary" onClick={consult} disabled={busy}>
+                {busy ? <RefreshCw className="spin" /> : <CloudDownload />}<span>Consultar e importar</span>
+              </button>
+            </div>
             {informedKeys.length>0&&<div className="sefaz-queue-estimate">
               <ShieldCheck/><span><b>Fila protegida · {safeQueriesPerHour} consultas por hora</b>
                 <small>Estimativa: {durationLabel(estimatedMinutes)} · processamento sequencial com retomada</small></span>
             </div>}
-            <button className="primary" onClick={consult} disabled={busy}>
-              {busy ? <RefreshCw className="spin" /> : <CloudDownload />}Consultar e importar
-            </button>
             {busy&&queueProgress.total>0&&<div className="sefaz-queue-progress"><span style={{width:`${queueProgress.done/queueProgress.total*100}%`}}/>
               <small>{queueProgress.done} de {queueProgress.total} processada(s)</small></div>}
           </div>
-          {results.length > 0 && (
+          </div>
+          {(visibleHistory.length > 0 || results.length > 0) && (
             <div className="batch-query-results">
               <header>
-                <b>Log de validação e importação</b>
+                <b>Log de documentos importados</b>
                 <span>
-                  {results.filter((item) => item.ok).length}/{results.length}{" "}
-                  localizados
+                  {visibleHistory.filter((item) => item.ok).length}/{visibleHistory.length}{" "}
+                  importados
                 </span>
               </header>
-              {results.map((item) => (
+              {visibleHistory.map((item) => (
                 <div
                   className={`consult-result ${item.ok ? "" : "failed"}`}
                   key={item.key}
@@ -2081,15 +2607,15 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
                   <div>
                     <b>
                       {item.ok
-                        ? "Documento localizado"
-                        : "Não foi possível consultar"}
+                        ? "Documento importado para a Central"
+                        : "Documento não importado"}
                     </b>
                     <small>
                       {item.ok
                         ? item.data?.status ||
                           item.data?.situacao ||
                           "Consulta concluída"
-                        : item.error}{" "}
+                        : `Motivo: ${item.error||"A fonte fiscal não retornou o documento"}`}{" "}
                       {item.provider ? `· ${item.provider} ` : ""}· chave{" "}
                       {item.key.slice(0, 6)}…{item.key.slice(-6)}
                     </small>
@@ -2108,8 +2634,8 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </div>
           )}
         </Panel>
-      </div>
-      <div className="official-note">
+      </div>}
+      {hubSection==="connection"&&<div className="official-note integration-stage">
         <ShieldCheck />
         <div>
           <b>Integração segura por empresa</b>
@@ -2119,10 +2645,10 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             são expostas ao navegador.
           </p>
         </div>
-      </div>
-      <div id="certificate-monitor">
+      </div>}
+      {hubSection==="monitor"&&<div id="certificate-monitor" className="integration-stage">
         <FiscalOperations />
-      </div>
+      </div>}
     </>
   );
 }
@@ -2394,17 +2920,12 @@ function SefazBatch({ toast }: { toast: (s: string, e?: boolean) => void }) {
 
 function FiscalOperations() {
   const [monitor, setMonitor] = useState<any>(null),
-    [certs, setCerts] = useState<any[]>([]),
-    [busy, setBusy] = useState(true);
+    [busy, setBusy] = useState(true),
+    [environment,setEnvironment]=useState("todos");
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const [m, c] = await Promise.all([
-        api<any>("/api/sefaz-monitor"),
-        api<any>("/api/sefaz/cert/listar"),
-      ]);
-      setMonitor(m);
-      setCerts(Array.isArray(c) ? c : c.certificados || []);
+      setMonitor(await api<any>("/api/sefaz-monitor"));
     } catch {
     } finally {
       setBusy(false);
@@ -2413,32 +2934,40 @@ function FiscalOperations() {
   useEffect(() => {
     load();
   }, [load]);
-  const visible = (monitor?.ufs || []).slice(0, 12);
+  const stateMap=new Map<string,any>();
+  for(const raw of monitor?.ufs||[]){
+    const item={...raw,uf:String(raw.uf||"").trim().toUpperCase(),env:String(raw.env||"").trim()};
+    const current=stateMap.get(item.uf);
+    if(item.uf&&(!current||/produ/i.test(item.env)))stateMap.set(item.uf,item);
+  }
+  const services=[...stateMap.values()].sort((a,b)=>a.uf.localeCompare(b.uf)) as any[];
+  const environments=[...new Set(services.map(item=>item.env).filter(Boolean))];
+  const visible=environment==="todos"?services:services.filter(item=>item.env===environment);
+  const onlineServices=visible.filter((item:any)=>item.ok).length;
+  const offlineServices=visible.length-onlineServices;
   return (
-    <section className="fiscal-ops">
+    <section className="fiscal-ops sefaz-national-monitor">
       <div className="section-title">
-        <div>
-          <span className="eyebrow">OPERAÇÃO FISCAL</span>
-          <h2>Monitor e certificado digital</h2>
-          <p>Status dos serviços e credenciais disponíveis nesta máquina.</p>
+        <div className="national-monitor-title"><i><Activity/></i><span>
+          <span className="eyebrow">RADAR NACIONAL</span>
+          <h2>Monitoramento SEFAZ por estado</h2>
+          <p>Disponibilidade dos serviços fiscais em todas as UFs retornadas pelo monitor oficial.</p></span>
         </div>
-        <button className="secondary" onClick={load}>
+        <div className="national-monitor-actions"><select value={environment} onChange={event=>setEnvironment(event.target.value)}>
+          <option value="todos">Todos os ambientes</option>{environments.map(env=><option value={env} key={env}>{env}</option>)}
+        </select><button className="secondary" onClick={load}>
           <RefreshCw className={busy ? "spin" : ""} />
           Atualizar
-        </button>
+        </button></div>
       </div>
       <div className="ops-kpis">
         <article>
           <small>Serviços online</small>
-          <b className="ok-text">{monitor?.online ?? "—"}</b>
+          <b className="ok-text">{busy ? "—" : onlineServices}</b>
         </article>
         <article>
           <small>Serviços offline</small>
-          <b className="bad-text">{monitor?.offline ?? "—"}</b>
-        </article>
-        <article>
-          <small>Certificados A1</small>
-          <b>{certs.length}</b>
+          <b className="bad-text">{busy ? "—" : offlineServices}</b>
         </article>
         <article>
           <small>Última verificação</small>
@@ -2463,31 +2992,8 @@ function FiscalOperations() {
           </article>
         ))}
       </div>
-      <div className="certificate-list">
-        {certs.length ? (
-          certs.map((c: any) => (
-            <article key={c.thumbprint}>
-              <ShieldCheck />
-              <div>
-                <b>{c.label || c.subject}</b>
-                <small>Emissor: {c.issuer}</small>
-              </div>
-              <span>Válido até {c.vence || date(c.notAfter)}</span>
-            </article>
-          ))
-        ) : (
-          <div className="cert-alert">
-            <ShieldCheck />
-            <div>
-              <b>Nenhum certificado A1 detectado</b>
-              <small>
-                Instale o certificado no Windows ou carregue um arquivo PFX nas
-                operações SEFAZ.
-              </small>
-            </div>
-          </div>
-        )}
-      </div>
+      <div className="sefaz-monitor-note"><Activity/><span><b>Monitoramento independente do certificado</b>
+        <small>O certificado A1 é administrado exclusivamente no cadastro da empresa correspondente.</small></span></div>
     </section>
   );
 }
@@ -2534,10 +3040,12 @@ function Profile({
     try {
       const body = new FormData();
       body.set("avatar", file);
-      const r = await api<{ user: User }>("/api/auth/me/avatar", {
+      const uploaded = await api<{ avatar_url:string }>("/api/auth/avatar", {
         method: "POST",
         body,
       });
+      const r = await api<{ user: User }>("/api/auth/me");
+      r.user.avatar_url=uploaded.avatar_url;
       onUpdate(r.user);
       setForm({ ...r.user });
       toast("Foto do perfil atualizada");
@@ -2550,7 +3058,7 @@ function Profile({
   async function removeAvatar() {
     setBusy(true);
     try {
-      await api("/api/auth/me/avatar", { method: "DELETE" });
+      await api("/api/auth/avatar", { method: "DELETE" });
       const r = await api<{ user: User }>("/api/auth/me");
       onUpdate(r.user);
       setForm({ ...r.user });
@@ -2565,19 +3073,19 @@ function Profile({
     <>
       <Head
         tag="MINHA CONTA"
-        title="Perfil profissional"
-        text="Personalize como você aparece no Cordeiro e mantenha seus contatos atualizados."
+        title="Sua identidade na Haixel"
+        text="Personalize como você aparece na Haixel e mantenha seus contatos atualizados."
       />
       <div className="profile-grid">
         <Panel>
           <form className="profile-form" onSubmit={save}>
             <div className="profile-hero">
               <div className="avatar-editor">
-                <span className="profile-photo">
+                <span className={`profile-photo ${user.avatar_url?"user-photo":"brand-photo"}`}>
                   {user.avatar_url ? (
                     <img src={user.avatar_url} />
                   ) : (
-                    <img src="/assets/cordeiro-mascote-v2.png" />
+                    <img src="/assets/haixel-logo.png" />
                   )}
                 </span>
                 <label className="avatar-upload">
@@ -2598,12 +3106,14 @@ function Profile({
                   </button>
                 )}
               </div>
-              <div>
+              <div className="profile-identity-copy">
+                <small>IDENTIDADE PROFISSIONAL</small>
                 <h2>{form.nome || user.username}</h2>
                 <p>
                   {form.cargo || "Adicione seu cargo"} ·{" "}
                   {form.area_atuacao || "Área de atuação"}
                 </p>
+                <div><span><i/> Perfil visível para a equipe</span><span><ShieldCheck/> Conta protegida</span></div>
               </div>
             </div>
             <div className="fields">
@@ -2686,8 +3196,8 @@ function Profile({
           </form>
         </Panel>
         <article className="profile-preview">
-          <span className="profile-photo large">
-            <img src={user.avatar_url || "/assets/cordeiro-mascote-v2.png"} />
+          <span className={`profile-photo large ${user.avatar_url?"user-photo":"brand-photo"}`}>
+            <img src={user.avatar_url || "/assets/haixel-logo.png"} />
           </span>
           <span className="eyebrow">SEU CARTÃO</span>
           <h2>{form.nome || user.username}</h2>
@@ -2724,7 +3234,10 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
     [items, setItems] = useState<any[]>([]),
     [isAdmin, setIsAdmin] = useState(false),
     [editing, setEditing] = useState<any>(null),
-    [reply, setReply] = useState("");
+    [reply, setReply] = useState(""),
+    [activeGuide,setActiveGuide]=useState("primeiros-passos"),
+    [ticketOpen,setTicketOpen]=useState(false),
+    [supportOnline,setSupportOnline]=useState(false);
   const load = useCallback(async () => {
     try {
       const all = await api<any[]>("/api/feedback");
@@ -2742,6 +3255,12 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(()=>{
+    const check=()=>api<any[]>("/api/messages/users").then(users=>setSupportOnline(users.some(item=>
+      Boolean(item.online)&&["admin","suporte","support"].includes(String(item.role||item.cargo||"").toLowerCase())
+    ))).catch(()=>setSupportOnline(false));
+    check();const timer=window.setInterval(check,15000);return()=>window.clearInterval(timer);
+  },[]);
   async function send(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -2756,6 +3275,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
       });
       setMessage("");
       setSubject("");
+      setTicketOpen(false);
       toast("Chamado enviado para a equipe");
       load();
     } catch (e) {
@@ -2789,7 +3309,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
     }
   }
   return (
-    <>
+    <main className="support-desk">
       <Head
         tag="SUPORTE"
         title={isAdmin ? "Central de atendimento" : "Central de suporte"}
@@ -2800,10 +3320,59 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
         }
       />
       <section className="support-hero">
-        <div><i><MessageCircle/></i><span><small>CENTRAL DE RELACIONAMENTO</small>
-          <h2>{isAdmin?"Operação de atendimento":"Como podemos ajudar hoje?"}</h2>
-          <p>Chamados organizados, histórico completo e acompanhamento em um único lugar.</p></span></div>
-        <span className="support-availability"><i/> EQUIPE DISPONÍVEL</span>
+        <div><span><small>SUPORTE DEDICADO HAIXEL</small>
+          <h2>{isAdmin?"Operação de atendimento":"Olá. Como podemos ajudar hoje?"}</h2>
+          <p>Encontre orientação, converse com a Haixel IA ou abra um chamado acompanhado pela nossa equipe.</p>
+          <div><button type="button" className="support-new-ticket" onClick={()=>{
+            setTicketOpen(true);
+            window.setTimeout(()=>document.getElementById("novo-atendimento")?.scrollIntoView({behavior:"smooth",block:"center"}),60);
+          }}><MessageCircle/><span><small>NOVO ATENDIMENTO</small><b>Abrir novo chamado</b></span><ChevronRight/></button>
+            <span className={`support-availability ${supportOnline?"online":"offline"}`}><i/> {supportOnline?"EQUIPE DISPONÍVEL":"EQUIPE INDISPONÍVEL"}</span></div></span></div>
+        <aside className="support-agent"><i/><i/><span><i className="service-symbol support"><Headphones/></i><b>SUPORTE</b><small>ATENDIMENTO CONECTADO</small></span></aside>
+      </section>
+      <section className="support-channels" aria-label="Atalhos de atendimento">
+        {[
+          ["duvida","Dúvida fiscal","Orientação para usar os módulos",BookOpen],
+          ["bug","Reportar problema","Envie o erro para nossa equipe",Bug],
+          ["melhoria","Sugerir melhoria","Ajude a evoluir a Haixel",Sparkles],
+        ].map(([id,title,description,Icon]:any)=>(
+          <button type="button" className={category===id?"active":""} key={id}
+            onClick={()=>setCategory(id)}>
+            <i><Icon/></i><span><b>{title}</b><small>{description}</small></span><ChevronRight/>
+          </button>
+        ))}
+      </section>
+      <section className="knowledge-cockpit">
+        <header><div><Sparkles/><span><small>COCKPIT DE CONHECIMENTO</small><h2>Encontre respostas antes que a dúvida interrompa sua operação.</h2></span></div>
+          <em>Conteúdo contextual Haixel</em></header>
+        <div>{[
+          ["Base guiada","Jornadas práticas para configurar e operar cada módulo.",BookOpen],
+          ["Diagnóstico rápido","Orientações para XML, certificados, CND e consultas.",Activity],
+          ["Haixel IA","Pergunte em linguagem natural e continue do ponto em que parou.",Bot],
+          ["Suporte humano","Abra um chamado com histórico e acompanhe cada resposta.",MessageCircle],
+        ].map(([title,text,Icon]:any)=><article key={title}><i><Icon/></i><span><b>{title}</b><small>{text}</small></span><ChevronRight/></article>)}</div>
+      </section>
+      <section className="support-guide">
+        <nav>
+          {[["primeiros-passos","Primeiros passos",Rocket],["documentos","Documentos fiscais",Files],
+            ["sefaz","Conexão SEFAZ",Network],["cnd","Certidões CND",ShieldCheck]].map(([id,label,Icon]:any)=>
+            <button className={activeGuide===id?"active":""} onClick={()=>setActiveGuide(id)} key={id}>
+              <Icon/><span>{label}</span><ChevronRight/>
+            </button>)}
+        </nav>
+        <article>
+          <span className="eyebrow">GUIA INTERATIVO</span>
+          <h3>{activeGuide==="primeiros-passos"?"Comece pela empresa ativa":
+            activeGuide==="documentos"?"Organize todo o ciclo documental":
+            activeGuide==="sefaz"?"Consulte sem exceder os limites":"Antecipe vencimentos e pendências"}</h3>
+          <p>{activeGuide==="primeiros-passos"?"Cadastre a matriz, vincule a equipe e defina as permissões antes de iniciar a operação.":
+            activeGuide==="documentos"?"Importe XMLs, sincronize documentos contra o CNPJ e use os filtros para conferir cada movimentação.":
+            activeGuide==="sefaz"?"Valide o A1, preserve o último NSU e deixe as proteções preventivas cuidarem da fila.":
+            "Importe o PDF completo, confira os campos reconhecidos e mantenha destinatários de alerta atualizados."}</p>
+          <button className="secondary" onClick={()=>window.dispatchEvent(new CustomEvent("haixel:ask",{
+            detail:`Preciso de ajuda com ${activeGuide}. Explique o passo a passo de forma simples.`,
+          }))}><Sparkles/> Perguntar à Haixel IA</button>
+        </article>
       </section>
       <div className="support-kpis">
         {[
@@ -2826,8 +3395,11 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
         ))}
       </div>
       <div className="feedback-grid">
-        <Panel title="Abrir novo chamado">
-          <form className="feedback-form" onSubmit={send}>
+        <section id="novo-atendimento" className={`panel support-compose ${ticketOpen?"open":""}`}>
+          <button type="button" className="support-compose-toggle" onClick={()=>setTicketOpen(value=>!value)}
+            aria-expanded={ticketOpen}><i><MessageCircle/></i><span><small>NOVO ATENDIMENTO</small><b>Abrir novo chamado</b>
+              <p>{ticketOpen?"Preencha os dados para enviar à equipe.":"Formulário compacto · clique para expandir"}</p></span><ChevronDown/></button>
+          {ticketOpen&&<form className="feedback-form" onSubmit={send}>
             <label>
               Categoria
               <select
@@ -2864,8 +3436,8 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
               {busy ? <RefreshCw className="spin" /> : <Send />}
               Enviar chamado
             </button>
-          </form>
-        </Panel>
+          </form>}
+        </section>
         <Panel title={isAdmin ? "Chamados recebidos" : "Meus chamados"}>
           <div className="support-filter">
             {["todos", "aberto", "em_analise", "resolvido"].map((status) => (
@@ -2986,7 +3558,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
           </section>
         </div>
       )}
-    </>
+    </main>
   );
 }
 
@@ -2997,6 +3569,14 @@ function Assistant() {
     [busy, setBusy] = useState(false),
     [aiEnabled, setAiEnabled] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    const ask=(event:Event)=>{
+      const question=String((event as CustomEvent).detail||"Como a Haixel pode me ajudar?");
+      setOpen(true);setText(question);
+    };
+    window.addEventListener("haixel:ask",ask);
+    return()=>window.removeEventListener("haixel:ask",ask);
+  },[]);
   useEffect(() => {
     if (open) {
       api<any>("/api/assistant/status")
@@ -3051,19 +3631,19 @@ function Assistant() {
           <X />
         ) : (
           <>
-            <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
-            <span>Ajuda</span>
+            <i className="haixel-ai-orb"><Sparkles/><em/><em/></i>
+            <span><b>Haixel IA</b><small>Assistente fiscal</small></span>
           </>
         )}
       </button>
       {open && (
         <section className="assistant">
           <header>
-            <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
+            <span className="assistant-avatar"><Sparkles/><i/><i/></span>
             <div>
-              <b>Seu amigo fiscal</b>
+              <b>Haixel IA <em>Beta</em></b>
               <small>
-                Online · {aiEnabled ? "IA fiscal ativada" : "ajuda fiscal"}
+                <i /> {aiEnabled ? "Assistente fiscal disponível" : "Central de ajuda disponível"}
               </small>
             </div>
             <button onClick={() => setOpen(false)}>
@@ -3106,7 +3686,7 @@ function Assistant() {
               >
                 {m.role !== "user" && (
                   <i>
-                    <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
+                    <img src="/assets/haixel-logo.png" alt="Haixel IA" />
                   </i>
                 )}
                 <span>{m.content}</span>
@@ -3115,7 +3695,7 @@ function Assistant() {
             {busy && (
               <div className="bot-message typing">
                 <i>
-                  <img src="/assets/macaco-ia.png" alt="Macaquinho da IA" />
+                  <img src="/assets/haixel-logo.png" alt="Haixel IA" />
                 </i>
                 <span>
                   <b />
@@ -3201,13 +3781,308 @@ function NotificationCenter({
   );
 }
 
+type SystemStatus = {
+  release: {
+    version: string;
+    title: string;
+    publishedAt: string;
+    summary: string;
+    items: { type: "new" | "improved" | "fixed"; title: string; text: string }[];
+  };
+  maintenance: {
+    active: boolean;
+    scheduled?: boolean;
+    title: string;
+    message: string;
+    startsAt?: string | null;
+    endsAt?: string | null;
+  };
+};
+
+function MaintenanceCountdown({maintenance}:{maintenance:SystemStatus["maintenance"]}) {
+  const [remaining,setRemaining]=useState(()=>Math.max(0,new Date(maintenance.startsAt||0).getTime()-Date.now()));
+  useEffect(()=>{
+    const update=()=>{
+      const value=Math.max(0,new Date(maintenance.startsAt||0).getTime()-Date.now());
+      setRemaining(value);
+      if(value===0)window.location.reload();
+    };
+    update();const timer=window.setInterval(update,1000);return()=>window.clearInterval(timer);
+  },[maintenance.startsAt]);
+  if(!maintenance.scheduled||!remaining)return null;
+  const seconds=Math.ceil(remaining/1000),label=seconds<60?`${seconds}s`:
+    seconds<3600?`${Math.floor(seconds/60)}min ${seconds%60}s`:`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}min`;
+  const progress=Math.max(0,Math.min(100,remaining/60000*100));
+  return <aside className="maintenance-countdown" role="alert">
+    <div className="countdown-worker"><Bot/><i/></div>
+    <span><small>ATUALIZAÇÃO PROGRAMADA</small><b>A manutenção começa em {label}</b>
+      <p>{maintenance.message}</p></span>
+    <time>{label}</time><div className="countdown-progress"><i style={{width:`${Math.min(100,progress)}%`}}/></div>
+  </aside>;
+}
+
+function MaintenanceActivationCountdown({seconds}:{seconds:number}){
+  useEffect(()=>{
+    try{
+      const AudioContextClass=window.AudioContext||(window as any).webkitAudioContext;
+      if(!AudioContextClass)return;
+      const context=new AudioContextClass(),oscillator=context.createOscillator(),gain=context.createGain();
+      oscillator.type="sine";oscillator.frequency.value=seconds<=3?880:620;
+      gain.gain.setValueAtTime(.0001,context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(seconds<=3?.16:.09,context.currentTime+.012);
+      gain.gain.exponentialRampToValueAtTime(.0001,context.currentTime+.13);
+      oscillator.connect(gain);gain.connect(context.destination);context.resume().catch(()=>{});
+      oscillator.start();oscillator.stop(context.currentTime+.14);
+      oscillator.onended=()=>context.close();
+    }catch{}
+  },[seconds]);
+  return <aside className="maintenance-red-alert" role="alert" aria-live="assertive">
+    <div className="maintenance-red-icon"><Bot/><i/></div>
+    <span><small>ATENÇÃO · ATUALIZAÇÃO DO SISTEMA</small>
+      <b>A manutenção começará em {seconds} segundo{seconds===1?"":"s"}</b>
+      <p>Salve o que estiver fazendo. A Haixel encerrará a sessão automaticamente.</p></span>
+    <time>{String(seconds).padStart(2,"0")}</time>
+    <div className="maintenance-red-progress"><i style={{width:`${seconds*10}%`}}/></div>
+  </aside>;
+}
+
+function WelcomeExperience({
+  user,
+  admin,
+  onNavigate,
+  onFinish,
+}: {
+  user: User;
+  admin: boolean;
+  onNavigate: (page: Page) => void;
+  onFinish: () => void;
+}) {
+  const steps = [
+    {
+      title: `Bem-vindo, ${String(user.nome || user.username).split(" ")[0]}!`,
+      tag: "SEU NOVO ESPAÇO FISCAL",
+      text: "Vamos conhecer a Haixel. Em poucos passos, você verá onde acompanhar a operação, consultar documentos e cuidar da regularidade da empresa.",
+      Icon: Sparkles,
+    },
+    {
+      page: "dashboard" as Page,
+      title: "Cockpit fiscal",
+      tag: "VISÃO OPERACIONAL",
+      text: "Seu ponto de partida. Aqui você enxerga indicadores, movimentações, alertas e o panorama fiscal da empresa ativa.",
+      Icon: Radar,
+    },
+    {
+      page: "documents" as Page,
+      title: "Central de documentos",
+      tag: "GESTÃO DOCUMENTAL",
+      text: "Consulte e filtre NF-e, CT-e e outros documentos já armazenados, com acesso rápido aos arquivos e detalhes fiscais.",
+      Icon: Files,
+    },
+    {
+      page: "issued" as Page,
+      title: "Documentos emitidos e recebidos",
+      tag: "MONITOR SEFAZ",
+      text: "Acompanhe tanto os documentos emitidos pela empresa quanto os emitidos contra o seu CNPJ, respeitando a fila segura da SEFAZ.",
+      Icon: Send,
+    },
+    {
+      page: "issued" as Page,
+      title: "Central XML",
+      tag: "IMPORTAÇÃO",
+      text: "Importe XML e PDF, extraia informações e incorpore documentos à base fiscal sem digitação repetitiva.",
+      Icon: UploadCloud,
+    },
+    {
+      page: "reports" as Page,
+      title: "Inteligência fiscal",
+      tag: "ANÁLISE",
+      text: "Transforme os documentos em relatórios e leituras gerenciais para apoiar conferências e decisões.",
+      Icon: BarChart3,
+    },
+    {
+      page: "certificates" as Page,
+      title: "Regularidade CND",
+      tag: "CERTIDÕES",
+      text: "Controle validade, situação e alertas das certidões para evitar vencimentos inesperados.",
+      Icon: ShieldCheck,
+    },
+    {
+      page: "integrations" as Page,
+      title: "Hub SEFAZ",
+      tag: "INTEGRAÇÕES",
+      text: "Centralize o certificado A1, acompanhe o NSU e consulte todas as proteções usadas para reduzir bloqueios por consumo indevido.",
+      Icon: Network,
+    },
+    ...(admin
+      ? [
+          {
+            page: "companies" as Page,
+            title: "Empresas e acessos",
+            tag: "GOVERNANÇA",
+            text: "Como administrador, você também pode configurar empresas, módulos, usuários e permissões da equipe.",
+            Icon: Building2,
+          },
+        ]
+      : []),
+  ];
+  const [index, setIndex] = useState(0);
+  const step = steps[index];
+  useEffect(() => {
+    if (step.page) onNavigate(step.page);
+  }, [index]);
+  const finish = () => onFinish();
+  return (
+    <div className="experience-backdrop" role="dialog" aria-modal="true">
+      <section className="welcome-experience">
+        <div className="experience-visual">
+          <span className="experience-orbit one" />
+          <span className="experience-orbit two" />
+          <div className="experience-icon"><step.Icon /></div>
+          <Brand />
+          <small>PASSO {index + 1} DE {steps.length}</small>
+        </div>
+        <div className="experience-content">
+          <button className="experience-skip" onClick={finish}>Pular apresentação</button>
+          <span className="eyebrow">{step.tag}</span>
+          <h2>{step.title}</h2>
+          <p>{step.text}</p>
+          <div className="experience-progress" aria-label="Progresso da apresentação">
+            {steps.map((_, stepIndex) => (
+              <button
+                aria-label={`Ir para o passo ${stepIndex + 1}`}
+                className={stepIndex === index ? "active" : stepIndex < index ? "done" : ""}
+                onClick={() => setIndex(stepIndex)}
+                key={stepIndex}
+              />
+            ))}
+          </div>
+          <footer>
+            <button
+              className="secondary"
+              disabled={index === 0}
+              onClick={() => setIndex((value) => Math.max(0, value - 1))}
+            >
+              Voltar
+            </button>
+            <button
+              className="primary"
+              onClick={() => index === steps.length - 1 ? finish() : setIndex((value) => value + 1)}
+            >
+              {index === steps.length - 1 ? "Começar a usar" : "Conhecer próximo módulo"}
+              <ArrowUpRight />
+            </button>
+          </footer>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReleaseExperience({
+  release,
+  onClose,
+}: {
+  release: SystemStatus["release"];
+  onClose: () => void;
+}) {
+  const icons = { new: Rocket, improved: Sparkles, fixed: Bug };
+  const labels = { new: "Novidade", improved: "Melhoria", fixed: "Correção" };
+  return (
+    <div className="experience-backdrop" role="dialog" aria-modal="true">
+      <section className="release-experience">
+        <header>
+          <div className="release-symbol"><Megaphone /></div>
+          <div>
+            <span className="eyebrow">NOVIDADES · VERSÃO {release.version}</span>
+            <h2>{release.title}</h2>
+            <p>{release.summary}</p>
+          </div>
+          <button className="icon-button" onClick={onClose}><X /></button>
+        </header>
+        <div className="release-list">
+          {release.items.map((item) => {
+            const Icon = icons[item.type];
+            return (
+              <article className={item.type} key={item.title}>
+                <i><Icon /></i>
+                <div>
+                  <small>{labels[item.type]}</small>
+                  <b>{item.title}</b>
+                  <p>{item.text}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <footer>
+          <small>Publicado em {new Date(release.publishedAt).toLocaleDateString("pt-BR")}</small>
+          <button className="primary" onClick={onClose}><CheckCircle2 /> Entendi as novidades</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function MaintenanceNotice({
+  maintenance,
+  onBack,
+}: {
+  maintenance: SystemStatus["maintenance"];
+  onBack?:()=>void;
+}) {
+  if (!maintenance.active) return null;
+  return (
+    <main className="maintenance-gate" onPointerMove={event=>{
+      const rect=event.currentTarget.getBoundingClientRect();
+      event.currentTarget.style.setProperty("--mx",`${event.clientX-rect.left}px`);
+      event.currentTarget.style.setProperty("--my",`${event.clientY-rect.top}px`);
+      event.currentTarget.style.setProperty("--rx",`${((event.clientY-rect.top)/rect.height-.5)*3}deg`);
+      event.currentTarget.style.setProperty("--ry",`${(.5-(event.clientX-rect.left)/rect.width)*4}deg`);
+    }}>
+      <div className="maintenance-grid" />
+      <div className="maintenance-aurora"><i/><i/><i/></div>
+      <section className="maintenance-experience" role="status">
+        <div className="maintenance-brand"><img src="/assets/haixel-logo.png" /><b>Haixel</b></div>
+        <div className="maintenance-worker" aria-label="Assistente Haixel trabalhando na atualização">
+          <span className="worker-person"><img src="/assets/haixel-logo.png" alt="Haixel"/></span>
+          <span className="worker-arms"><i /><i /></span>
+          <span className="worker-laptop"><Laptop /></span>
+          <span className="worker-dots"><i /><i /><i /></span>
+        </div>
+        <span className="eyebrow">ATUALIZAÇÃO EM ANDAMENTO</span>
+        <h2>{maintenance.title}</h2>
+        <p>{maintenance.message}</p>
+        {(maintenance.startsAt || maintenance.endsAt) && (
+          <div className="maintenance-window">
+            {maintenance.startsAt && <span><small>Início previsto</small><b>{new Date(maintenance.startsAt).toLocaleString("pt-BR")}</b></span>}
+            {maintenance.endsAt && <span><small>Conclusão prevista</small><b>{new Date(maintenance.endsAt).toLocaleString("pt-BR")}</b></span>}
+          </div>
+        )}
+        <div className="maintenance-live"><i /><span><b>Equipe trabalhando na atualização</b><small>Esta página verificará automaticamente quando o acesso for liberado.</small></span></div>
+        {onBack&&<button className="maintenance-back" onClick={onBack}><ChevronRight/> Voltar para a página inicial</button>}
+      </section>
+    </main>
+  );
+}
+
+function MaintenanceRedirectNotice(){
+  return <div className="maintenance-redirect" role="alert"><section><i><Activity/></i><span>
+    <small>ATUALIZAÇÃO INICIADA</small><h2>Vamos levar você para a página inicial.</h2>
+    <p>O Hub entrou em manutenção e sua sessão será encerrada com segurança em alguns segundos.</p>
+    <em><i/> Salvando e encerrando o acesso...</em></span></section></div>;
+}
+
 function Messenger() {
   const [open, setOpen] = useState(false),
     [users, setUsers] = useState<any[]>([]),
     [selected, setSelected] = useState<any>(null),
     [messages, setMessages] = useState<any[]>([]),
     [text, setText] = useState(""),
+    [attachment,setAttachment]=useState<File|null>(null),
+    [sending,setSending]=useState(false),
+    [visibleProfile,setVisibleProfile]=useState<any>(null),
     [unread, setUnread] = useState(0);
+  const threadRef=useRef<HTMLDivElement>(null);
   const loadUsers = useCallback(() => {
     api<any[]>("/api/messages/users")
       .then((rows) => {
@@ -3218,26 +4093,52 @@ function Messenger() {
   }, []);
   useEffect(() => {
     loadUsers();
-    const timer = window.setInterval(loadUsers, 15000);
+    const timer = window.setInterval(loadUsers, 5000);
     return () => clearInterval(timer);
   }, [loadUsers]);
   const openThread = async (userItem: any) => {
     setSelected(userItem);
+    setAttachment(null);
     try {
       setMessages(await api<any[]>(`/api/messages/thread/${userItem.id}`));
       loadUsers();
     } catch {}
   };
+  useEffect(()=>{
+    if(open&&!selected&&users.length)openThread(users[0]);
+  },[open,selected,users]);
+  const loadThread=useCallback(async()=>{
+    if(!open||!selected?.id)return;
+    try{setMessages(await api<any[]>(`/api/messages/thread/${selected.id}`));loadUsers()}catch{}
+  },[open,selected?.id,loadUsers]);
+  useEffect(()=>{
+    if(!open||!selected?.id)return;
+    loadThread();const timer=window.setInterval(loadThread,2500);return()=>window.clearInterval(timer);
+  },[open,selected?.id,loadThread]);
+  useEffect(()=>{
+    const scroll=()=>{if(threadRef.current)threadRef.current.scrollTop=threadRef.current.scrollHeight};
+    scroll();const frame=window.requestAnimationFrame(scroll),timer=window.setTimeout(scroll,120);
+    return()=>{window.cancelAnimationFrame(frame);window.clearTimeout(timer)};
+  },[messages,open,selected?.id]);
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || !text.trim()) return;
-    const message = await api<any>("/api/messages", {
-      method: "POST",
-      body: { recipientId: selected.id, content: text },
-    });
-    setMessages((current) => [...current, message]);
-    setText("");
+    if (!selected || (!text.trim()&&!attachment)||sending) return;
+    setSending(true);
+    try{
+      let encoded:any=null;
+      if(attachment){
+        if(attachment.size>2_500_000)throw new Error("O anexo deve ter até 2,5 MB");
+        const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();
+          reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("Não foi possível ler o anexo"));reader.readAsDataURL(attachment)});
+        encoded={name:attachment.name,mime:attachment.type||"application/octet-stream",base64};
+      }
+      const message = await api<any>("/api/messages", {
+        method: "POST",body: { recipientId: selected.id, content: text,attachment:encoded },
+      });
+      setMessages((current) => [...current, message]);setText("");setAttachment(null);loadUsers();
+    }catch(error){alert((error as Error).message)}finally{setSending(false)}
   }
+  const activeSelected=users.find(item=>Number(item.id)===Number(selected?.id))||selected;
   return (
     <div className="messenger-center">
       <button
@@ -3270,14 +4171,14 @@ function Messenger() {
                   onClick={() => openThread(userItem)}
                   key={userItem.id}
                 >
-                  <i>
-                    {String(userItem.nome || userItem.username)
+                  <i className={userItem.avatar_url?"has-photo":""}>
+                    {userItem.avatar_url?<img src={userItem.avatar_url} alt=""/>:String(userItem.nome || userItem.username)
                       .slice(0, 2)
                       .toUpperCase()}
                   </i>
                   <span>
                     <b>{userItem.nome || userItem.username}</b>
-                    <small>{userItem.role}</small>
+                    <small><i className={userItem.online?"online":""}/>{userItem.online?"Online agora":"Offline"}</small>
                   </span>
                   {userItem.unread > 0 && <em>{userItem.unread}</em>}
                 </button>
@@ -3287,32 +4188,45 @@ function Messenger() {
               {selected ? (
                 <>
                   <div className="thread-title">
-                    <b>{selected.nome || selected.username}</b>
-                    <small>Conversa privada</small>
+                    <i className={activeSelected.avatar_url?"has-photo":""} onClick={()=>setVisibleProfile(activeSelected)}>
+                      {activeSelected.avatar_url?<img src={activeSelected.avatar_url} alt=""/>:
+                        String(activeSelected.nome||activeSelected.username).slice(0,2).toUpperCase()}<em className={activeSelected.online?"online":""}/></i>
+                    <span><b>{activeSelected.nome || activeSelected.username}</b>
+                      <small>{activeSelected.online?"Online agora · respostas em tempo real":"Offline · receberá quando entrar"}</small></span>
                   </div>
-                  <div className="thread-messages">
+                  <div className="thread-messages" ref={threadRef}>
                     {messages.map((message) => (
-                      <p
+                      <article
                         className={
                           message.recipient_id === selected.id ? "mine" : ""
                         }
                         key={message.id}
                       >
-                        {message.content}
-                        <small>
-                          {new Date(message.created_at).toLocaleString("pt-BR")}
-                        </small>
-                      </p>
+                        {message.attachment_url&&String(message.attachment_mime).startsWith("image/")&&
+                          <a className="message-image" href={message.attachment_url} target="_blank" rel="noreferrer">
+                            <img src={message.attachment_url}/></a>}
+                        {message.attachment_url&&!String(message.attachment_mime).startsWith("image/")&&
+                          <a className="message-file" href={message.attachment_url} target="_blank" rel="noreferrer">
+                            <Paperclip/><span><b>{message.attachment_name}</b><small>{Math.ceil(Number(message.attachment_size||0)/1024)} KB</small></span></a>}
+                        {message.content&&<p>{message.content}</p>}
+                        <small>{new Date(message.created_at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
+                          {message.recipient_id===selected.id&&<CheckCheck className={message.read_at?"read":""}/>}</small>
+                      </article>
                     ))}
                   </div>
+                  {attachment&&<div className="message-attachment-preview"><Paperclip/><span><b>{attachment.name}</b>
+                    <small>{Math.ceil(attachment.size/1024)} KB</small></span><button onClick={()=>setAttachment(null)}><X/></button></div>}
                   <form onSubmit={sendMessage}>
+                    <label className="message-attach" title="Enviar imagem ou arquivo"><Paperclip/><input type="file"
+                      accept="image/png,image/jpeg,image/webp,application/pdf,text/plain,text/xml,application/xml"
+                      onChange={event=>setAttachment(event.target.files?.[0]||null)}/></label>
                     <input
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       placeholder="Escreva uma mensagem..."
                     />
-                    <button className="primary">
-                      <Send />
+                    <button className="primary" disabled={sending||(!text.trim()&&!attachment)}>
+                      {sending?<RefreshCw className="spin"/>:<Send />}
                     </button>
                   </form>
                 </>
@@ -3323,6 +4237,18 @@ function Messenger() {
           </div>
         </section>
       )}
+      {visibleProfile&&<div className="modal-backdrop public-profile-backdrop" onClick={()=>setVisibleProfile(null)}>
+        <section className="public-user-profile" onClick={event=>event.stopPropagation()}>
+          <button onClick={()=>setVisibleProfile(null)}><X/></button>
+          <span className={visibleProfile.avatar_url?"has-photo":""}>{visibleProfile.avatar_url?
+            <img src={visibleProfile.avatar_url} alt={visibleProfile.nome}/>:String(visibleProfile.nome||visibleProfile.username).slice(0,2).toUpperCase()}</span>
+          <small>PERFIL DA EQUIPE</small><h2>{visibleProfile.nome||visibleProfile.username}</h2>
+          <b>{visibleProfile.cargo||visibleProfile.role} {visibleProfile.area_atuacao?`· ${visibleProfile.area_atuacao}`:""}</b>
+          <p>{visibleProfile.bio||"Este usuário ainda não adicionou uma apresentação ao perfil."}</p>
+          <footer>{visibleProfile.linkedin_url&&<a href={visibleProfile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin/> LinkedIn</a>}
+            {visibleProfile.website_url&&<a href={visibleProfile.website_url} target="_blank" rel="noreferrer"><Link/> Website</a>}</footer>
+        </section>
+      </div>}
     </div>
   );
 }
@@ -3355,6 +4281,13 @@ function Admin({
     [expandedCompanies,setExpandedCompanies]=useState<Record<number,boolean>>({}),
     [replicateTargets,setReplicateTargets]=useState<number[]>([]),
     [replicationOpen,setReplicationOpen]=useState(false),
+    [companyQuery,setCompanyQuery]=useState(""),
+    [companyView,setCompanyView]=useState<"cards"|"structure">("cards"),
+    [certificateCompany,setCertificateCompany]=useState<any>(null),
+    [certificateData,setCertificateData]=useState<any>(null),
+    [certificateFile,setCertificateFile]=useState<File|null>(null),
+    [certificatePassword,setCertificatePassword]=useState(""),
+    [certificateBusy,setCertificateBusy]=useState(false),
     [userForm, setUserForm] = useState<any>(null),
     [temporaryPassword, setTemporaryPassword] = useState("");
   const load = useCallback(() => {
@@ -3405,6 +4338,27 @@ function Admin({
       setModuleCompany(company); setModuleData(data); setModuleTab("cnd");
       setReplicationOpen(false); setReplicateTargets([]);
     }catch(error){toast((error as Error).message,true)}
+  }
+  async function openCompanyCertificate(company:any){
+    setCompanyForm(null);setModuleCompany(null);setCertificateCompany(company);setCertificateData(null);setCertificateFile(null);setCertificatePassword("");
+    try{setCertificateData(await api<any>(`/api/empresas/${company.id}/certificado`))}
+    catch(error){setCertificateCompany(null);toast((error as Error).message,true)}
+  }
+  async function saveCompanyCertificate(){
+    if(!certificateFile||!certificatePassword)return toast("Selecione o PFX/P12 e informe a senha",true);
+    setCertificateBusy(true);
+    try{
+      const body=new FormData();body.set("certificate",certificateFile);body.set("password",certificatePassword);
+      await api(`/api/empresas/${certificateCompany.id}/certificado`,{method:"POST",body});
+      setCertificateData(await api<any>(`/api/empresas/${certificateCompany.id}/certificado`));
+      setCertificateFile(null);setCertificatePassword("");toast("Certificado validado e vinculado à empresa");
+    }catch(error){toast((error as Error).message,true)}finally{setCertificateBusy(false)}
+  }
+  async function removeCompanyCertificate(){
+    setCertificateBusy(true);
+    try{await api(`/api/empresas/${certificateCompany.id}/certificado`,{method:"DELETE"});
+      setCertificateData({configurado:false,certificado:null});toast("Certificado removido da empresa")}
+    catch(error){toast((error as Error).message,true)}finally{setCertificateBusy(false)}
   }
   async function saveModule(){
     try{
@@ -3492,11 +4446,13 @@ function Admin({
       toast((e as Error).message, true);
     }
   }
+  const companyRows=kind==="companies"?items.filter(item=>
+    `${item.nome||""} ${item.nome_fantasia||""} ${item.cnpj||""}`.toLowerCase().includes(companyQuery.toLowerCase())):items;
   return (
     <>
       <Head
-        tag="ADMINISTRAÇÃO"
-        title={kind === "companies" ? "Empresas" : "Usuários"}
+        tag={kind === "companies" ? "GOVERNANÇA EMPRESARIAL" : "ADMINISTRAÇÃO"}
+        title={kind === "companies" ? "Estrutura de empresas" : "Usuários"}
         text={
           kind === "companies"
             ? "Gerencie os ambientes empresariais da plataforma."
@@ -3523,27 +4479,46 @@ function Admin({
             >
               + Adicionar usuário
             </button>
-          ) : (
-            <button
-              className="primary"
-              onClick={() =>
-                setCompanyForm({
-                  cnpj: "",
-                  nome: "",
-                  nome_fantasia: "",
-                  ie: "",
-                  regime_tributario: "simples",
-                  ambiente: "producao",
-                  cadastrarFilial:false,
-                  filial:{cnpj:"",nome:"",nome_fantasia:"",ie:"",im:""},
-                })
-              }
-            >
-              + Cadastrar empresa
-            </button>
-          )
+          ) : undefined
         }
       />
+      {kind==="companies"&&<section className="company-command-hero">
+        <div><i><Building2/></i><span><small>MATRIZES, FILIAIS E AMBIENTES</small><h2>Governança empresarial centralizada</h2>
+          <p>Organize unidades, alterne a empresa ativa e replique configurações fiscais com segurança.</p></span></div>
+        <div className="company-command-actions">
+          <span><Network/><b>{items.filter(item=>item.empresa_matriz_id).length}</b><small>filiais conectadas</small></span>
+          <span><ShieldCheck/><b>{items.filter(item=>item.ativo!==false&&item.ativo!==0).length}</b><small>ambientes ativos</small></span>
+        </div>
+      </section>}
+      {kind==="companies"&&<section className="company-workbench">
+        <div className="company-workbench-search"><Search/><input value={companyQuery}
+          onChange={event=>setCompanyQuery(event.target.value)} placeholder="Localizar matriz, filial, nome ou CNPJ..."/></div>
+        <nav><button className={companyView==="cards"?"active":""} onClick={()=>setCompanyView("cards")}><Building2/> Ambientes</button>
+          <button className={companyView==="structure"?"active":""} onClick={()=>setCompanyView("structure")}><Network/> Estrutura</button></nav>
+        <button className="company-new-action" onClick={()=>setCompanyForm({
+          cnpj:"",nome:"",nome_fantasia:"",ie:"",regime_tributario:"simples",ambiente:"producao",
+          cadastrarFilial:false,filial:{cnpj:"",nome:"",nome_fantasia:"",ie:"",im:""},
+        })}><Sparkles/><span><b>Novo ambiente</b><small>Matriz ou filial</small></span></button>
+      </section>}
+      {kind==="companies"&&companyView==="structure"&&<section className="company-structure-map environment-structure">
+        <header><div><Network/><span><small>ESTRUTURA DO AMBIENTE</small><b>Ambientes conectados</b><p>Matrizes e filiais organizadas pela relação empresarial cadastrada.</p></span></div>
+          <em>{companyRows.length} unidade(s)</em></header>
+        <div>{companyRows.filter(item=>!item.empresa_matriz_id).map(matrix=><article key={matrix.id}>
+          <i><Building2/></i><span><b>{matrix.nome}</b><small>{matrix.cnpj} · Matriz</small></span>
+          <div>{companyRows.filter(branch=>Number(branch.empresa_matriz_id)===Number(matrix.id)).map(branch=>
+            <button key={branch.id} onClick={()=>setExpandedCompanies(current=>({...current,[matrix.id]:true}))}>
+              <Network/><span><b>{branch.nome}</b><small>{branch.cnpj}</small></span></button>)}</div>
+        </article>)}</div>
+      </section>}
+      {kind==="users"&&<section className="access-command-hero">
+        <div><i><ShieldCheck/></i><span><small>IDENTIDADES E PERMISSÕES</small>
+          <h2>Controle de acessos inteligente</h2>
+          <p>Gerencie perfis, permissões, sessões e segurança da equipe em um painel único.</p></span></div>
+        <div className="access-live">
+          <span><i/><b>{items.filter(item=>item.online).length}</b><small>online agora</small></span>
+          <span><Users/><b>{items.filter(item=>Boolean(item.ativo)).length}</b><small>acessos ativos</small></span>
+        </div>
+      </section>}
       {kind === "users" && (
         <div className="admin-stats">
           <article>
@@ -3582,19 +4557,26 @@ function Admin({
       <Panel>
         {items.length && kind === "companies" ? (
           <div className="company-grid">
-            {items.filter((item)=>!item.empresa_matriz_id).map((company, index) => {
+            {companyRows.filter((item)=>!item.empresa_matriz_id).map((company, index) => {
               const inactive = company.ativo === false || company.ativo === 0;
-              const branches=items.filter((item)=>Number(item.empresa_matriz_id)===Number(company.id));
+              const branches=companyRows.filter((item)=>Number(item.empresa_matriz_id)===Number(company.id));
+              const expanded=Boolean(expandedCompanies[company.id]);
               return (
                 <article
-                  className={`company-card ${inactive ? "inactive" : ""}`}
+                  className={`company-card company-card-compact ${inactive ? "inactive" : ""} ${expanded ? "expanded" : ""}`}
                   key={company.id || index}
                 >
-                  <header>
+                  <header onClick={()=>setExpandedCompanies(current=>({
+                    ...current,[company.id]:!current[company.id],
+                  }))}>
                     <i><Building2 /></i>
                     <span className={`status ${inactive ? "inactive" : ""}`}>
                       {inactive ? "Inativa" : "Ativa"}
                     </span>
+                    <button className="company-expand-toggle" type="button"
+                      aria-label={expanded?"Recolher detalhes":"Expandir detalhes"} aria-expanded={expanded}>
+                      <ChevronDown/>
+                    </button>
                   </header>
                   <div>
                     <small>EMPRESA</small>
@@ -3636,6 +4618,9 @@ function Admin({
                     <button className="secondary" onClick={()=>openModules(company)}>
                       <Save /> Configurar módulos
                     </button>
+                    <button type="button" className="secondary certificate-action" onClick={event=>{event.preventDefault();event.stopPropagation();openCompanyCertificate(company)}}>
+                      <ShieldCheck /> Certificado A1
+                    </button>
                     <button className="secondary" onClick={()=>setCompanyForm({...company})}>Editar</button>
                     {branches.length>0&&<button className="secondary" onClick={()=>setExpandedCompanies({
                       ...expandedCompanies,[company.id]:!expandedCompanies[company.id],
@@ -3649,6 +4634,7 @@ function Admin({
                         <i><Building2/></i>
                         <span><b>{branch.nome}</b><small>CNPJ: {branch.cnpj} · IE: {branch.ie||"Não possui"} · IM: {branch.im||"Não informada"}</small></span>
                         <button className="secondary" onClick={()=>openModules(branch)}>Configurar</button>
+                        <button type="button" className="secondary" onClick={event=>{event.preventDefault();event.stopPropagation();openCompanyCertificate(branch)}}>Certificado</button>
                         <button className="secondary" onClick={()=>setCompanyForm({...branch})}>Editar</button>
                         <button className="secondary" onClick={()=>toggleCompany(branch)}>{branchInactive?"Reativar":"Inativar"}</button>
                         <button className="secondary danger" onClick={()=>deleteCompany(branch)}>Excluir</button>
@@ -3675,8 +4661,8 @@ function Admin({
                   key={userItem.id || index}
                 >
                   <header>
-                    <i>
-                      {String(userItem.nome || userItem.username)
+                    <i className={userItem.avatar_url?"has-photo":""}>
+                      {userItem.avatar_url?<img src={userItem.avatar_url} alt=""/>:String(userItem.nome || userItem.username)
                         .slice(0, 2)
                         .toUpperCase()}
                     </i>
@@ -3691,8 +4677,8 @@ function Admin({
                   </div>
                   <dl>
                     <div>
-                      <dt>E-mail</dt>
-                      <dd>{userItem.email || "Não informado"}</dd>
+                      <dt>Perfil de acesso</dt>
+                      <dd>{roleLabel}</dd>
                     </div>
                     <div>
                       <dt>Último acesso</dt>
@@ -3741,19 +4727,53 @@ function Admin({
           <Empty />
         )}
       </Panel>
+      {certificateCompany&&<div className="modal-backdrop">
+        <section className="feedback-modal company-certificate-modal">
+          <header><div className="certificate-modal-title"><i><ShieldCheck/></i><span>
+            <small>CERTIFICADO DIGITAL DA EMPRESA</small><h2>{certificateCompany.nome}</h2>
+            <p>CNPJ {certificateCompany.cnpj}</p></span></div>
+            <button className="square" onClick={()=>setCertificateCompany(null)}><X/></button></header>
+          {!certificateData?<div className="certificate-loading"><RefreshCw className="spin"/> Consultando o cofre...</div>:<>
+            <section className={`certificate-current ${certificateData.configurado?"configured":""}`}>
+              <i>{certificateData.configurado?<CheckCircle2/>:<ShieldCheck/>}</i><span>
+                <small>{certificateData.configurado?"CERTIFICADO VINCULADO":"AGUARDANDO CERTIFICADO"}</small>
+                <b>{certificateData.certificado?.arquivo_nome||"Nenhum PFX/P12 cadastrado"}</b>
+                <p>{certificateData.configurado?`Validade: ${date(certificateData.certificado?.validade_fim)} · uso exclusivo desta empresa`:
+                  "Adicione o certificado A1 correspondente ao CNPJ acima."}</p></span>
+            </section>
+            <section className="certificate-upload-zone">
+              <label><input type="file" accept=".pfx,.p12,application/x-pkcs12"
+                onChange={event=>setCertificateFile(event.target.files?.[0]||null)}/>
+                <UploadCloud/><span><b>{certificateFile?.name||"Selecionar PFX ou P12"}</b>
+                  <small>Arquivo criptografado do certificado A1</small></span></label>
+              <label><span>Senha do certificado</span><input type="password" name="company-certificate-password" autoComplete="new-password" value={certificatePassword}
+                onChange={event=>setCertificatePassword(event.target.value)} placeholder="Informe a senha do arquivo"/></label>
+              <div className="certificate-security-note"><ShieldCheck/><span><b>Armazenamento protegido</b>
+                <small>O CNPJ será validado antes da gravação. Arquivo e senha permanecem criptografados e amarrados a esta empresa.</small></span></div>
+            </section>
+          </>}
+          <footer><span>{certificateData?.configurado&&<button className="secondary danger" disabled={certificateBusy}
+            onClick={removeCompanyCertificate}><Trash2/> Remover certificado</button>}</span>
+            <div><button className="secondary" onClick={()=>setCertificateCompany(null)}>Fechar</button>
+              <button className="primary" disabled={certificateBusy||!certificateData} onClick={saveCompanyCertificate}>
+                {certificateBusy?<RefreshCw className="spin"/>:<Save/>} Validar e salvar</button></div></footer>
+        </section>
+      </div>}
       {moduleCompany&&moduleData&&<div className="modal-backdrop">
-        <section className="feedback-modal module-modal">
-          <header><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
+        <section className="feedback-modal company-modal module-modal">
+          <header className="environment-modal-head"><div><span className="eyebrow">{moduleCompany.empresa_matriz_id?"CONFIGURAÇÃO DA FILIAL":"CONFIGURAÇÃO DA MATRIZ"}</span>
             <h2>{moduleCompany.nome}</h2><p>CNPJ {moduleCompany.cnpj}</p></div>
             <button className="square" onClick={()=>setModuleCompany(null)}><X/></button>
           </header>
+          <div className="company-form-intro environment-form-intro"><i><Settings/></i><span><b>Configuração do ambiente fiscal</b>
+            <small>Defina documentos, certidões e comunicações desta unidade.</small></span></div>
           <nav className="module-tabs">
-            {[["cnd","Certidões",ShieldCheck],["sefaz","SEFAZ",Network],["documentos","Documentos",Files],["alertas","Alertas",Bell]].map(([id,label,Icon]:any)=>
+            {[["cnd","Certidões",ShieldCheck],["documentos","Documentos",Files],["alertas","Comunicações",Bell]].map(([id,label,Icon]:any)=>
               <button className={moduleTab===id?"active":""} onClick={()=>setModuleTab(id)} key={id}>
                 <i><Icon/></i><span><b>{label}</b><small>{id==="cnd"?"Validade e avisos":id==="sefaz"?"Consulta e importação":id==="documentos"?"XML e armazenamento":"E-mails automáticos"}</small></span>
               </button>)}
           </nav>
-          <div className="module-config">
+          <div className={`module-config module-${moduleTab}`}>
             {moduleTab==="cnd"&&<>
               <h3>Certidões e regularidade fiscal</h3>
               <label>Programação dos avisos<select value={moduleData.modulos.cnd.alerta_modo||"dias"}
@@ -3781,14 +4801,9 @@ function Admin({
                   ...moduleData.modulos.cnd,dominio_remetente:e.target.value}}})}/></label>
             </>}
             {moduleTab==="sefaz"&&<>
-              <h3>Consulta SEFAZ</h3>
-              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.consulta_automatica)}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,consulta_automatica:e.target.checked}}})}/>Consulta automática habilitada</label>
-              <label className="check"><input type="checkbox" checked={Boolean(moduleData.modulos.sefaz.importar_automaticamente)}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,importar_automaticamente:e.target.checked}}})}/>Importar documentos automaticamente</label>
-              <label>UF autora<input maxLength={2} value={moduleData.modulos.sefaz.uf}
-                onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,sefaz:{...moduleData.modulos.sefaz,uf:e.target.value.toUpperCase()}}})}/></label>
-              <div className="secure-note"><ShieldCheck/> Somente consulta. Emissão, cancelamento e eventos permanecem bloqueados.</div>
+              <h3>Configuração centralizada</h3>
+              <div className="secure-note"><Network/><span><b>Certificado e proteções foram movidos para o Hub SEFAZ</b>
+                <small>Use Integrações → Hub SEFAZ para administrar o A1, acompanhar o último NSU, verificar a fila e ajustar os limites preventivos.</small></span></div>
             </>}
             {moduleTab==="documentos"&&<>
               <h3>Armazenamento de documentos</h3>
@@ -3805,6 +4820,17 @@ function Admin({
                 <option value="diaria">Diária</option><option value="semanal">Semanal</option></select></label>
               <label>Horário<input type="time" value={moduleData.modulos.alertas.hora}
                 onChange={e=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,hora:e.target.value}}})}/></label>
+              <div className="fixed-days">
+                <b>Dias fixos para execução</b>
+                <div>{["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"].map((label,index)=>{
+                  const selected=(moduleData.modulos.alertas.dias_semana||[]).includes(index);
+                  return <button type="button" className={selected?"active":""} key={label}
+                    onClick={()=>setModuleData({...moduleData,modulos:{...moduleData.modulos,alertas:{...moduleData.modulos.alertas,
+                      dias_semana:selected?(moduleData.modulos.alertas.dias_semana||[]).filter((day:number)=>day!==index):
+                        [...(moduleData.modulos.alertas.dias_semana||[]),index].sort()}}})}>{label}</button>
+                })}</div>
+                <small>Escolha um ou vários dias; a rotina também respeitará o horário acima.</small>
+              </div>
               <div className="module-email-list"><b>Destinatários vinculados</b>
                 {moduleData.emails.length?moduleData.emails.map((item:any)=><span key={item.id}>{item.email}</span>):<small>Nenhum e-mail cadastrado para esta unidade.</small>}</div>
             </>}
@@ -3980,8 +5006,8 @@ function Admin({
       )}
       {userForm && kind === "users" && (
         <div className="modal-backdrop">
-          <form className="feedback-modal user-modal" onSubmit={saveUser}>
-            <header>
+          <form className="feedback-modal company-modal user-modal" onSubmit={saveUser}>
+            <header className="environment-modal-head">
               <i className="modal-hero-icon"><ShieldCheck /></i>
               <div>
                 <span className="eyebrow">IDENTIDADE & ACESSO</span>
@@ -3996,9 +5022,16 @@ function Admin({
                 <X />
               </button>
             </header>
+            <div className="company-form-intro environment-form-intro"><i><UserRound/></i><span><b>Identidade vinculada ao ambiente</b>
+              <small>Dados e permissões ficam organizados com a mesma estrutura das empresas.</small></span></div>
+            <div className="user-access-overview">
+              <article><i><UserRound/></i><span><small>PERFIL</small><b>{userForm.role==="admin"?"Administrador":userForm.role==="visualizador"?"Visualizador":"Operador"}</b></span></article>
+              <article><i><ShieldCheck/></i><span><small>PERMISSÕES</small><b>{Object.values(userForm.permissoes||{}).filter(Boolean).length} liberadas</b></span></article>
+              <article><i><Activity/></i><span><small>CONTA</small><b>{userForm.ativo===false?"Desativada":"Ativa"}</b></span></article>
+            </div>
             <div className="user-modal-body">
             <section className="user-data-section">
-              <header><span>01</span><div><b>Dados do usuário</b><small>Informações usadas para identificação e acesso.</small></div></header>
+              <header><span>01</span><i><UserRound/></i><div><b>Dados do usuário</b><small>Informações usadas para identificação e acesso.</small></div></header>
             <div className="fields">
               <label>
                 Nome
@@ -4018,16 +5051,6 @@ function Admin({
                   value={userForm.username || ""}
                   onChange={(e) =>
                     setUserForm({ ...userForm, username: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                E-mail
-                <input
-                  type="email"
-                  value={userForm.email || ""}
-                  onChange={(e) =>
-                    setUserForm({ ...userForm, email: e.target.value })
                   }
                 />
               </label>
@@ -4071,7 +5094,7 @@ function Admin({
             </div>
             </section>
             <section className="user-permissions">
-              <header><span>02</span><div><b>Permissões nesta empresa</b><small>Controle exatamente o que este usuário poderá fazer.</small></div>
+              <header><span>02</span><i><ShieldCheck/></i><div><b>Permissões nesta empresa</b><small>Controle exatamente o que este usuário poderá fazer.</small></div>
                 <em>{Object.values(userForm.permissoes||{}).filter(Boolean).length} ativas</em></header>
               {[
                 ["documentos_visualizar","Visualizar documentos"],
@@ -4136,6 +5159,14 @@ export default function App() {
     [mobile, setMobileState] = useState(false),
     [dark, setDark] = useState(()=>localStorage.getItem("cordeiro.theme")==="dark"),
     [note, setNote] = useState<{ s: string; e: boolean } | null>(null),
+    [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null),
+    [publicView,setPublicView]=useState<"landing"|"login"|"register"|"maintenance">("landing"),
+    [publicTransition,setPublicTransition]=useState(false),
+    [maintenanceCelebration,setMaintenanceCelebration]=useState(false),
+    [showWelcome, setShowWelcome] = useState(false),
+    [showRelease, setShowRelease] = useState(false),
+    [maintenanceGrace,setMaintenanceGrace]=useState<number|null>(null),
+    [maintenanceRedirecting,setMaintenanceRedirecting]=useState(false),
     [notifications, setNotifications] =
       useState<AppNotification[]>(storedNotifications);
   const setMobile = (value: boolean) =>
@@ -4144,7 +5175,9 @@ export default function App() {
     setNote({ s, e });
     setTimeout(() => setNote(null), 3500);
   }, []);
-  const presenceSnapshot=useRef<Set<number>|null>(null),newsSnapshot=useRef<Set<string>|null>(null);
+  const presenceSnapshot=useRef<Set<number>|null>(null),newsSnapshot=useRef<Set<string>|null>(null),
+    maintenanceWasActive=useRef(false),
+    maintenanceLandingDismissed=useRef(false);
   const pushPersistent=useCallback((item:Omit<AppNotification,"id"|"createdAt"|"read">)=>{
     setNotifications(current=>{
       const next=[{...item,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),read:false},...current]
@@ -4188,15 +5221,98 @@ export default function App() {
     setCompany(c);
   }, []);
   useEffect(() => {
-    api<{ user: User }>("/api/auth/me")
-      .then((r) => enter(r.user))
-      .catch(() => {})
-      .finally(() => setChecking(false));
+    Promise.allSettled([
+      api<{ user: User }>("/api/auth/me"),
+      api<SystemStatus>("/api/system"),
+    ]).then(([authResult,statusResult])=>{
+      if(authResult.status==="fulfilled")enter(authResult.value.user);
+      if(statusResult.status==="fulfilled")setSystemStatus(statusResult.value);
+    }).finally(() => setChecking(false));
   }, [enter]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("cordeiro.theme",dark?"dark":"light");
   }, [dark]);
+  useEffect(()=>{
+    const detect=(event:PointerEvent)=>{
+      if(event.pointerType==="mouse")document.documentElement.dataset.input="mouse";
+      else if(event.pointerType==="touch"||event.pointerType==="pen")document.documentElement.dataset.input="touch";
+    };
+    const initial=()=>{if(!document.documentElement.dataset.input){
+      const coarse=window.matchMedia("(pointer:coarse)").matches||navigator.maxTouchPoints>0;
+      document.documentElement.dataset.input=coarse?"touch":"mouse";
+    }};
+    initial();window.addEventListener("pointerdown",detect,{passive:true});
+    window.addEventListener("pointermove",detect,{passive:true});
+    return()=>{window.removeEventListener("pointerdown",detect);window.removeEventListener("pointermove",detect)};
+  },[]);
+  const changePublicView=useCallback((next:"landing"|"login"|"register"|"maintenance")=>{
+    if(publicTransition||next===publicView)return;
+    setPublicTransition(true);
+    window.setTimeout(()=>setPublicView(next),380);
+    window.setTimeout(()=>setPublicTransition(false),860);
+  },[publicTransition,publicView]);
+  useEffect(() => {
+    const checkStatus = () => api<SystemStatus>("/api/system").then(setSystemStatus).catch(() => {});
+    checkStatus();
+    const timer = window.setInterval(checkStatus, 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(()=>{
+    if(systemStatus?.maintenance.active){
+      maintenanceWasActive.current=true;
+      return;
+    }
+    maintenanceLandingDismissed.current=false;
+    if(systemStatus&&!systemStatus.maintenance.active&&maintenanceWasActive.current){
+      maintenanceWasActive.current=false;playMaintenanceCompleteChime();setMaintenanceCelebration(true);setPublicTransition(true);
+      window.setTimeout(()=>setPublicView("landing"),650);
+      window.setTimeout(()=>{setPublicTransition(false);setMaintenanceCelebration(false)},1900);
+    }
+    if(systemStatus&&!systemStatus.maintenance.active&&publicView==="maintenance")setPublicView("landing");
+  },[systemStatus?.maintenance.active]);
+  useEffect(()=>{
+    if(!systemStatus?.release.version)return;
+    const key="haixel.runtime.version",previous=localStorage.getItem(key),currentVersion=systemStatus.release.version;
+    if(!previous){localStorage.setItem(key,currentVersion);return}
+    if(previous!==currentVersion){
+      if(checking)return;
+      if(systemStatus.maintenance.active)return;
+      localStorage.setItem(key,currentVersion);
+      if(user){
+        sessionStorage.setItem("haixel.updated","1");
+        api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>window.location.reload());
+      }
+    }
+  },[systemStatus?.release.version,systemStatus?.maintenance.active,user,checking]);
+  useEffect(()=>{
+    if(!systemStatus?.maintenance.active){setMaintenanceGrace(null);setMaintenanceRedirecting(false);return}
+    setMaintenanceGrace(value=>value??10);
+    const timer=window.setInterval(()=>setMaintenanceGrace(value=>{
+      if(value==null)return 10;
+      if(value<=1){window.clearInterval(timer);return 0}
+      return value-1;
+    }),1000);
+    return()=>window.clearInterval(timer);
+  },[systemStatus?.maintenance.active]);
+  useEffect(()=>{
+    if(!user||!systemStatus?.maintenance.active||maintenanceGrace!==0)return;
+    setMaintenanceRedirecting(true);
+    const timer=window.setTimeout(()=>api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>{
+      setUser(null);setCompany(null);setCurrent(null);setPublicView("landing");setMaintenanceRedirecting(false);
+    }),1100);
+    return()=>window.clearTimeout(timer);
+  },[maintenanceGrace,systemStatus?.maintenance.active,user]);
+  useEffect(() => {
+    if (!user || !systemStatus) return;
+    const status = systemStatus;
+      setSystemStatus(status);
+      const welcomeKey = `cordeiro.onboarding.${user.id}`;
+      const releaseKey = `cordeiro.release.${user.id}`;
+      const firstAccess = !user.onboarding_completed && localStorage.getItem(welcomeKey) !== "1";
+      setShowWelcome(firstAccess);
+      setShowRelease(sessionStorage.getItem("haixel.updated") === "1" || localStorage.getItem(releaseKey) !== status.release.version);
+  }, [user, systemStatus?.release.version]);
   const admin = !!(user?.is_super_admin || user?.role === "admin");
   if (checking)
     return (
@@ -4205,7 +5321,23 @@ export default function App() {
         <RefreshCw className="spin" />
       </div>
     );
-  if (!user) return <Login done={enter} />;
+  if (!user) return <div className={`public-experience public-${publicView}${publicTransition?" is-transitioning":""}${maintenanceCelebration?" maintenance-ended":""}`}>
+    <div className="public-view">{publicView==="landing"
+    ?<Landing maintenance={systemStatus?.maintenance.active} onAccess={()=>changePublicView(systemStatus?.maintenance.active?"maintenance":"login")}/>
+    :publicView==="maintenance"&&systemStatus?.maintenance.active
+      ?<MaintenanceNotice maintenance={systemStatus.maintenance} onBack={()=>{
+        maintenanceLandingDismissed.current=true;
+        setPublicTransition(true);
+        window.setTimeout(()=>setPublicView("landing"),260);
+        window.setTimeout(()=>setPublicTransition(false),760);
+      }}/>
+      :<Login done={enter} initialMode={publicView==="register"?"register":"login"} onBack={()=>changePublicView("landing")}/>}</div>
+    <div className="public-transition" aria-hidden="true">
+      <span>{maintenanceCelebration?<HaixelAiMark/>:<img src="/assets/haixel-logo.png" alt=""/>}
+        <b>{maintenanceCelebration?"Atualização concluída":"Haixel"}</b>
+        <small>{maintenanceCelebration?"A Haixel está pronta para você":"Preparando seu ambiente fiscal"}</small></span>
+    </div>
+    {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}</div>;
   const go = (p: Page) => {
     setPage(p);
     setMobile(false);
@@ -4215,6 +5347,17 @@ export default function App() {
     setUser(null);
     setCompany(null);
   }
+  const finishWelcome = () => {
+    localStorage.setItem(`cordeiro.onboarding.${user.id}`, "1");
+    api("/api/auth/onboarding", { method: "POST" }).catch(() => {});
+    setShowWelcome(false);
+    if (systemStatus && localStorage.getItem(`cordeiro.release.${user.id}`) !== systemStatus.release.version)
+      setShowRelease(true);
+  };
+  const closeRelease = () => {
+    if (systemStatus) localStorage.setItem(`cordeiro.release.${user.id}`, systemStatus.release.version);
+    setShowRelease(false);
+  };
   return (
     <div className="shell">
       <aside className={mobile ? "open" : ""}>
@@ -4227,7 +5370,7 @@ export default function App() {
         <nav>
           {groups.map(
             ([group, items]) =>
-              (group !== "Governança" || admin) && (
+              (group !== "Governança" || admin || group === "Governança") && (
                 <section key={group}>
                   <small>{group}</small>
                   {items.map(([p, label, Icon]: any) => (
@@ -4245,15 +5388,6 @@ export default function App() {
               ),
           )}
         </nav>
-        <button
-          className="support-center"
-          onClick={() => go("feedback")}
-          title="Abrir feedback e suporte"
-        >
-          <Sparkles />
-          <b>Central de suporte</b>
-          <small>Feedback, dúvidas e sugestões</small>
-        </button>
       </aside>
       {mobile && <div className="overlay" onClick={() => setMobile(false)} />}
       <div className="workspace">
@@ -4261,6 +5395,10 @@ export default function App() {
           <button className="menu" onClick={() => setMobile(true)}>
             <Menu />
           </button>
+          <div className="top-context">
+            <small>HAIXEL · AMBIENTE FISCAL</small>
+            <b>{groups.flatMap(([,items])=>items).find(([p]:any)=>p===page)?.[1] || "Visão operacional"}</b>
+          </div>
           <div className="top-actions">
             <OnlinePresence />
             <button onClick={() => setDark((x) => !x)}>
@@ -4276,11 +5414,11 @@ export default function App() {
               onClick={() => go("profile")}
               title="Abrir meu perfil"
             >
-              <span className="avatar">
+              <span className={`avatar ${user.avatar_url?"user-photo":"brand-photo"}`}>
                 {user.avatar_url ? (
                   <img src={user.avatar_url} />
                 ) : (
-                  <img src="/assets/cordeiro-mascote-v2.png" />
+                  <img src="/assets/haixel-logo.png" />
                 )}
               </span>
               <span className="profile-trigger-text">
@@ -4297,8 +5435,8 @@ export default function App() {
         </header>
         <main>
           {page === "dashboard" && <Dashboard />}
-          {page === "documents" && <Documents toast={toast} />}{" "}
-          {page === "issued" && <IssuedDocuments toast={toast} />}{" "}
+          {page === "documents" && <DocumentHub toast={toast} />}{" "}
+          {page === "issued" && <DocumentHub toast={toast} initial="dfe" />}{" "}
           {page === "import" && <Importer toast={toast} done={()=>go("documents")} />}{" "}
           {page === "reports" && <Reports toast={toast} />}{" "}
           {page === "certificates" && <Certificates toast={toast} />}{" "}
@@ -4312,6 +5450,20 @@ export default function App() {
         </main>
       </div>
       <Assistant />
+      {systemStatus?.maintenance.active&&maintenanceGrace!=null&&maintenanceGrace>0&&
+        <MaintenanceActivationCountdown seconds={maintenanceGrace}/>}
+      {maintenanceRedirecting&&<div className="maintenance-redirect-transition" role="status">
+        <i/><i/><span><img src="/assets/haixel-logo.png" alt="Haixel"/>
+          <small>ATUALIZAÇÃO EM ANDAMENTO</small><b>Levando você para um ambiente seguro</b>
+          <p>Sua sessão foi protegida. A landing continuará disponível durante a manutenção.</p></span>
+      </div>}
+      {systemStatus?.maintenance.scheduled&&<MaintenanceCountdown maintenance={systemStatus.maintenance}/>}
+      {showWelcome && (
+        <WelcomeExperience user={user} admin={admin} onNavigate={go} onFinish={finishWelcome} />
+      )}
+      {!showWelcome && showRelease && systemStatus && (
+        <ReleaseExperience release={systemStatus.release} onClose={closeRelease} />
+      )}
       {note && (
         <div className={`toast ${note.e ? "bad" : ""}`}>
           {note.e ? <X /> : <ShieldCheck />}

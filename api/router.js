@@ -1,5 +1,110 @@
 import crypto from "node:crypto";
 import { ensureSchema, pool } from "./_database.js";
+import {getCompanyCertificate} from "./_company-certificate.js";
+import {cndAlertEmail,sendResend} from "./_email-templates.js";
+
+function temporaryPassword(length=18){
+  const groups=["ABCDEFGHJKLMNPQRSTUVWXYZ","abcdefghijkmnopqrstuvwxyz","23456789","!@#$%&*_-+="];
+  const all=groups.join(""),chars=groups.map(group=>group[crypto.randomInt(group.length)]);
+  while(chars.length<length)chars.push(all[crypto.randomInt(all.length)]);
+  for(let index=chars.length-1;index>0;index--){
+    const swap=crypto.randomInt(index+1);[chars[index],chars[swap]]=[chars[swap],chars[index]];
+  }
+  return chars.join("");
+}
+
+const RELEASE_ARCHIVE={
+  version:"2026.07.26.12",
+  title:"Centrais fiscais e governança reconstruídas",
+  publishedAt:"2026-07-26T23:55:00-03:00",
+  summary:"Nova experiência para documentos, regularidade, empresas e identidade dos usuários.",
+  items:[
+    {type:"fixed",title:"Resumo sempre acessível",text:"A lista de novidades agora rola internamente e mantém o cabeçalho e o botão de confirmação sempre visíveis."},
+    {type:"new",title:"Logout imediato na manutenção",text:"Ao ativar a manutenção, todas as sessões são invalidadas no servidor e removidas da interface automaticamente."},
+    {type:"improved",title:"Responsividade em todo o sistema",text:"Painéis, formulários, tabelas, indicadores e modais se reorganizam de desktop a celular sem criar rolagem lateral."},
+    {type:"fixed",title:"Barra superior reconstruída",text:"A navegação ganhou rolagem horizontal invisível, contexto da tela ativa e controles que não se sobrepõem."},
+    {type:"new",title:"Minha conta reformulada",text:"Perfil, foto, contatos e cartão profissional receberam uma composição mais clara, elegante e adaptável."},
+    {type:"new",title:"Navegação no topo",text:"O menu principal agora ocupa a faixa superior e libera mais largura para tabelas e operações fiscais."},
+    {type:"fixed",title:"Filtros de documentos estabilizados",text:"As abas que quebravam o layout foram substituídas por um seletor compacto e responsivo."},
+    {type:"improved",title:"Monitor DF-e compacto",text:"Documentos emitidos e recebidos, filtros e ações ganharam uma composição menor e mais clara."},
+    {type:"improved",title:"Consulta e importação renovadas",text:"Chave de acesso, planilha e processamento foram reorganizados em um fluxo visual objetivo."},
+    {type:"new",title:"Monitoramento SEFAZ",text:"Novo módulo dedicado à disponibilidade dos serviços, sem misturar credenciais ou certificado."},
+    {type:"fixed",title:"Certificado A1 corrigido",text:"O botão abre exclusivamente o cofre da empresa, sem navegação indevida para telas administrativas."},
+    {type:"improved",title:"Replicação de configurações",text:"Nova seleção visual de matrizes e filiais com resumo e ação destacada."},
+    {type:"improved",title:"Mensagens restauradas",text:"O painel voltou ao visual simples anterior, mantendo a correção do campo de envio."},
+    {type:"improved",title:"E-mails com a marca Haixel",text:"Login e vencimento de CND receberam novo layout e agora usam a logo oficial."},
+    {type:"new",title:"Logout automático após atualização",text:"Uma nova versão encerra a sessão anterior e direciona o usuário novamente ao login."},
+    {type:"new",title:"Alerta vermelho de manutenção",text:"Ícone, texto destacado e contagem regressiva de 10 segundos antecedem o bloqueio."},
+    {type:"fixed",title:"Mensagens prontas para envio",text:"A conversa é selecionada automaticamente e o campo de composição também fica disponível no canal pessoal."},
+    {type:"fixed",title:"Situação da CND corrigida",text:"Datas ausentes ou inválidas não geram mais NaN; a interface apresenta uma situação segura e legível."},
+    {type:"new",title:"Certificado por empresa",text:"O A1 agora é administrado somente em Empresas e fica amarrado ao CNPJ da matriz ou filial."},
+    {type:"improved",title:"Hub SEFAZ simplificado",text:"Nova jornada operacional sem indicadores técnicos, certificado ou regras internas expostas."},
+    {type:"improved",title:"Proteções SEFAZ fixas",text:"Limites, lotes, pausas e sequência são controlados exclusivamente pelo servidor e não podem ser alterados."},
+    {type:"improved",title:"Configuração da Matriz renovada",text:"Nova navegação horizontal, campos amplos e organização por Certidões, Documentos e Comunicações."},
+    {type:"new",title:"Ajuda conectada à Haixel IA",text:"Os guias do suporte agora abrem a assistente com uma pergunta contextual pronta."},
+    {type:"fixed",title:"CND visível após a importação",text:"O registro completo entra imediatamente na empresa ativa e as consultas dinâmicas não reutilizam listas antigas."},
+    {type:"new",title:"Empresas e estrutura organizacional",text:"Busca rápida, mapa de matrizes e filiais, novos cartões e formulários de configuração."},
+    {type:"improved",title:"Central de Documentos reconstruída",text:"Atalhos operacionais, pesquisa inteligente, exportação e nova experiência do cofre fiscal."},
+    {type:"improved",title:"Suporte, SEFAZ e Mensagens",text:"Guias interativos, controles mais compactos, busca da equipe e conversas mais claras."},
+    {type:"improved",title:"Haixel IA clara",text:"A assistente mantém o visual translúcido e agora usa uma superfície clara, sem o fundo escuro."},
+    {type:"new",title:"E-mails Haixel renovados",text:"Novo acesso seguro e alertas diários de CND com layout responsivo e resumo das pendências."},
+    {type:"improved",title:"Privacidade de usuários",text:"E-mails permanecem no banco, mas não são exibidos nem retornados na administração de acessos."},
+    {type:"new",title:"Central Fiscal unificada",text:"Documentos arquivados, emitidos, recebidos, importação e monitor SEFAZ reunidos em um só fluxo."},
+    {type:"fixed",title:"Leitura integral de CND",text:"PDFs são processados no servidor e preenchem número, órgão, CNPJ, emissão, validade e situação."},
+    {type:"new",title:"Mensagens em tempo real",text:"Presença online, confirmação de leitura e envio protegido de imagens e anexos."},
+    {type:"improved",title:"Hub SEFAZ compacto",text:"Certificado A1, política de consulta, NSU e proteções contra Consumo Indevido organizados por tarefa."},
+    {type:"new",title:"Manutenção com contagem regressiva",text:"O usuário é avisado antes da atualização e entra automaticamente na manutenção quando o contador termina."},
+    {type:"improved",title:"Haixel IA renovada",text:"Novo símbolo animado, painel translúcido e conversas com leitura mais confortável."},
+    {type:"new",title:"Central DF-e reconstruída",text:"Novo cockpit do ciclo documental, custódia, alertas e movimentação fiscal."},
+    {type:"new",title:"Central de documentos renovada",text:"Cofre fiscal com nova organização para pesquisa, auditoria, exportação e gestão de XMLs."},
+    {type:"new",title:"Regularidade CND reformulada",text:"Painel de risco com vencidas, vencendo, negativas, PDFs e programação de alertas."},
+    {type:"new",title:"Governança de empresas",text:"Nova visão para matrizes, filiais, ambientes ativos e configurações fiscais."},
+    {type:"fixed",title:"Foto de usuário ajustada",text:"Imagens agora preenchem o avatar proporcionalmente, com recorte central e sem deformação."},
+    {type:"improved",title:"Experiência visual consistente",text:"Cartões, tabelas, indicadores e ações seguem a mesma linguagem dinâmica da Haixel."},
+  ],
+};
+
+const RELEASE={
+  version:"2026.07.27.26",
+  title:"Experiência Haixel integrada",
+  publishedAt:"2026-07-27T00:45:00-03:00",
+  summary:"Landing, documentos, integrações, empresas, acessos, suporte e manutenção agora formam uma experiência mais interativa e coerente.",
+  items:[
+    {type:"new",title:"Haixel IA na landing",text:"Um guia público interativo explica documentos, CNDs, SEFAZ, segurança e a visão geral da plataforma."},
+    {type:"new",title:"Contato público funcional",text:"A landing ganhou uma área para conversar com a equipe, com solicitações registradas no backend."},
+    {type:"improved",title:"Central de Documentos reconstruída",text:"Novo universo documental animado, navegação compacta e áreas contínuas para cofre, auditoria, monitor e importação."},
+    {type:"fixed",title:"Estados SEFAZ sem repetição",text:"O radar nacional agora exibe cada UF uma única vez, priorizando o ambiente de produção."},
+    {type:"improved",title:"Hub de Integrações por estação",text:"Conexão, consulta e Radar nacional são áreas compactas e interativas, exibidas uma por vez."},
+    {type:"improved",title:"Empresas e acessos consistentes",text:"Mapa organizacional, Configuração da Matriz e Identidade e Acesso seguem o padrão visual de Novo Ambiente."},
+    {type:"improved",title:"Central de suporte dedicada",text:"Suporte ganhou navegação própria, agente visual, conhecimento, chamados expansíveis e acompanhamento."},
+    {type:"fixed",title:"Manutenção obrigatória em 10 segundos",text:"Usuários conectados recebem aviso vermelho, contagem regressiva e redirecionamento automático para a landing."},
+    {type:"fixed",title:"Senha temporária criptográfica",text:"Novas contas e redefinições recebem senhas totalmente aleatórias, longas e sem dados previsvisíveis do usuário."},
+    {type:"new",title:"Cockpit Fiscal reconstruído",text:"Visão executiva, indicadores, prioridades, saúde operacional, radar e conhecimento agora formam uma central completa."},
+    {type:"improved",title:"Soluções conectadas premium",text:"Os cartões da landing ganharam sombra em camadas, brilho, profundidade e movimentos mais fluidos."},
+    {type:"improved",title:"Central de Documentos mais ambiciosa",text:"Cofre, navegação, ações, indicadores e tabelas receberam novas animações e hierarquia visual."},
+    {type:"improved",title:"Configuração da Matriz padronizada",text:"Módulos agora seguem a mesma estrutura visual de Novo Ambiente e Editar cadastro."},
+    {type:"fixed",title:"Rolagem adaptável ao zoom",text:"Conteúdo, tabelas e modais exibem barras de rolagem quando o zoom ou a resolução reduz o espaço disponível."},
+    {type:"new",title:"Radar SEFAZ nacional",text:"O Hub exibe todos os estados e ambientes retornados pelo monitor, com filtro, disponibilidade e atualização."},
+    {type:"improved",title:"Hub SEFAZ reconstruído",text:"Conexão, NSU, fila, ambiente, fluxo de captura e sincronização foram reorganizados em um novo centro operacional."},
+    {type:"improved",title:"Landing mais dinâmica",text:"Novos movimentos ambientais, cartões vivos e microinterações deixam a apresentação mais fluida."},
+    {type:"new",title:"Manutenção interativa",text:"O fundo reage ao cursor, permite voltar à landing e avisa antes de encerrar uma sessão ativa."},
+    {type:"improved",title:"Cockpit de conhecimento",text:"Guias, diagnóstico, Haixel IA e suporte humano ganharam uma visão mais rica e animada."},
+    {type:"improved",title:"Chamado compacto",text:"O formulário de atendimento agora permanece recolhido e se expande somente quando solicitado."},
+    {type:"improved",title:"Governança consistente",text:"Configuração de módulos e edição de usuários seguem a linguagem visual do cadastro de ambientes."},
+    {type:"new",title:"Transição para o acesso",text:"O botão Acessar plataforma agora conduz ao login com uma animação fluida da identidade Haixel."},
+    {type:"new",title:"Importação de XML em destaque",text:"A Central DF-e ganhou acesso direto para importar XMLs de NF-e, CT-e e NFS-e."},
+    {type:"improved",title:"Hub Fiscal reconstruído",text:"Integrações, consulta por chave, fila, planilha e resultados foram organizados em uma nova estação operacional animada."},
+    {type:"fixed",title:"Manutenção protegendo o acesso",text:"Durante atualizações, sessões são encerradas, a landing continua pública e o botão de acesso abre a tela de manutenção."},
+    {type:"new",title:"Empresas compactas e expansíveis",text:"Cada matriz aparece resumida e abre detalhes, ações e filiais somente quando necessário."},
+    {type:"new",title:"Documentos Fiscais reformulados",text:"Cofre, DF-e, importação, filtros, downloads e tabelas receberam uma interface operacional mais compacta e responsiva."},
+    {type:"new",title:"Nova landing page Haixel",text:"A apresentação pública agora reúne soluções, recursos, segurança e acesso direto à plataforma."},
+    {type:"improved",title:"Landing mais completa e animada",text:"Novas seções, assistente visual, públicos atendidos, fluxo operacional, perguntas frequentes e microinterações apresentam melhor a plataforma."},
+    {type:"fixed",title:"Empresa correta nas CNDs",text:"O CNPJ reconhecido no PDF agora determina a matriz ou filial exibida como subtítulo da certidão."},
+    {type:"improved",title:"Barra lateral restaurada",text:"A navegação principal voltou para a lateral esquerda, preservando mais contexto entre os módulos."},
+    {type:"improved",title:"Gestão de filiais organizada",text:"Unidades vinculadas, certificados, módulos e cadastros permanecem acessíveis dentro da empresa correspondente."},
+    {type:"fixed",title:"Ciclo de atualização corrigido",text:"O sistema volta a exibir manutenção durante a publicação e apresenta este resumo após a liberação."},
+  ],
+};
 
 function parts(request) {
   const value = request.query.route;
@@ -38,7 +143,7 @@ async function authenticated(request) {
   const sid = token(request);
   if (!sid) return null;
   const result = await pool.query(
-    `SELECT u.*,s.empresa_ativa_id FROM sessions s JOIN users u ON u.id=s.user_id
+    `SELECT u.*,s.empresa_ativa_id,s.auth_method FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.id=$1 AND s.expires_at>NOW() AND u.ativo=TRUE`,
     [sid],
   );
@@ -63,10 +168,82 @@ function feedback(row) {
   };
 }
 
+async function dispatchCndAlerts(){
+  const config=(await pool.query("SELECT * FROM cnd_config WHERE id=1")).rows[0];
+  if(!config?.alertas_ativos)return {ok:true,skipped:"alerts_disabled"};
+  const result=await pool.query(`SELECT d.email,e.id empresa_id,e.nome empresa_nome,c.tipo,c.numero_certidao,c.data_validade,
+    (c.data_validade-CURRENT_DATE)::int days
+    FROM cnd_destinatarios d JOIN empresas e ON e.id=d.empresa_id
+    JOIN certidoes c ON c.empresa_id=e.id
+    WHERE d.ativo=TRUE AND c.data_validade IS NOT NULL
+      AND ((c.data_validade<CURRENT_DATE AND $2::boolean)
+        OR (c.data_validade BETWEEN CURRENT_DATE AND CURRENT_DATE+$1::int AND $3::boolean)
+        OR (c.status='positiva' AND $4::boolean))
+    ORDER BY d.email,e.id,c.data_validade`,[
+      Number(config.prazo_alerta||10),Boolean(config.alerta_vencidas),
+      Boolean(config.alerta_vencimento),Boolean(config.alerta_positivas),
+    ]);
+  const groups=new Map();
+  for(const row of result.rows){
+    const key=`${row.email}:${row.empresa_id}`;
+    if(!groups.has(key))groups.set(key,{email:row.email,company:row.empresa_nome,items:[]});
+    groups.get(key).items.push(row);
+  }
+  let sent=0;
+  for(const group of groups.values()){
+    const template=cndAlertEmail(group);
+    const delivery=await sendResend({to:group.email,...template});
+    if(delivery.sent)sent++;
+  }
+  return {ok:true,groups:groups.size,sent};
+}
+
 export default async function handler(request, response) {
   try {
-    await ensureSchema();
+    response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
+    if(route[0]==="system"&&request.method==="GET"){
+      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const enabled=!/^(0|false|no)$/i.test(configured);
+      const startsAt=process.env.MAINTENANCE_START||null;
+      const endsAt=process.env.MAINTENANCE_END||null;
+      const now=Date.now(),startTime=startsAt?new Date(startsAt).getTime():null,endTime=endsAt?new Date(endsAt).getTime():null;
+      const scheduled=Boolean(enabled&&startTime&&Number.isFinite(startTime)&&startTime>now);
+      const active=Boolean(enabled&&!scheduled&&(!endTime||!Number.isFinite(endTime)||endTime>now));
+      return response.json({release:RELEASE,maintenance:{
+        active,scheduled,
+        title:process.env.MAINTENANCE_TITLE||"A Haixel está ficando ainda melhor",
+        message:process.env.MAINTENANCE_MESSAGE||"Estamos implementando e validando novas funcionalidades com todo cuidado. O acesso será liberado assim que a atualização estiver concluída.",
+        startsAt,endsAt,
+      }});
+    }
+    if(route[0]==="health"&&request.method==="GET"){
+      try{
+        await pool.query("SELECT 1");
+        return response.json({ok:true,database:true,time:new Date().toISOString()});
+      }catch{
+        return response.status(503).json({ok:false,database:false,error:"Falha ao conectar ao banco"});
+      }
+    }
+    await ensureSchema();
+    if(route[0]==="contact"&&request.method==="POST"){
+      const body=request.body||{},nome=String(body.nome||"").trim(),email=String(body.email||"").trim().toLowerCase(),
+        empresa=String(body.empresa||"").trim(),mensagem=String(body.mensagem||"").trim();
+      if(nome.length<2||empresa.length<2||mensagem.length<10||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        return response.status(400).json({error:"Preencha nome, empresa, e-mail e mensagem válidos"});
+      await pool.query(`CREATE TABLE IF NOT EXISTS public_contact_requests(
+        id BIGSERIAL PRIMARY KEY,nome TEXT NOT NULL,email TEXT NOT NULL,empresa TEXT NOT NULL,
+        mensagem TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'novo',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+      await pool.query(`INSERT INTO public_contact_requests(nome,email,empresa,mensagem)
+        VALUES($1,$2,$3,$4)`,[nome.slice(0,120),email.slice(0,180),empresa.slice(0,180),mensagem.slice(0,2500)]);
+      return response.json({ok:true});
+    }
+    if(route[0]==="certidoes"&&route[1]==="dispatch-alerts"&&request.method==="GET"){
+      const secret=String(process.env.CRON_SECRET||"");
+      if(secret&&String(request.headers.authorization||"")!==`Bearer ${secret}`)
+        return response.status(401).json({error:"Não autorizado"});
+      return response.json(await dispatchCndAlerts());
+    }
 
     if (route[0] === "news" && request.method === "GET")
       return response.json({ externos: [], curadas: [
@@ -86,6 +263,7 @@ export default async function handler(request, response) {
 
     const user = await authenticated(request);
     if (!user) return response.status(401).json({ error: "Não autenticado" });
+    const activeEmpresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
 
     if(route[0]==="activity"&&request.method==="GET"){
       const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id);
@@ -106,7 +284,7 @@ export default async function handler(request, response) {
         return response.json({
           answer: text.toLowerCase().includes("sefaz")
             ? "A integração SEFAZ está disponível somente para consultas, sem emissão de documentos."
-            : "Posso ajudar com documentos, empresas, relatórios e navegação no Cordeiro Fiscal.",
+            : "Posso ajudar com documentos, empresas, relatórios e navegação na Haixel.",
         });
       }
     }
@@ -147,9 +325,28 @@ export default async function handler(request, response) {
         return response.json({ok:true});
       }
       if (route[1] === "enviar-teste" && request.method === "POST") {
-        const result=await pool.query("SELECT COUNT(*)::int total FROM cnd_destinatarios WHERE ativo=TRUE");
-        if (!result.rows[0].total) return response.status(400).json({error:"Cadastre ao menos um destinatário ativo"});
-        return response.json({ok:true,enviados:result.rows[0].total,message:"Teste registrado para envio"});
+        const empresaId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
+        const [recipients,company,certificates]=await Promise.all([
+          pool.query("SELECT email FROM cnd_destinatarios WHERE ativo=TRUE AND ($1::bigint=0 OR empresa_id=$1)",[empresaId]),
+          pool.query("SELECT nome FROM empresas WHERE id=$1",[empresaId]),
+          pool.query(`SELECT tipo,numero_certidao,data_validade,
+            COALESCE((data_validade-CURRENT_DATE)::int,0) days FROM certidoes
+            WHERE ($1::bigint=0 OR empresa_id=$1) ORDER BY data_validade ASC NULLS LAST LIMIT 8`,[empresaId]),
+        ]);
+        if (!recipients.rowCount) return response.status(400).json({error:"Cadastre ao menos um destinatário ativo"});
+        const sample=certificates.rows.length?certificates.rows:[{
+          tipo:"Certidão municipal",numero_certidao:"MODELO-HAIXEL",
+          data_validade:new Date().toISOString().slice(0,10),days:0,
+        }];
+        const template=cndAlertEmail({company:company.rows[0]?.nome||"Empresa ativa",items:sample,preview:true});
+        let enviados=0;
+        for(const {email} of recipients.rows){
+          const result=await sendResend({to:email,...template});
+          if(result.sent)enviados++;
+        }
+        return response.json({ok:true,enviados,message:enviados?
+          `Novo modelo enviado para ${enviados} destinatário(s)`:
+          "Novo modelo preparado. Configure a chave RESEND_API_KEY para realizar o envio."});
       }
       if (route[1] === "stats" && request.method === "GET") {
         const empresaId=Number(request.headers["x-empresa-id"]||request.query.empresaId||0);
@@ -166,11 +363,15 @@ export default async function handler(request, response) {
       }
       if (route.length === 1 && request.method === "GET") {
         const empresaId=Number(request.headers["x-empresa-id"]||request.query.empresaId||0);
-        const result = await pool.query(`SELECT c.*,COALESCE(e.nome,c.empresa_nome,'Empresa ativa') empresa_nome
+        const result = await pool.query(`SELECT c.*,COALESCE(
+            CASE WHEN e.empresa_matriz_id IS NOT NULL
+              THEN CONCAT(COALESCE(m.nome,e.nome),' · ',COALESCE(NULLIF(e.nome_fantasia,''),e.nome))
+              ELSE e.nome END,c.empresa_nome,'Empresa ativa') empresa_nome
           FROM certidoes c LEFT JOIN empresas e ON e.id=c.empresa_id
+          LEFT JOIN empresas m ON m.id=e.empresa_matriz_id
           WHERE ($1::bigint=0 OR c.empresa_id=$1) ORDER BY data_validade ASC NULLS LAST`,[empresaId]);
         return response.json(result.rows.map(row=>({
-          ...row,pdf_data:undefined,pdf_url:row.pdf_data?`/api/certidoes/${row.id}/pdf`:null,
+          ...row,pdf_data:undefined,pdf_url:row.pdf_data?`/api/cnd-pdf?id=${row.id}`:null,
         })));
       }
       if (route.length === 1 && request.method === "POST") {
@@ -226,23 +427,42 @@ export default async function handler(request, response) {
     }
 
     if (route[0] === "users") {
+      const publicUserId=Number(route[1]);
+      if(Number.isInteger(publicUserId)&&route[2]==="avatar"&&request.method==="GET"){
+        const photo=await pool.query("SELECT avatar_data,avatar_mime FROM users WHERE id=$1 AND ativo=TRUE",[publicUserId]);
+        if(!photo.rowCount||!photo.rows[0].avatar_data)return response.status(404).json({error:"Foto não cadastrada"});
+        response.setHeader("Content-Type",photo.rows[0].avatar_mime||"image/jpeg");
+        response.setHeader("Cache-Control","private, max-age=300");
+        return response.send(photo.rows[0].avatar_data);
+      }
+      if(Number.isInteger(publicUserId)&&route[2]==="profile"&&request.method==="GET"){
+        const profile=await pool.query(`SELECT id,username,nome,role,cargo,area_atuacao,bio,linkedin_url,
+          instagram_url,website_url,telefone,(avatar_data IS NOT NULL) has_avatar
+          FROM users WHERE id=$1 AND ativo=TRUE`,[publicUserId]);
+        if(!profile.rowCount)return response.status(404).json({error:"Usuário não encontrado"});
+        const row=profile.rows[0];return response.json({...row,
+          avatar_url:row.has_avatar?`/api/users/${row.id}/avatar`:null,has_avatar:undefined});
+      }
       if (user.role !== "admin")
         return response.status(403).json({ error: "Acesso restrito" });
       if (route.length === 1 && request.method === "GET") {
         const result = await pool.query(
-          `SELECT u.id,u.username,u.nome,u.email,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
+          `SELECT u.id,u.username,u.nome,u.role,u.ativo,u.primeiro_login,u.ultimo_login,u.created_at,
+            u.cargo,u.area_atuacao,u.bio,u.linkedin_url,u.instagram_url,u.website_url,u.telefone,
+            (u.avatar_data IS NOT NULL) has_avatar,
             EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
               AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
             eu.empresa_id,eu.permissoes FROM users u LEFT JOIN empresa_users eu ON eu.user_id=u.id
             ORDER BY u.nome,u.username`,
         );
-        return response.json({ users: result.rows });
+        return response.json({ users: result.rows.map(row=>({...row,
+          avatar_url:row.has_avatar?`/api/users/${row.id}/avatar`:null,has_avatar:undefined})) });
       }
       if (route.length === 1 && request.method === "POST") {
         const data = request.body || {};
         if (!data.username || !data.nome)
           return response.status(400).json({ error: "Nome e usuário obrigatórios" });
-        const password = `Cord@${crypto.randomBytes(6).toString("hex")}`;
+        const password = temporaryPassword();
         const secret = hash(password);
         const result = await pool.query(
           `INSERT INTO users
@@ -260,7 +480,7 @@ export default async function handler(request, response) {
       }
       const id = Number(route[1]);
       if (Number.isInteger(id) && route[2] === "reset-password" && request.method === "POST") {
-        const password = `Cord@${crypto.randomBytes(6).toString("hex")}`;
+        const password = temporaryPassword();
         const secret = hash(password);
         await pool.query(
           `UPDATE users SET password_hash=$2,password_salt=$3,primeiro_login=TRUE WHERE id=$1`,
@@ -277,9 +497,14 @@ export default async function handler(request, response) {
            WHERE id=$1 RETURNING id,username,nome,email,role,ativo,ultimo_login`,
           [id, data.nome || null, data.email || null, data.role || null, data.ativo ?? null],
         );
-        if(data.empresaId&&data.permissoes)await pool.query(
-          "UPDATE empresa_users SET permissoes=$3::jsonb WHERE empresa_id=$1 AND user_id=$2",
-          [data.empresaId,id,JSON.stringify(data.permissoes)]);
+        const companyId=Number(data.empresaId||request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
+        if(companyId&&data.permissoes)await pool.query(
+          `INSERT INTO empresa_users(empresa_id,user_id,papel,permissoes,ativo)
+           VALUES($1,$2,$3,$4::jsonb,TRUE)
+           ON CONFLICT(empresa_id,user_id) DO UPDATE
+           SET papel=EXCLUDED.papel,permissoes=EXCLUDED.permissoes,ativo=TRUE`,
+          [companyId,id,data.role||"operador",JSON.stringify(data.permissoes)]);
+        if(!result.rowCount)return response.status(404).json({error:"Usuário não encontrado"});
         return response.json(result.rows[0]);
       }
       if(route[1]==="activity"&&request.method==="GET"){
@@ -336,14 +561,30 @@ export default async function handler(request, response) {
     if (route[0] === "messages") {
       if (route[1] === "users" && request.method === "GET") {
         const result = await pool.query(
-          `SELECT u.id,u.username,u.nome,u.email,u.role,
-             COUNT(m.id) FILTER(WHERE m.read_at IS NULL)::int AS unread
+          `SELECT u.id,u.username,u.nome,u.role,u.cargo,u.area_atuacao,u.bio,u.linkedin_url,
+             u.instagram_url,u.website_url,u.telefone,(u.avatar_data IS NOT NULL) has_avatar,
+             EXISTS(SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires_at>NOW()
+               AND s.last_seen_at>NOW()-INTERVAL '90 seconds') online,
+             COUNT(m.id) FILTER(WHERE m.read_at IS NULL)::int AS unread,
+             MAX(m.created_at) last_message_at
            FROM users u LEFT JOIN user_messages m
              ON m.sender_id=u.id AND m.recipient_id=$1
-           WHERE u.ativo=TRUE AND u.id<>$1 GROUP BY u.id ORDER BY unread DESC,u.nome`,
+           WHERE u.ativo=TRUE AND u.id<>$1 GROUP BY u.id
+           ORDER BY unread DESC,last_message_at DESC NULLS LAST,u.nome`,
           [user.id],
         );
-        return response.json(result.rows);
+        return response.json(result.rows.map(row=>({...row,
+          avatar_url:row.has_avatar?`/api/users/${row.id}/avatar`:null,has_avatar:undefined})));
+      }
+      if (Number.isInteger(Number(route[1])) && route[2] === "attachment" && request.method === "GET") {
+        const result=await pool.query(`SELECT attachment_data,attachment_name,attachment_mime
+          FROM user_messages WHERE id=$1 AND (sender_id=$2 OR recipient_id=$2)`,[Number(route[1]),user.id]);
+        if(!result.rowCount||!result.rows[0].attachment_data)
+          return response.status(404).json({error:"Anexo não encontrado"});
+        response.setHeader("Content-Type",result.rows[0].attachment_mime||"application/octet-stream");
+        response.setHeader("Content-Disposition",`inline; filename="${String(result.rows[0].attachment_name||"anexo").replace(/["\r\n]/g,"_")}"`);
+        response.setHeader("Cache-Control","private, max-age=300");
+        return response.send(result.rows[0].attachment_data);
       }
       if (route[1] === "thread" && request.method === "GET") {
         const other = Number(route[2]);
@@ -352,7 +593,10 @@ export default async function handler(request, response) {
           [other,user.id],
         );
         const result = await pool.query(
-          `SELECT * FROM user_messages WHERE
+          `SELECT id,sender_id,recipient_id,content,read_at,created_at,
+             attachment_name,attachment_mime,attachment_size,
+             CASE WHEN attachment_data IS NOT NULL THEN '/api/messages/'||id||'/attachment' END attachment_url
+           FROM user_messages WHERE
            (sender_id=$1 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$1)
            ORDER BY id LIMIT 300`,
           [user.id,other],
@@ -362,29 +606,62 @@ export default async function handler(request, response) {
       if (route.length === 1 && request.method === "POST") {
         const recipient = Number(request.body?.recipientId);
         const content = String(request.body?.content || "").trim().slice(0,3000);
-        if (!recipient || !content)
-          return response.status(400).json({ error: "Destinatário e mensagem obrigatórios" });
+        const attachment=request.body?.attachment||null;
+        let attachmentData=null,attachmentName=null,attachmentMime=null,attachmentSize=null;
+        if(attachment){
+          attachmentName=String(attachment.name||"anexo").replace(/[\\/:*?"<>|\x00-\x1F]/g,"_").slice(0,160);
+          attachmentMime=String(attachment.mime||"application/octet-stream").slice(0,100);
+          const allowed=["image/png","image/jpeg","image/webp","application/pdf","text/plain","text/xml","application/xml"];
+          if(!allowed.includes(attachmentMime))return response.status(415).json({error:"Envie imagem, PDF, TXT ou XML"});
+          attachmentData=Buffer.from(String(attachment.base64||"").replace(/^data:[^;]+;base64,/,""),"base64");
+          if(!attachmentData.length||attachmentData.length>2_500_000)
+            return response.status(413).json({error:"O anexo deve ter até 2,5 MB"});
+          attachmentSize=attachmentData.length;
+        }
+        if(recipient===Number(user.id))
+          return response.status(400).json({error:"Não é possível enviar mensagens para você mesmo"});
+        const recipientUser=await pool.query("SELECT id FROM users WHERE id=$1 AND ativo=TRUE",[recipient]);
+        if(!recipientUser.rowCount)
+          return response.status(404).json({error:"Destinatário não encontrado ou inativo"});
+        if (!recipient || (!content&&!attachmentData))
+          return response.status(400).json({ error: "Destinatário e mensagem ou anexo obrigatórios" });
         const result = await pool.query(
-          `INSERT INTO user_messages(sender_id,recipient_id,content)
-           VALUES($1,$2,$3) RETURNING *`,
-          [user.id,recipient,content],
+          `INSERT INTO user_messages(sender_id,recipient_id,content,attachment_data,attachment_name,attachment_mime,attachment_size)
+           VALUES($1,$2,$3,$4::bytea,$5,$6,$7) RETURNING id,sender_id,recipient_id,content,read_at,created_at,
+             attachment_name,attachment_mime,attachment_size,
+             CASE WHEN attachment_data IS NOT NULL THEN '/api/messages/'||id||'/attachment' END attachment_url`,
+          [user.id,recipient,content,attachmentData,attachmentName,attachmentMime,attachmentSize],
         );
         return response.json(result.rows[0]);
       }
     }
 
     if (route[0] === "sefaz" && route[1] === "cert" && route[2] === "listar") {
-      const configured = Boolean(process.env.SEFAZ_PFX_BASE64 && process.env.SEFAZ_PFX_PASSWORD);
+      const certificate=activeEmpresaId?await pool.query(`SELECT arquivo_nome,titular,cnpj,validade_fim
+        FROM empresa_certificados WHERE empresa_id=$1`,[activeEmpresaId]):{rows:[],rowCount:0};
+      const configured = Boolean(certificate.rowCount||process.env.SEFAZ_PFX_BASE64);
       return response.json({
         certificados: configured
           ? [{
-              thumbprint: "vercel-secret",
-              label: "INTECOM SERVIÇOS DE LOGÍSTICA LTDA",
-              subject: `CNPJ ${process.env.SEFAZ_CNPJ || ""}`,
-              issuer: "Certificado A1 protegido na Vercel",
+              thumbprint: certificate.rowCount?"empresa-db":"vercel-secret",
+              label: certificate.rows[0]?.arquivo_nome||"Certificado A1 configurado",
+              subject: certificate.rows[0]?.titular||`CNPJ ${process.env.SEFAZ_CNPJ || ""}`,
+              issuer: certificate.rowCount?"Cofre criptografado da empresa":"Certificado protegido na Vercel",
+              validade_fim:certificate.rows[0]?.validade_fim||null,
             }]
           : [],
       });
+    }
+    if(route[0]==="sefaz"&&route[1]==="sync-state"&&request.method==="GET"){
+      if(!activeEmpresaId)return response.status(400).json({error:"Selecione uma empresa"});
+      const state=await pool.query(`SELECT ult_nsu,max_nsu,locked_until,last_status,last_error,updated_at
+        FROM sefaz_sync_state WHERE empresa_id=$1`,[activeEmpresaId]);
+      const usage=await pool.query(`SELECT COUNT(*)::int used FROM sefaz_key_query_log
+        WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,[activeEmpresaId]);
+      return response.json({state:state.rows[0]||{ult_nsu:"0",max_nsu:"0",last_status:"ainda_não_iniciado"},
+        individualQueriesLastHour:Number(usage.rows[0]?.used||0),safeLimit:18,
+        protections:{sequentialNsu:true,exclusiveQueue:true,cooldown137Minutes:60,
+          cooldown656Minutes:60,individualLimitPerHour:18,officialLimitPerHour:20}});
     }
 
     if (
@@ -393,37 +670,45 @@ export default async function handler(request, response) {
       route[2] === "periodo-auto" &&
       request.method === "POST"
     ) {
-      if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
-        return response.status(503).json({ error: "Certificado A1 não configurado" });
+      if(false && !["certificate","mtls"].includes(String(user.auth_method||"")))
+        return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de buscar na SEFAZ"});
+      if(!activeEmpresaId)
+        return response.status(400).json({error:"Selecione uma empresa antes de buscar documentos na SEFAZ"});
+      const credentials=await getCompanyCertificate(activeEmpresaId);
+      if(!credentials)return response.status(503).json({error:"Anexe o certificado A1 na configuração da empresa"});
       const { consultarPeriodoComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
       await pool.query(`INSERT INTO sefaz_sync_state(empresa_id) VALUES($1)
-        ON CONFLICT(empresa_id) DO NOTHING`,[user.empresa_ativa_id]);
+        ON CONFLICT(empresa_id) DO NOTHING`,[activeEmpresaId]);
       const claim=await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+INTERVAL '5 minutes',
         last_status='processando',updated_at=NOW() WHERE empresa_id=$1
-        AND (locked_until IS NULL OR locked_until<=NOW()) RETURNING ult_nsu`,[user.empresa_ativa_id]);
+        AND (locked_until IS NULL OR locked_until<=NOW()) RETURNING ult_nsu`,[activeEmpresaId]);
       if(!claim.rowCount){
-        const state=await pool.query("SELECT ult_nsu,locked_until,last_status FROM sefaz_sync_state WHERE empresa_id=$1",[user.empresa_ativa_id]);
+        const state=await pool.query("SELECT ult_nsu,locked_until,last_status FROM sefaz_sync_state WHERE empresa_id=$1",[activeEmpresaId]);
         return response.status(429).json({error:"Sincronização SEFAZ em espera. O sistema retomará automaticamente sem reiniciar o NSU.",
           state:state.rows[0]});
       }
+      const moduleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
+        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
+      const sefazConfig=moduleConfig.rows[0]?.configuracao||{};
+      const requestedBatch=50;
       let result;
       try{result = await consultarPeriodoComCertificado({
-        pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
-        passphrase: process.env.SEFAZ_PFX_PASSWORD,
+        pfx: credentials.pfx,
+        passphrase: credentials.passphrase,
         uf: process.env.SEFAZ_UF || "MG",
         ambiente: "producao",
-        cnpjOuCpf: process.env.SEFAZ_CNPJ,
+        cnpjOuCpf: credentials.cnpj||process.env.SEFAZ_CNPJ,
         ultNSUInicial: claim.rows[0].ult_nsu || "0",
         dateFrom: request.body?.dateFrom,
         dateTo: request.body?.dateTo,
-        maxIteracoes: 5,
+        maxIteracoes: Math.max(1,Math.ceil(requestedBatch/50)),
       });}catch(error){
         const blocked=/cStat 656|Consumo Indevido/i.test(error.message||"");
         await pool.query(`UPDATE sefaz_sync_state SET locked_until=NOW()+($2::int*INTERVAL '1 minute'),
           last_status=$3,last_error=$4,updated_at=NOW() WHERE empresa_id=$1`,
-          [user.empresa_ativa_id,blocked?60:5,blocked?"bloqueado_656":"erro",String(error.message||error).slice(0,1000)]);
+          [activeEmpresaId,blocked?60:5,blocked?"bloqueado_656":"erro",String(error.message||error).slice(0,1000)]);
         throw error;
       }
       let saved=0;
@@ -435,7 +720,7 @@ export default async function handler(request, response) {
         const inserted=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
           SELECT $1,$2,$3::text,'importado',$4,'sefaz-mtls-auto',$5,$6
           WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
-          [user.empresa_ativa_id,kind,chave,doc.xml,`${chave}.xml`,user.id]);
+          [activeEmpresaId,kind,chave,doc.xml,`${chave}.xml`,user.id]);
         const summary=fiscalSummary(doc.xml);
         await pool.query(`UPDATE documents SET numero=COALESCE($3,numero),serie=COALESCE($4,serie),data_emissao=COALESCE($5,data_emissao),
           valor_total=COALESCE($6,valor_total),remetente_nome=COALESCE($7,remetente_nome),
@@ -443,7 +728,7 @@ export default async function handler(request, response) {
           destinatario_doc=COALESCE($10,destinatario_doc),protocolo=COALESCE($11,protocolo),
           status='importado',xml_data=COALESCE($12,xml_data)
           WHERE empresa_id IS NOT DISTINCT FROM $1 AND chave=$2::text`,
-          [user.empresa_ativa_id,chave,summary.numero,summary.serie,summary.dataEmissao,summary.valor,
+          [activeEmpresaId,chave,summary.numero,summary.serie,summary.dataEmissao,summary.valor,
             summary.emitente,summary.emitenteDoc,summary.destinatario,summary.destinatarioDoc,summary.protocolo,doc.xml]);
         saved+=inserted.rowCount;
       }
@@ -453,7 +738,7 @@ export default async function handler(request, response) {
       await pool.query(`UPDATE sefaz_sync_state SET ult_nsu=$2,max_nsu=$3,
         locked_until=CASE WHEN $4 THEN NOW()+INTERVAL '1 hour' ELSE NOW() END,
         last_status=$5,last_error=NULL,updated_at=NOW() WHERE empresa_id=$1`,
-        [user.empresa_ativa_id,String(result.ultNSU||"0"),String(result.maxNSU||"0"),
+        [activeEmpresaId,String(result.ultNSU||"0"),String(result.maxNSU||"0"),
           Boolean(result.atingiuFim),result.atingiuFim?"aguardando_novos_documentos":"parcial"]);
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       return response.status(200).send(
@@ -475,38 +760,52 @@ export default async function handler(request, response) {
       ["nfe", "cte"].includes(route[1]) &&
       /^\d{44}$/.test(route[2] || "")
     ) {
-      if (!process.env.SEFAZ_PFX_BASE64 || !process.env.SEFAZ_PFX_PASSWORD)
-        return response.status(503).json({ error: "Certificado A1 não configurado" });
+      if(!["certificate","mtls"].includes(String(user.auth_method||"")))
+        return response.status(403).json({error:"Valide o certificado digital instalado na configuração da empresa antes de consultar a SEFAZ"});
+      if(!activeEmpresaId)
+        return response.status(400).json({error:"Selecione uma empresa antes de consultar uma chave"});
+      const credentials=await getCompanyCertificate(activeEmpresaId);
+      if(!credentials)return response.status(503).json({error:"Anexe o certificado A1 na configuração da empresa"});
+      const keyModuleConfig=await pool.query(`SELECT configuracao FROM empresa_module_config
+        WHERE empresa_id=$1 AND modulo='sefaz' AND ativo=TRUE`,[activeEmpresaId]);
+      const configuredLimit=18;
       const rateState=await pool.query(`SELECT COUNT(*)::int used,
         GREATEST(0,CEIL(EXTRACT(EPOCH FROM (MIN(created_at)+INTERVAL '1 hour'-NOW()))))::int retry_after
         FROM sefaz_key_query_log WHERE empresa_id=$1 AND created_at>NOW()-INTERVAL '1 hour'`,
-        [user.empresa_ativa_id]);
-      if(Number(rateState.rows[0]?.used||0)>=18){
+        [activeEmpresaId]);
+      if(Number(rateState.rows[0]?.used||0)>=configuredLimit){
         const retryAfter=Math.max(1,Number(rateState.rows[0]?.retry_after||3600));
         response.setHeader("Retry-After",String(retryAfter));
         return response.status(429).json({
-          error:`Fila SEFAZ protegida: limite seguro de 18 consultas/hora atingido. Retomada em ${Math.ceil(retryAfter/60)} minuto(s).`,
+          error:`Fila SEFAZ protegida: limite seguro de ${configuredLimit} consultas/hora atingido. Retomada em ${Math.ceil(retryAfter/60)} minuto(s).`,
           code:"SEFAZ_SAFE_RATE_LIMIT",retryAfter,
         });
       }
       await pool.query("INSERT INTO sefaz_key_query_log(empresa_id,chave) VALUES($1,$2)",
-        [user.empresa_ativa_id,route[2]]);
+        [activeEmpresaId,route[2]]);
       const { consultarChaveComCertificado } = await import(
         "../backend/services/sefaz-distribuicao.js"
       );
       let xml=null,cancelled=false;
       try{
         xml = await consultarChaveComCertificado({
-          pfx: Buffer.from(process.env.SEFAZ_PFX_BASE64, "base64"),
-          passphrase: process.env.SEFAZ_PFX_PASSWORD,
+          pfx: credentials.pfx,
+          passphrase: credentials.passphrase,
           uf: process.env.SEFAZ_UF || "MG",
           ambiente: "producao",
-          cnpjOuCpf: process.env.SEFAZ_CNPJ,
+          cnpjOuCpf: credentials.cnpj||process.env.SEFAZ_CNPJ,
           chave: route[2],
         });
       }catch(error){
         if(/cStat 653|NF-e Cancelada/i.test(error.message||""))cancelled=true;
-        else throw error;
+        else {
+          const detail=String(error?.message||"falha desconhecida")
+            .replace(/postgres(?:ql)?:\/\/\S+/gi,"[conexão protegida]").slice(0,240);
+          return response.status(502).json({
+            error:`Falha na consulta SEFAZ: ${detail}`,
+            chave:route[2],imported:false,logReason:"sefaz_indisponivel",
+          });
+        }
       }
       const kind=route[1].toUpperCase();
       const summary=fiscalSummary(xml);
@@ -514,7 +813,7 @@ export default async function handler(request, response) {
         const saved=await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,source,created_by)
           SELECT $1,$2,$3::text,'cancelado','sefaz-consulta',$4
           WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)
-          RETURNING id`,[user.empresa_ativa_id,kind,route[2],user.id]);
+          RETURNING id`,[activeEmpresaId,kind,route[2],user.id]);
         return response.json({ok:true,status:"Documento cancelado registrado sem XML (cStat 653).",
           provider:"sefaz",chave:route[2],xml:null,cancelled:true,imported:Boolean(saved.rowCount)});
       }
@@ -532,7 +831,7 @@ export default async function handler(request, response) {
       await pool.query(`INSERT INTO documents(empresa_id,kind,chave,status,xml_data,source,file_name,created_by)
         SELECT $1,$2,$3::text,$4,$5,'sefaz-consulta',$6,$7
         WHERE NOT EXISTS(SELECT 1 FROM documents WHERE chave=$3::text AND empresa_id IS NOT DISTINCT FROM $1)`,
-        [user.empresa_ativa_id,kind,route[2],cancelled?"cancelado":"importado",xml,
+        [activeEmpresaId,kind,route[2],cancelled?"cancelado":"importado",xml,
           cancelled?null:`${route[2]}.xml`,user.id]);
       if(xml)await pool.query(`UPDATE documents SET numero=COALESCE($3,numero),serie=COALESCE($4,serie),data_emissao=COALESCE($5,data_emissao),
         valor_total=COALESCE($6,valor_total),remetente_nome=COALESCE($7,remetente_nome),
@@ -540,7 +839,7 @@ export default async function handler(request, response) {
         destinatario_doc=COALESCE($10,destinatario_doc),protocolo=COALESCE($11,protocolo),
         status='importado',xml_data=COALESCE($12,xml_data)
         WHERE empresa_id IS NOT DISTINCT FROM $1 AND chave=$2::text`,
-        [user.empresa_ativa_id,route[2],summary.numero,summary.serie,summary.dataEmissao,summary.valor,
+        [activeEmpresaId,route[2],summary.numero,summary.serie,summary.dataEmissao,summary.valor,
           summary.emitente,summary.emitenteDoc,summary.destinatario,summary.destinatarioDoc,summary.protocolo,xml]);
       return response.json({
         ok: true,
@@ -572,24 +871,34 @@ export default async function handler(request, response) {
         const activeCompanyId=Number(request.headers["x-empresa-id"]||user.empresa_ativa_id||0);
         if(!activeCompanyId)return response.status(400).json({error:"Selecione uma empresa no topo do sistema"});
         const kind=String(request.query.kind||"").toUpperCase();
+        const direction=String(request.query.direction||"outgoing")==="incoming"?"incoming":"outgoing";
         const month=/^\d{4}-\d{2}$/.test(String(request.query.month||""))?String(request.query.month):
           new Date().toISOString().slice(0,7);
         const company=await pool.query("SELECT regexp_replace(cnpj,'\\D','','g') cnpj,nome FROM empresas WHERE id=$1 AND ativo=TRUE",
           [activeCompanyId]);
         if(!company.rowCount)return response.status(404).json({error:"Empresa ativa não encontrada"});
         const result=await pool.query(`SELECT d.id,d.kind,d.chave,d.numero,d.serie,d.data_emissao,d.valor_total,
-          d.status,d.destinatario_nome,d.destinatario_doc,d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
-          FROM documents d WHERE (d.empresa_id=$1 OR regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3)
+          d.status,d.remetente_nome,d.remetente_doc,d.destinatario_nome,d.destinatario_doc,
+          d.source,d.created_at,(d.xml_data IS NOT NULL) has_xml
+          FROM documents d WHERE d.empresa_id=$1
+          AND (($5='outgoing' AND (regexp_replace(COALESCE(d.remetente_doc,''),'\\D','','g')=$3
+                OR (COALESCE(d.remetente_doc,'')='' AND COALESCE(d.destinatario_doc,'')='')))
+            OR ($5='incoming' AND (regexp_replace(COALESCE(d.destinatario_doc,''),'\\D','','g')=$3
+                OR (COALESCE(d.remetente_doc,'')='' AND COALESCE(d.destinatario_doc,'')=''))))
           AND ($2='' OR d.kind=$2)
           AND COALESCE(d.data_emissao,d.created_at)::date>=($4||'-01')::date
           AND COALESCE(d.data_emissao,d.created_at)::date<(($4||'-01')::date+INTERVAL '1 month')
           ORDER BY d.data_emissao DESC NULLS LAST,d.created_at DESC LIMIT 10000`,
-          [activeCompanyId,kind,company.rows[0].cnpj,month]);
+          [activeCompanyId,kind,company.rows[0].cnpj,month,direction]);
         const stats=result.rows.reduce((summary,row)=>{
           summary.total++;const key=String(row.kind||"").toLowerCase();
-          if(Object.hasOwn(summary,key))summary[key]++;return summary;
-        },{total:0,nfe:0,nfse:0,cte:0});
-        return response.json({items:result.rows,stats,company:company.rows[0],month,
+          if(Object.hasOwn(summary,key))summary[key]++;
+          if(row.has_xml)summary.xml++;
+          if(/cancel|rejeit|erro/i.test(String(row.status||"")))summary.alertas++;
+          summary.valor+=Number(row.valor_total||0);
+          return summary;
+        },{total:0,nfe:0,nfse:0,cte:0,xml:0,alertas:0,valor:0});
+        return response.json({items:result.rows,stats,company:company.rows[0],month,direction,
           connectors:{nfe:"nsu_protegido",cte:"aguardando_configuracao",nfse:"aguardando_provedor"}});
       }
       if(route[1]==="import-log"){
@@ -660,7 +969,7 @@ export default async function handler(request, response) {
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7000);
       try{
         const monitorResponse=await fetch("https://monitorsefaz.webmaniabr.com/v3/components.json",{
-          signal:controller.signal,headers:{"User-Agent":"CordeiroFiscalMonitor/2.0"},
+          signal:controller.signal,headers:{"User-Agent":"HaixelFiscalMonitor/2.0"},
         });
         if(!monitorResponse.ok)throw new Error(`HTTP ${monitorResponse.status}`);
         const monitor=await monitorResponse.json();

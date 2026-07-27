@@ -6,7 +6,7 @@ export const config = { api: { bodyParser: false } };
 
 function first(xml, names) {
   for (const name of names) {
-    const match = xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, "i"));
+    const match = xml.match(new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[A-Za-z_][\\w.-]*:)?${name}>`, "i"));
     if (match) return match[1].replace(/<[^>]+>/g, "").trim();
   }
   return null;
@@ -17,6 +17,9 @@ function summarize(xml, fileName) {
   const isNfse=/<(?:NFSe|infNFSe|CompNfse|ListaNfse)\b/i.test(xml);
   const keyMatch = xml.match(/Id="(?:NFe|CTe|NFS[eE]?)(\d{44,50})"/i);
   const chave = keyMatch?.[1] || first(xml, ["chNFe", "chCTe","chNFSe","ChaveAcesso"]);
+  const block=(name)=>xml.match(new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[A-Za-z_][\\w.-]*:)?${name}>`,`i`))?.[1]||"";
+  const emit=block("emit"),dest=block("dest"),rem=block("rem"),exp=block("exped");
+  const value=(scope,names)=>first(scope,names)||first(xml,names);
   return {
     kind: isCte ? "CTE" : isNfse?"NFSE":"NFE",
     chave: chave?.replace(/\D/g, "").slice(0, 50) || null,
@@ -24,7 +27,10 @@ function summarize(xml, fileName) {
     dataEmissao: first(xml, ["dhEmi", "dEmi","dhProc","DataEmissao"]),
     valor: Number(first(xml, ["vNF", "vTPrest", "vRec","vServ","ValorServicos"]) || 0),
     status: /prot(?:NFe|CTe)/i.test(xml) ? "autorizado" : "importado",
-    remetente: first(xml, ["xNome"]),
+    remetente: value(emit,["xNome"])||value(rem,["xNome"])||value(exp,["xNome"]),
+    remetenteDoc: value(emit,["CNPJ","CPF"])||value(rem,["CNPJ","CPF"])||value(exp,["CNPJ","CPF"]),
+    destinatario: value(dest,["xNome"])||first(xml,["xNomeDest","xDest"]),
+    destinatarioDoc: value(dest,["CNPJ","CPF"]),
     fileName,
   };
 }
@@ -79,11 +85,11 @@ export default async function handler(request, response) {
       }
       const result = await pool.query(
         `INSERT INTO documents
-          (empresa_id,kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome,created_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'upload',$9,$10,$11)
+          (empresa_id,kind,chave,numero,data_emissao,valor_total,status,xml_data,source,file_name,remetente_nome,remetente_doc,destinatario_nome,destinatario_doc,created_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'upload',$9,$10,$11,$12,$13,$14)
          RETURNING *`,
         [empresaId,item.kind,item.chave,item.numero,item.dataEmissao || null,
-         item.valor,item.status,xml,item.fileName,item.remetente,session.rows[0].user_id],
+         item.valor,item.status,xml,item.fileName,item.remetente,item.remetenteDoc,item.destinatario,item.destinatarioDoc,session.rows[0].user_id],
       );
       await pool.query(`INSERT INTO empresa_activity_log(empresa_id,user_id,acao,modulo,entidade_id,detalhes)
         VALUES($1,$2,'incluiu','documentos',$3,$4::jsonb)`,[empresaId,

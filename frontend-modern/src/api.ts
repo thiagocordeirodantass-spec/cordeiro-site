@@ -20,6 +20,9 @@ export type User = {
   instagram_url?: string;
   website_url?: string;
   telefone?: string;
+  certificate_verified?: boolean;
+  primeiro_login?: boolean;
+  onboarding_completed?: boolean;
   preferencias?: Record<string, unknown>;
   empresa_ativa?: Company | null;
   memberships?: Company[];

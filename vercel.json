@@ -1,10 +1,31 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "devCommand": "npm --prefix frontend-modern run dev -- --port $PORT",
   "installCommand": "npm install && npm --prefix frontend-modern install && npm --prefix backend install",
   "buildCommand": "npm --prefix frontend-modern run build",
   "outputDirectory": "frontend-modern/dist",
+  "crons": [
+    {
+      "path": "/api/certidoes/dispatch-alerts",
+      "schedule": "0 11 * * *"
+    }
+  ],
+  "functions": {
+    "api/certidoes/recognize.js": {
+      "includeFiles": "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/system",
+      "destination": "/api/router?route=system"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/router?route=health"
+    },
     {
       "source": "/api/users/:path*",
       "destination": "/api/router?route=users/:path*"
@@ -44,6 +65,10 @@
     {
       "source": "/api/assistant/:path*",
       "destination": "/api/router?route=assistant/:path*"
+    },
+    {
+      "source": "/api/cnd-pdf",
+      "destination": "/api/cnd-pdf.js"
     },
     {
       "source": "/api/certidoes/:path*",

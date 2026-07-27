@@ -10,6 +10,16 @@ import { hashPassword } from "../services/auth.service.js";
 const router = Router();
 router.use(requireRole("admin"));
 
+function temporaryPassword(length=18){
+  const groups=["ABCDEFGHJKLMNPQRSTUVWXYZ","abcdefghijkmnopqrstuvwxyz","23456789","!@#$%&*_-+="];
+  const all=groups.join(""),chars=groups.map(group=>group[crypto.randomInt(group.length)]);
+  while(chars.length<length)chars.push(all[crypto.randomInt(all.length)]);
+  for(let index=chars.length-1;index>0;index--){
+    const swap=crypto.randomInt(index+1);[chars[index],chars[swap]]=[chars[swap],chars[index]];
+  }
+  return chars.join("");
+}
+
 function sanitize(row) {
   if (!row) return null;
   const { password_hash, password_salt, ...rest } = row;
@@ -34,7 +44,7 @@ router.post("/", (req, res) => {
   if (empresaId && !db.prepare("SELECT id FROM empresas WHERE id = ? AND ativo = 1").get(Number(empresaId))) {
     return res.status(400).json({ error: "Empresa inválida ou inativa" });
   }
-  const tempPassword = crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "x").slice(0, 12);
+  const tempPassword = temporaryPassword();
   const { hash, salt } = hashPassword(tempPassword);
   const info = db.prepare(`
     INSERT INTO users (username, nome, email, password_hash, password_salt, role, ativo, primeiro_login)
@@ -86,7 +96,7 @@ router.post("/:id/reset-password", (req, res) => {
   const id = Number(req.params.id);
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
   if (!row) return res.status(404).json({ error: "Usuário não encontrado" });
-  const tempPassword = crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "x").slice(0, 12);
+  const tempPassword = temporaryPassword();
   const { hash, salt } = hashPassword(tempPassword);
   db.prepare("UPDATE users SET password_hash = ?, password_salt = ?, primeiro_login = 1, updated_at = datetime('now') WHERE id = ?")
     .run(hash, salt, id);

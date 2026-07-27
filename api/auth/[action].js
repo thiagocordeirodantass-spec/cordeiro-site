@@ -1,29 +1,35 @@
 import crypto from "node:crypto";
 import { ensureSchema, pool } from "../_database.js";
+import {accessEmail,sendResend} from "../_email-templates.js";
 
 const COOKIE = "sid";
 const SESSION_HOURS = 8;
-async function sendAccessCode({to,name,code}){
+async function sendAccessCodeLegacy({to,name,code}){
   if(!process.env.RESEND_API_KEY) return {sent:false};
   const safeName=String(name||"").replace(/[<>&"']/g,"");
   const html=`<!doctype html><html><body style="margin:0;background:#061713;padding:36px 16px;font-family:Arial,sans-serif;color:#eafff8">
   <table role="presentation" width="100%"><tr><td align="center"><table width="560" style="max-width:560px;background:#0b241d;border:1px solid #1f5a49;border-radius:24px;overflow:hidden">
-  <tr><td style="padding:34px;background:#0b2d24"><div style="color:#62e0b8;font-size:11px;letter-spacing:3px">CORDEIRO FISCAL · ACESSO SEGURO</div>
+  <tr><td style="padding:34px;background:#0b2d24"><div style="color:#62e0b8;font-size:11px;letter-spacing:3px">HAIXEL · ACESSO SEGURO</div>
   <h1 style="margin:14px 0 8px;font-size:27px;color:#fff">Confirme sua identidade</h1>
   <p style="margin:0;color:#9fc4b8;line-height:1.6">Olá, ${safeName}. Use o código abaixo para concluir seu acesso à plataforma.</p></td></tr>
   <tr><td style="padding:34px"><div style="padding:25px;text-align:center;border:1px solid #2f8068;border-radius:16px;background:#071d18">
   <small style="color:#7ca99b;letter-spacing:2px">CÓDIGO DE VERIFICAÇÃO</small>
   <div style="font:700 38px monospace;letter-spacing:10px;color:#65e2ba;margin:13px 0">${code}</div>
   <small style="color:#d9aa52">EXPIRA EM 15 MINUTOS</small></div>
-  <p style="color:#789b90;font-size:12px;line-height:1.6;margin:22px 0 0">🔐 Não compartilhe este código. A equipe Cordeiro nunca solicitará sua senha ou certificado por e-mail.</p></td></tr>
+  <p style="color:#789b90;font-size:12px;line-height:1.6;margin:22px 0 0">🔐 Não compartilhe este código. A equipe Haixel nunca solicitará sua senha ou certificado por e-mail.</p></td></tr>
   <tr><td style="padding:18px 34px;border-top:1px solid #173f34;color:#587c71;font-size:10px">CONEXÃO PROTEGIDA · MONITORAMENTO ATIVO · ${new Date().getFullYear()}</td></tr>
   </table></td></tr></table></body></html>`;
   const result=await fetch("https://api.resend.com/emails",{method:"POST",headers:{
     Authorization:`Bearer ${process.env.RESEND_API_KEY}`,"Content-Type":"application/json"},
-    body:JSON.stringify({from:process.env.MAIL_FROM||"Cordeiro Fiscal <acesso@cordeirofiscal.com.br>",
-      to:[to],subject:`${code} é seu código de acesso · Cordeiro Fiscal`,html})});
+    body:JSON.stringify({from:process.env.MAIL_FROM||"Haixel <acesso@cordeirofiscal.com.br>",
+      to:[to],subject:`${code} é seu código de acesso · Haixel`,html})});
   if(!result.ok) throw new Error("Falha no serviço de e-mail");
   return {sent:true};
+}
+
+async function sendAccessCode({to,name,code}){
+  const template=accessEmail({name,code});
+  return sendResend({to,...template});
 }
 
 function hashPassword(password, saltHex) {
@@ -81,11 +87,13 @@ async function publicUser(user) {
     email: user.email,
     role: user.role,
     primeiro_login: Boolean(user.primeiro_login),
+    onboarding_completed: Boolean(user.onboarding_completed_at),
     ultimo_login: user.ultimo_login,
     is_super_admin: user.role === "admin",
     memberships,
     empresa_ativa_id: activeId,
     empresa_ativa: activeResult.rows[0] || null,
+    certificate_verified: user.auth_method === "certificate" || user.auth_method === "mtls",
     preferencias: {},
     cargo: user.cargo || "",
     area_atuacao: user.area_atuacao || "",
@@ -94,6 +102,7 @@ async function publicUser(user) {
     instagram_url: user.instagram_url || "",
     website_url: user.website_url || "",
     telefone: user.telefone || "",
+    avatar_url: user.avatar_mime ? "/api/auth/avatar" : null,
   };
 }
 
@@ -101,7 +110,7 @@ async function currentUser(request) {
   const token = cookie(request, COOKIE);
   if (!token) return null;
   const result = await pool.query(
-    `SELECT u.*
+    `SELECT u.*,s.auth_method,s.empresa_ativa_id
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.id = $1 AND s.expires_at > NOW() AND u.ativo = TRUE`,
@@ -157,19 +166,24 @@ export default async function handler(request, response) {
       if(!secretOk||!verified) return response.status(401).json({
         error:"O navegador não apresentou um certificado cliente válido",
       });
-      if(!subject.replace(/\D/g,"").includes("03857930000154"))
-        return response.status(403).json({error:"Certificado não autorizado para a INTECOM"});
-      const company=await pool.query("SELECT id FROM empresas WHERE cnpj='03857930000154' AND ativo=TRUE");
-      if(!company.rowCount) return response.status(403).json({error:"Empresa INTECOM desativada"});
-      const admin=await pool.query(`SELECT u.* FROM users u LEFT JOIN empresa_users eu
-        ON eu.user_id=u.id AND eu.empresa_id=$1 WHERE u.role='admin' AND u.ativo=TRUE
-        ORDER BY (eu.user_id IS NOT NULL) DESC,u.id LIMIT 1`,[company.rows[0].id]);
-      if(!admin.rowCount) return response.status(403).json({error:"Administrador não configurado"});
-      await createSession(request,response,admin.rows[0].id);
-      const token=String(response.getHeader("Set-Cookie")||"").match(/^sid=([^;]+)/)?.[1];
-      if(token) await pool.query(`UPDATE sessions SET empresa_ativa_id=$1,auth_method='certificate',
+      const token=cookie(request,COOKIE);
+      if(!token)return response.status(401).json({error:"Entre com usuário e senha antes de validar o certificado da empresa"});
+      const companyId=Number(request.query.empresaId);
+      const company=await pool.query("SELECT id,cnpj FROM empresas WHERE id=$1 AND ativo=TRUE",[companyId]);
+      if(!company.rowCount)return response.status(404).json({error:"Empresa não encontrada ou desativada"});
+      const companyCnpj=String(company.rows[0].cnpj||"").replace(/\D/g,"");
+      if(!companyCnpj||!subject.replace(/\D/g,"").includes(companyCnpj))
+        return response.status(403).json({error:"O certificado apresentado não corresponde ao CNPJ da empresa selecionada"});
+      const session=await pool.query("SELECT user_id FROM sessions WHERE id=$1 AND expires_at>NOW()",[token]);
+      if(!session.rowCount)return response.status(401).json({error:"Sessão expirada"});
+      const access=await pool.query(`SELECT u.role,eu.user_id membership FROM users u
+        LEFT JOIN empresa_users eu ON eu.user_id=u.id AND eu.empresa_id=$2 AND eu.ativo=TRUE
+        WHERE u.id=$1 AND u.ativo=TRUE`,[session.rows[0].user_id,companyId]);
+      if(!access.rowCount||(access.rows[0].role!=="admin"&&!access.rows[0].membership))
+        return response.status(403).json({error:"Usuário sem acesso à empresa deste certificado"});
+      await pool.query(`UPDATE sessions SET empresa_ativa_id=$1,auth_method='certificate',
         user_agent=COALESCE(user_agent,'') || $3 WHERE id=$2`,
-        [company.rows[0].id,token,` mTLS:${serial}`]);
+        [companyId,token,` mTLS:${serial}`]);
       const target=String(request.query.redirect||"/");
       return response.redirect(302,target.startsWith("/")&&!target.startsWith("//")?target:"/");
     }
@@ -197,6 +211,17 @@ export default async function handler(request, response) {
       if (!user)
         return response.status(401).json({ error: "Não autenticado" });
       return response.json({ user: await publicUser(user) });
+    }
+
+    if (action === "onboarding" && request.method === "POST") {
+      const user = await currentUser(request);
+      if (!user)
+        return response.status(401).json({ error: "Não autenticado" });
+      await pool.query(
+        "UPDATE users SET onboarding_completed_at=COALESCE(onboarding_completed_at,NOW()) WHERE id=$1",
+        [user.id],
+      );
+      return response.json({ ok: true });
     }
 
     if (action === "me" && request.method === "PUT") {
