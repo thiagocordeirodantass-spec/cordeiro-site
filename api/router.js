@@ -65,7 +65,7 @@ const RELEASE_ARCHIVE={
 };
 
 const RELEASE={
-  version:"2026.07.27.19",
+  version:"2026.07.27.20",
   title:"Experiência Haixel integrada",
   publishedAt:"2026-07-27T00:45:00-03:00",
   summary:"Landing, documentos, integrações, empresas, acessos, suporte e manutenção agora formam uma experiência mais interativa e coerente.",
@@ -203,14 +203,13 @@ export default async function handler(request, response) {
     response.setHeader("Cache-Control","private, no-store, no-cache, must-revalidate, max-age=0");
     const route = parts(request);
     if(route[0]==="system"&&request.method==="GET"){
-      const configured=String(process.env.MAINTENANCE_MODE??"false");
+      const configured=String(process.env.MAINTENANCE_MODE??"true");
       const enabled=!/^(0|false|no)$/i.test(configured);
       const startsAt=process.env.MAINTENANCE_START||null;
       const endsAt=process.env.MAINTENANCE_END||null;
       const now=Date.now(),startTime=startsAt?new Date(startsAt).getTime():null,endTime=endsAt?new Date(endsAt).getTime():null;
       const scheduled=Boolean(enabled&&startTime&&Number.isFinite(startTime)&&startTime>now);
       const active=Boolean(enabled&&!scheduled&&(!endTime||!Number.isFinite(endTime)||endTime>now));
-      if(active)await pool.query("DELETE FROM sessions");
       return response.json({release:RELEASE,maintenance:{
         active,scheduled,
         title:process.env.MAINTENANCE_TITLE||"A Haixel está ficando ainda melhor",

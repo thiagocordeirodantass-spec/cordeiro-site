@@ -124,9 +124,15 @@ function Brand() {
     </div>
   );
 }
+function HaixelAiMark({small=false}:{small?:boolean}) {
+  return <span className={`haixel-ai-mark${small?" small":""}`} aria-label="Haixel IA">
+    <i/><i/><Bot/>
+  </span>;
+}
 function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:boolean}) {
   const [contact,setContact]=useState({nome:"",email:"",empresa:"",mensagem:""}),[contactBusy,setContactBusy]=useState(false),
-    [contactSent,setContactSent]=useState(false),[landingAiTopic,setLandingAiTopic]=useState("visao");
+    [contactSent,setContactSent]=useState(false),[landingAiTopic,setLandingAiTopic]=useState("visao"),
+    [landingAiQuestion,setLandingAiQuestion]=useState(""),[landingAiCustom,setLandingAiCustom]=useState<{question:string;answer:string}|null>(null);
   async function sendContact(event:React.FormEvent){
     event.preventDefault();setContactBusy(true);
     try{await api("/api/contact",{method:"POST",body:contact});setContactSent(true);setContact({nome:"",email:"",empresa:"",mensagem:""})}
@@ -160,6 +166,22 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     sefaz:["O que é o Hub SEFAZ?","É o centro de consulta e captura fiscal: acompanha serviços por estado, preserva a sequência NSU e respeita pausas preventivas."],
     seguranca:["Meus dados estão protegidos?","Acessos, empresas e permissões ficam separados. Certificados A1 são vinculados ao CNPJ e tratados somente pelo backend."],
   };
+  function askLandingAi(event:React.FormEvent){
+    event.preventDefault();const question=landingAiQuestion.trim();if(!question)return;
+    const normalized=question.toLocaleLowerCase("pt-BR");
+    const matches=[
+      [["preço","valor","plano","contratar"],"Para conhecer planos e uma configuração adequada à sua operação, use a área de contato da landing. Nossa equipe conversa com você sobre empresas, volume de documentos e módulos necessários."],
+      [["documento","xml","nota","nfe","nf-e","cte","ct-e","nfse","nfs-e"],aiTopics.documentos[1]],
+      [["cnd","certidão","certidoes","regularidade","vencimento"],aiTopics.cnd[1]],
+      [["sefaz","nsu","captura","distribuição"],aiTopics.sefaz[1]],
+      [["segurança","certificado","a1","permissão","acesso"],aiTopics.seguranca[1]],
+      [["empresa","filial","matriz","multiempresa"],"A Haixel organiza matrizes e filiais em ambientes separados, com módulos, certificado e permissões definidos para cada operação."],
+      [["mensagem","suporte","ajuda","chamado"],"A plataforma possui mensagens internas e uma Central de Suporte dedicada para dúvidas, feedbacks e acompanhamento de chamados."],
+    ] as [string[],string][];
+    const answer=matches.find(([terms])=>terms.some(term=>normalized.includes(term)))?.[1]||
+      "Posso explicar documentos fiscais, CNDs, Hub SEFAZ, empresas, segurança, suporte e os recursos da Haixel. Faça uma pergunta sobre um desses assuntos ou converse com nossa equipe pela área de contato.";
+    setLandingAiCustom({question,answer});setLandingAiQuestion("");
+  }
   return <main className="landing" onPointerMove={event=>{
     const rect=event.currentTarget.getBoundingClientRect();
     event.currentTarget.style.setProperty("--landing-x",`${event.clientX-rect.left}px`);
@@ -181,7 +203,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
       <div className="landing-product">
         <div className="landing-orbit-stage">
           <div className="landing-orbit-ring one"/><div className="landing-orbit-ring two"/>
-          <div className="landing-ai-core"><span><img src="/assets/macaco-ia.png" alt="Assistente fiscal Haixel"/></span>
+          <div className="landing-ai-core"><span><HaixelAiMark/></span>
             <small>HAIXEL IA</small><b>Inteligência conectada à sua operação</b></div>
           <article className="landing-float-card xml"><i><Files/></i><span><small>DOCUMENTOS</small><b>XMLs organizados e protegidos</b></span><CheckCircle2/></article>
           <article className="landing-float-card cnd"><i><ShieldCheck/></i><span><small>REGULARIDADE</small><b>CNDs e vencimentos sob controle</b></span><CheckCircle2/></article>
@@ -197,11 +219,16 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
         <p>Explore os principais módulos antes de entrar. Para dados reais da empresa, a Haixel IA utiliza somente o ambiente autenticado e autorizado.</p>
         <nav>{[["visao","Visão geral",Sparkles],["documentos","Documentos",Files],["cnd","CNDs",ShieldCheck],
           ["sefaz","SEFAZ",Radar],["seguranca","Segurança",Network]].map(([id,label,Icon]:any)=>
-          <button className={landingAiTopic===id?"active":""} onClick={()=>setLandingAiTopic(id)} key={id}><Icon/>{label}</button>)}</nav>
+          <button className={landingAiTopic===id&&!landingAiCustom?"active":""} onClick={()=>{setLandingAiTopic(id);setLandingAiCustom(null)}} key={id}><Icon/>{label}</button>)}</nav>
       </div>
       <div className="landing-ai-showcase-panel">
-        <header><span><img src="/assets/macaco-ia.png" alt="Haixel IA"/><i/></span><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
-        <article><Sparkles/><p><b>{aiTopics[landingAiTopic][0]}</b>{aiTopics[landingAiTopic][1]}</p></article>
+        <header><span><HaixelAiMark small/><i/></span><div><b>Haixel IA</b><small>Guia da plataforma · online</small></div></header>
+        <article><Sparkles/><p><b>{landingAiCustom?.question||aiTopics[landingAiTopic][0]}</b>{landingAiCustom?.answer||aiTopics[landingAiTopic][1]}</p></article>
+        <form className="landing-ai-question" onSubmit={askLandingAi}>
+          <label><MessageCircle/><input value={landingAiQuestion} onChange={event=>setLandingAiQuestion(event.target.value)}
+            placeholder="Pergunte algo sobre a Haixel..." aria-label="Pergunte para a Haixel IA"/></label>
+          <button disabled={!landingAiQuestion.trim()} aria-label="Enviar pergunta"><Send/></button>
+        </form>
         <footer><ShieldCheck/><span><b>Explicação pública e segura</b><small>Nenhum dado fiscal é exposto nesta página.</small></span></footer>
       </div>
     </section>
@@ -567,7 +594,7 @@ function Dashboard() {
         <div><span className="eyebrow">COMANDO FISCAL EM TEMPO REAL</span><h2>Da visão geral à próxima ação.</h2>
           <p>Acompanhe o que entrou, identifique riscos e continue a rotina sem alternar entre várias telas.</p>
           <div><span><i/> Operação acompanhada</span><span><ShieldCheck/> Ambiente protegido</span></div></div>
-        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><img src="/assets/macaco-ia.png" alt="Assistente Haixel"/><b>HAIXEL</b><small>RADAR ATIVO</small></span></div>
+        <div className="cockpit-radar"><i className="one"/><i className="two"/><span><HaixelAiMark/><b>HAIXEL</b><small>RADAR ATIVO</small></span></div>
       </section>
       <div className="cockpit-metrics">{metrics.map(([label,value,Icon,tone]:any,index)=><article className={tone} key={label}
         style={{animationDelay:`${index*.08}s`}}><i><Icon/></i><span><small>{label}</small><b>{loadingStats?"—":value}</b><em>Empresa ativa</em></span></article>)}</div>
@@ -2397,11 +2424,6 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
       <nav className="integration-launchpad">
         <button className={hubSection==="connection"?"active":""} onClick={()=>setHubSection("connection")}><i className="green"><Network/></i><span><b>Conexão fiscal</b><small>Captura, NSU e sincronização</small></span><ArrowUpRight/></button>
         <button className={hubSection==="query"?"active":""} onClick={()=>openConnector("query")}><i className="blue"><Search/></i><span><b>Consulta e importação</b><small>Chave de NF-e ou CT-e</small></span><ArrowUpRight/></button>
-        <button className="spreadsheet-icon-action" title="Importar planilha" aria-label="Importar planilha"
-          onClick={()=>{setHubSection("query");window.setTimeout(()=>
-            document.querySelector<HTMLInputElement>(".spreadsheet-import input")?.click(),100)}}>
-          <i className="green"><FileSpreadsheet/></i>
-        </button>
         <button className={hubSection==="monitor"?"active":""} onClick={()=>openConnector("certificate-monitor")}><i className="purple"><Activity/></i><span><b>Radar nacional</b><small>Todos os estados sem repetição</small></span><ArrowUpRight/></button>
         <button onClick={()=>openConnector("portal")}><i className="gold"><ArrowUpRight/></i><span><b>Portal oficial</b><small>Abrir Portal NF-e</small></span><ArrowUpRight/></button>
       </nav>
@@ -2420,16 +2442,12 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
               <span className={results.length?"active":""}><em>03</em><b>Receba</b><small>Validação e XML</small></span>
             </aside>
           <div className="query-box">
-            <label>
-              Documento
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="nfe">NF-e</option>
-                <option value="cte">CT-e</option>
-              </select>
-            </label>
             <div className="query-source-note"><ShieldCheck/><span><small>Consulta protegida pela fonte oficial</small>
-              <b>SEFAZ · Distribuição DF-e</b></span></div>
-            <label>
+              <b>SEFAZ · Distribuição DF-e</b><em><i/> Ambiente protegido</em></span>
+              <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Tipo de documento">
+                <option value="nfe">NF-e</option><option value="cte">CT-e</option>
+              </select></div>
+            <label className="query-key-entry">
               Chave de acesso
               <textarea
                 ref={keyInput}
@@ -2447,8 +2465,7 @@ function Integrations({ toast }: { toast: (s: string, e?: boolean) => void }) {
             </label>
             <label className="spreadsheet-import">
               <input hidden type="file" accept=".xlsx,.xls,.csv,.txt" onChange={event=>importKeySpreadsheet(event.target.files?.[0])}/>
-              <span className="spreadsheet-button compact" title="Importar planilha" aria-label="Importar planilha"><FileSpreadsheet/></span>
-              <small>Importar Excel, CSV ou TXT</small>
+              <span className="spreadsheet-button compact" title="Importar Excel, CSV ou TXT" aria-label="Importar Excel, CSV ou TXT"><FileSpreadsheet/></span>
             </label>
             {informedKeys.length>0&&<div className="sefaz-queue-estimate">
               <ShieldCheck/><span><b>Fila protegida · {safeQueriesPerHour} consultas por hora</b>
@@ -2978,12 +2995,14 @@ function Profile({
                   </button>
                 )}
               </div>
-              <div>
+              <div className="profile-identity-copy">
+                <small>IDENTIDADE PROFISSIONAL</small>
                 <h2>{form.nome || user.username}</h2>
                 <p>
                   {form.cargo || "Adicione seu cargo"} ·{" "}
                   {form.area_atuacao || "Área de atuação"}
                 </p>
+                <div><span><i/> Perfil visível para a equipe</span><span><ShieldCheck/> Conta protegida</span></div>
               </div>
             </div>
             <div className="fields">
@@ -3187,7 +3206,7 @@ function FeedbackPage({ toast }: { toast: (s: string, e?: boolean) => void }) {
           <h2>{isAdmin?"Operação de atendimento":"Olá. Como podemos ajudar hoje?"}</h2>
           <p>Encontre orientação, converse com a Haixel IA ou abra um chamado acompanhado pela nossa equipe.</p>
           <div><span className="support-availability"><i/> EQUIPE DISPONÍVEL</span><em>Histórico protegido por usuário</em></div></span></div>
-        <aside className="support-agent"><i/><i/><span><img src="/assets/macaco-ia.png" alt="Assistente Haixel"/><b>Haixel</b><small>SUPORTE CONECTADO</small></span></aside>
+        <aside className="support-agent"><i/><i/><span><HaixelAiMark/><b>Haixel</b><small>SUPORTE CONECTADO</small></span></aside>
       </section>
       <section className="support-channels" aria-label="Atalhos de atendimento">
         {[
@@ -5110,13 +5129,14 @@ export default function App() {
     if(!previous){localStorage.setItem(key,currentVersion);return}
     if(previous!==currentVersion){
       if(checking)return;
+      if(systemStatus.maintenance.active)return;
       localStorage.setItem(key,currentVersion);
       if(user){
         sessionStorage.setItem("haixel.updated","1");
         api("/api/auth/logout",{method:"POST"}).catch(()=>{}).finally(()=>window.location.reload());
       }
     }
-  },[systemStatus?.release.version,user,checking]);
+  },[systemStatus?.release.version,systemStatus?.maintenance.active,user,checking]);
   useEffect(()=>{
     if(!systemStatus?.maintenance.active){setMaintenanceGrace(null);return}
     const key=`haixel.maintenance.seen.${systemStatus.release.version}`;
@@ -5160,7 +5180,7 @@ export default function App() {
       ?<MaintenanceNotice maintenance={systemStatus.maintenance} onBack={()=>changePublicView("landing")}/>
       :<Login done={enter} initialMode={publicView==="register"?"register":"login"} onBack={()=>changePublicView("landing")}/>}</div>
     <div className="public-transition" aria-hidden="true">
-      <span><img src={maintenanceCelebration?"/assets/macaco-ia.png":"/assets/haixel-logo.png"} alt=""/>
+      <span>{maintenanceCelebration?<HaixelAiMark/>:<img src="/assets/haixel-logo.png" alt=""/>}
         <b>{maintenanceCelebration?"Atualização concluída":"Haixel"}</b>
         <small>{maintenanceCelebration?"A Haixel está pronta para você":"Preparando seu ambiente fiscal"}</small></span>
     </div>
