@@ -167,7 +167,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
   }}>
     <div className="landing-cursor-light" aria-hidden="true"/>
     <header className="landing-nav">
-      <Brand/><nav><a href="#solucoes">Soluções</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
+      <Brand/><nav><a href="#solucoes">Soluções</a><a href="#haixel-ia">Haixel IA</a><a href="#recursos">Recursos</a><a href="#seguranca">Segurança</a></nav>
       <div>{maintenance&&<span className="landing-maintenance-pill"><Activity/> Manutenção</span>}
         <button className="landing-trial" onClick={onAccess}>Acessar plataforma <ArrowUpRight/></button></div>
     </header>
@@ -175,7 +175,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
       <div className="landing-hero-copy"><span><Sparkles/> GESTÃO FISCAL INTELIGENTE</span>
         <h1>Controle fiscal claro para empresas que querem <em>avançar.</em></h1>
         <p>Documentos, certidões, SEFAZ e empresas reunidos em uma plataforma segura, rápida e preparada para a sua operação.</p>
-        <div><a className="landing-demo" href="#recursos"><Radar/> Conhecer recursos</a></div>
+        <div><a className="landing-demo" href="#haixel-ia"><Bot/> Conversar com a Haixel IA</a></div>
         <small><CheckCircle2/> Acesso web <CheckCircle2/> Sem instalação <CheckCircle2/> Dados protegidos</small>
       </div>
       <div className="landing-product">
@@ -192,7 +192,7 @@ function Landing({onAccess,maintenance=false}:{onAccess:()=>void;maintenance?:bo
     </section>
     <section className="landing-trust"><span>Uma plataforma para toda a rotina fiscal</span>
       <div><b>NF-e</b><b>CT-e</b><b>NFS-e</b><b>XML</b><b>CND</b><b>SEFAZ</b><b>Multiempresa</b></div></section>
-    <section className="landing-ai-showcase">
+    <section className="landing-ai-showcase" id="haixel-ia">
       <div className="landing-ai-showcase-copy"><span>HAIXEL IA · GUIA PÚBLICO</span><h2>Entenda a plataforma conversando com a nossa inteligência.</h2>
         <p>Explore os principais módulos antes de entrar. Para dados reais da empresa, a Haixel IA utiliza somente o ambiente autenticado e autorizado.</p>
         <nav>{[["visao","Visão geral",Sparkles],["documentos","Documentos",Files],["cnd","CNDs",ShieldCheck],
